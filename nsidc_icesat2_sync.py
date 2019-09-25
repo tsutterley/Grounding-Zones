@@ -279,7 +279,7 @@ def main():
 
 	#-- command line parameters
 	USER = ''
-	#-- sWorking data directory
+	#-- Working data directory
 	DIRECTORY = os.getcwd()
 	YEARS = None
 	SUBDIRECTORY = None

@@ -86,7 +86,6 @@ import getopt
 import pyproj
 import tarfile
 import datetime
-import shapefile
 import osgeo.gdal
 import numpy as np
 from mpi4py import MPI
