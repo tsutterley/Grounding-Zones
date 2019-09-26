@@ -60,7 +60,7 @@ REFERENCES:
 
 UPDATE HISTORY:
 	Updated 09/2019: fiona for shapefile read.  pyproj for coordinate conversion
-		can set the DEM model manually to use the GIMP DEM
+		can set the DEM model manually to use the GIMP DEM. verify DEM is finite
 		using date functions paralleling public repository
 	Updated 06/2019: assign ArcticDEM by name attribute.  buffer for sub-tiles
 	Updated 05/2019: free up memory from invalid tiles. buffer by more geosegs
@@ -245,9 +245,11 @@ def read_DEM_file(elevation_file):
 	xsize = ds.RasterXSize
 	ysize = ds.RasterYSize
 	#-- create mask for finding invalid values
-	mask = np.zeros((ysize,xsize),dtype=np.bool)
-	indy,indx = np.nonzero(im == fill_value)
+	mask = np.zeros((ycount,xcount))
+	indy,indx = np.nonzero((im == fill_value) | (~np.isfinite(im)))
 	mask[indy,indx] = True
+	#-- verify that values are finite by replacing with fill_value
+	im[indy,indx] = fill_value
 	#-- get geotiff info
 	info_geotiff = ds.GetGeoTransform()
 	#-- calculate image extents
@@ -292,8 +294,10 @@ def read_DEM_buffer(elevation_file, xlimits, ylimits):
 	fill_value = 0.0 if (fill_value is None) else fill_value
 	#-- create mask for finding invalid values
 	mask = np.zeros((ycount,xcount))
-	indy,indx = np.nonzero(im == fill_value)
+	indy,indx = np.nonzero((im == fill_value) | (~np.isfinite(im)))
 	mask[indy,indx] = True
+	#-- verify that values are finite by replacing with fill_value
+	im[indy,indx] = fill_value
 	#-- reduced x and y limits of image
 	xmin_reduced = xmin + xoffset*info_geotiff[1]
 	xmax_reduced = xmin + xoffset*info_geotiff[1] + (xcount-1)*info_geotiff[1]
