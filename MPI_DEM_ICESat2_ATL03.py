@@ -60,8 +60,8 @@ REFERENCES:
 
 UPDATE HISTORY:
 	Updated 09/2019: fiona for shapefile read.  pyproj for coordinate conversion
-		can set the DEM model manually to use the GIMP DEM
-		using date functions paralleling public repository
+		can set the DEM model manually to use the GIMP DEM. verify DEM is finite
+		using date functions paralleling public repository. verify output DEM
 	Updated 06/2019: assign ArcticDEM by name attribute.  buffer for sub-tiles
 	Updated 05/2019: free up memory from invalid tiles. buffer by more geosegs
 		include mean vertical residuals and number of ground control points
@@ -125,9 +125,9 @@ def info(rank, size):
 #-- PURPOSE: set the DEM model to interpolate based on the input granule
 def set_DEM_model(GRANULE):
 	if GRANULE in ('10','11','12'):
-		DEM_MODEL = 'ArcticDEM'
-	elif GRANULE in ('02','03','04','05','06'):
 		DEM_MODEL = 'REMA'
+	elif GRANULE in ('02','03','04','05','06'):
+		DEM_MODEL = 'ArcticDEM'
 	return DEM_MODEL
 
 #-- PURPOSE: read zip file containing index shapefiles for finding DEM tiles
@@ -228,7 +228,7 @@ def read_DEM_index(index_file, DEM_MODEL):
 	return (poly_dict,attrs_dict,epsg)
 
 #-- PURPOSE: read DEM tile file from gzipped tar files
-def read_DEM_file(elevation_file):
+def read_DEM_file(elevation_file, nd_value):
 	#-- open file with tarfile (read)
 	tar = tarfile.open(name=elevation_file, mode='r:gz')
 	#-- find dem geotiff file within tar file
@@ -246,8 +246,10 @@ def read_DEM_file(elevation_file):
 	ysize = ds.RasterYSize
 	#-- create mask for finding invalid values
 	mask = np.zeros((ysize,xsize),dtype=np.bool)
-	indy,indx = np.nonzero(im == fill_value)
+	indy,indx = np.nonzero((im == fill_value) | np.isfinite(im))
 	mask[indy,indx] = True
+	#-- verify that values are finite by replacing with nd_value
+	im[indy,indx] = nd_value
 	#-- get geotiff info
 	info_geotiff = ds.GetGeoTransform()
 	#-- calculate image extents
@@ -263,10 +265,10 @@ def read_DEM_file(elevation_file):
 	xi = np.arange(xmin,xmax+info_geotiff[1],info_geotiff[1])
 	yi = np.arange(ymax,ymin+info_geotiff[5],info_geotiff[5])
 	#-- return values (flip y values to be monotonically increasing)
-	return (im[::-1,:],mask[::-1,:],fill_value,xi,yi[::-1])
+	return (im[::-1,:],mask[::-1,:],xi,yi[::-1])
 
 #-- PURPOSE: read DEM tile file from gzipped tar files to buffer main tile
-def read_DEM_buffer(elevation_file, xlimits, ylimits):
+def read_DEM_buffer(elevation_file, xlimits, ylimits, nd_value):
 	#-- open file with tarfile (read)
 	tar = tarfile.open(name=elevation_file, mode='r:gz')
 	#-- find dem geotiff file within tar file
@@ -292,8 +294,10 @@ def read_DEM_buffer(elevation_file, xlimits, ylimits):
 	fill_value = 0.0 if (fill_value is None) else fill_value
 	#-- create mask for finding invalid values
 	mask = np.zeros((ycount,xcount))
-	indy,indx = np.nonzero(im == fill_value)
+	indy,indx = np.nonzero((im == fill_value) | np.isfinite(im))
 	mask[indy,indx] = True
+	#-- verify that values are finite by replacing with nd_value
+	im[indy,indx] = nd_value
 	#-- reduced x and y limits of image
 	xmin_reduced = xmin + xoffset*info_geotiff[1]
 	xmax_reduced = xmin + xoffset*info_geotiff[1] + (xcount-1)*info_geotiff[1]
@@ -307,7 +311,7 @@ def read_DEM_buffer(elevation_file, xlimits, ylimits):
 	xi = np.arange(xmin_reduced,xmax_reduced+info_geotiff[1],info_geotiff[1])
 	yi = np.arange(ymax_reduced,ymin_reduced+info_geotiff[5],info_geotiff[5])
 	#-- return values (flip y values to be monotonically increasing)
-	return (im[::-1,:],mask[::-1,:],fill_value,xi,yi[::-1])
+	return (im[::-1,:],mask[::-1,:],xi,yi[::-1])
 
 #-- PURPOSE: read ICESat-2 ATL03 data from NSIDC
 #-- interpolate DEM data to x and y coordinates
@@ -329,7 +333,7 @@ def main():
 	MODE = 0o775
 	for opt, arg in optlist:
 		if opt in ('-h','--help'):
-			usage()
+			usage() if (comm.rank==0) else None
 			sys.exit()
 		elif opt in ("-D","--directory"):
 			base_dir = os.path.expanduser(arg)
@@ -349,7 +353,7 @@ def main():
 	FILE = os.path.expanduser(arglist[0])
 
 	#-- read data from input file
-	print('{0} -->'.format(os.path.basename(FILE))) if VERBOSE else None
+	print('{0} -->'.format(FILE)) if (VERBOSE and (comm.rank==0)) else None
 	#-- Open the HDF5 file for reading
 	fileID = h5py.File(FILE, 'r', driver='mpio', comm=comm)
 	DIRECTORY = os.path.dirname(FILE)
@@ -554,7 +558,7 @@ def main():
 			#-- read central DEM file (geotiff within gzipped tar file)
 			tar = '{0}.tar.gz'.format(name)
 			elevation_file = os.path.join(elevation_directory,sub,tar)
-			DEM,MASK,FV,xi,yi = read_DEM_file(elevation_file)
+			DEM,MASK,xi,yi = read_DEM_file(elevation_file,fv)
 			#-- buffer DEM using values from adjacent tiles
 			#-- use 200m (10 geosegs and divisible by ArcticDEM and REMA pixels)
 			#-- use 750m for GIMP
@@ -563,7 +567,7 @@ def main():
 			dx = np.abs(xi[1]-xi[0]).astype('i')
 			dy = np.abs(yi[1]-yi[0]).astype('i')
 			#-- new buffered DEM and mask
-			d = np.full((ny+2*bf//dy,nx+2*bf//dx),FV,dtype=np.float32)
+			d = np.full((ny+2*bf//dy,nx+2*bf//dx),fv,dtype=np.float32)
 			m = np.ones((ny+2*bf//dy,nx+2*bf//dx),dtype=np.bool)
 			d[bf//dy:-bf//dy,bf//dx:-bf//dx] = DEM.copy()
 			m[bf//dy:-bf//dy,bf//dx:-bf//dx] = MASK.copy()
@@ -596,7 +600,7 @@ def main():
 						buffer_file = os.path.join(elevation_directory,bkey,btar)
 						if not os.access(buffer_file, os.F_OK):
 							raise IOError('{0} not found'.format(buffer_file))
-						DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)
+						DEM,MASK,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim,fv)
 						xmin = np.int((x1[0] - x[0])//dx)
 						xmax = np.int((x1[-1] - x[0])//dx) + 1
 						ymin = np.int((y1[0] - y[0])//dy)
@@ -622,7 +626,7 @@ def main():
 						buffer_file = os.path.join(elevation_directory,bkey,btar)
 						if not os.access(buffer_file, os.F_OK):
 							raise IOError('{0} not found'.format(buffer_file))
-						DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)
+						DEM,MASK,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim,fv)
 						xmin = np.int((x1[0] - x[0])//dx)
 						xmax = np.int((x1[-1] - x[0])//dx) + 1
 						ymin = np.int((y1[0] - y[0])//dy)
@@ -661,7 +665,7 @@ def main():
 						buffer_file = os.path.join(elevation_directory,bsub,btar)
 						if not os.access(buffer_file, os.F_OK):
 							raise IOError('{0} not found'.format(buffer_file))
-						DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)
+						DEM,MASK,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim,fv)
 						xmin = np.int((x1[0] - x[0])//dx)
 						xmax = np.int((x1[-1] - x[0])//dx) + 1
 						ymin = np.int((y1[0] - y[0])//dy)
@@ -695,6 +699,7 @@ def main():
 		comm.Barrier()
 
 		#-- output interpolated DEM to HDF5
+		dem_h.mask[np.abs(dem_h.data) >= 1e4] = True
 		dem_h.data[dem_h.mask] = dem_h.fill_value
 		IS2_atl03_dem[gtx]['heights']['dem_h'] = dem_h
 		IS2_atl03_fill[gtx]['heights']['dem_h'] = dem_h.fill_value
