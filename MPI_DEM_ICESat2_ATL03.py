@@ -61,6 +61,7 @@ REFERENCES:
 UPDATE HISTORY:
 	Updated 09/2019: fiona for shapefile read.  pyproj for coordinate conversion
 		can set the DEM model manually to use the GIMP DEM. verify DEM is finite
+		round DEM fill value when creating mask as some DEM tiles are incorrect
 		using date functions paralleling public repository. verify output DEM
 	Updated 06/2019: assign ArcticDEM by name attribute.  buffer for sub-tiles
 	Updated 05/2019: free up memory from invalid tiles. buffer by more geosegs
@@ -246,7 +247,8 @@ def read_DEM_file(elevation_file, nd_value):
 	ysize = ds.RasterYSize
 	#-- create mask for finding invalid values
 	mask = np.zeros((ysize,xsize),dtype=np.bool)
-	indy,indx = np.nonzero((im == fill_value) | np.isfinite(im))
+	indy,indx = np.nonzero((im == fill_value) | (~np.isfinite(im)) |
+		(np.ceil(im) == np.ceil(fill_value)))
 	mask[indy,indx] = True
 	#-- verify that values are finite by replacing with nd_value
 	im[indy,indx] = nd_value
@@ -294,7 +296,8 @@ def read_DEM_buffer(elevation_file, xlimits, ylimits, nd_value):
 	fill_value = 0.0 if (fill_value is None) else fill_value
 	#-- create mask for finding invalid values
 	mask = np.zeros((ycount,xcount))
-	indy,indx = np.nonzero((im == fill_value) | np.isfinite(im))
+	indy,indx = np.nonzero((im == fill_value) | (~np.isfinite(im)) |
+		(np.ceil(im) == np.ceil(fill_value)))
 	mask[indy,indx] = True
 	#-- verify that values are finite by replacing with nd_value
 	im[indy,indx] = nd_value

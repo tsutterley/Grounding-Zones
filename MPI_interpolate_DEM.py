@@ -55,6 +55,7 @@ REFERENCES:
 	https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+	Updated 09/2019: round fill value for mask as some tiles can be incorrect
 	Forked 09/2019 from MPI_DEM_ICESat2_ATL03.py
 """
 from __future__ import print_function
@@ -226,7 +227,8 @@ def read_DEM_file(elevation_file):
 	ysize = ds.RasterYSize
 	#-- create mask for finding invalid values
 	mask = np.zeros((ysize,xsize),dtype=np.bool)
-	indy,indx = np.nonzero((im == fill_value) | (~np.isfinite(im)))
+	indy,indx = np.nonzero((im == fill_value) | (~np.isfinite(im)) |
+		(np.ceil(im) == np.ceil(fill_value)))
 	mask[indy,indx] = True
 	#-- verify that values are finite by replacing with fill_value
 	im[indy,indx] = fill_value
@@ -274,7 +276,8 @@ def read_DEM_buffer(elevation_file, xlimits, ylimits):
 	fill_value = 0.0 if (fill_value is None) else fill_value
 	#-- create mask for finding invalid values
 	mask = np.zeros((ycount,xcount))
-	indy,indx = np.nonzero((im == fill_value) | (~np.isfinite(im)))
+	indy,indx = np.nonzero((im == fill_value) | (~np.isfinite(im)) |
+		(np.ceil(im) == np.ceil(fill_value)))
 	mask[indy,indx] = True
 	#-- verify that values are finite by replacing with fill_value
 	im[indy,indx] = fill_value
