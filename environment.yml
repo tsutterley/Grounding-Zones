@@ -1,0 +1,21 @@
+name: grounding_zones
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.6
+  - notebook
+  - numpy
+  - scipy
+  - pyproj
+  - python-dateutil
+  - matplotlib
+  - netCDF4
+  - h5py
+  - gdal
+  - lxml
+  - pyyaml
+  - cartopy
+  - pip
+  - pip:
+     - git+https://github.com/tsutterley/read-ICESat-2.git
+     - git+https://github.com/tsutterley/pyTMD.git
