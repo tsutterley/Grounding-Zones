@@ -8,7 +8,7 @@ Create masks for reducing ICESat-2 land ice height data to within
 Used to calculate a more definite grounding zone from the ICESat-2 data
 
 COMMAND LINE OPTIONS:
-    -D X, --directory X: Working Data Directory
+    -D X, --directory X: Working data directory
     -B X, --buffer X: Distance in kilometers to buffer from grounding line
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
@@ -126,7 +126,7 @@ def load_grounding_zone(base_dir, HEM, BUFFER):
     #-- close the shapefile
     shape_input.close()
     #-- return the polygon object for the ice sheet
-    return (poly_obj,buffered_shapefile,None)
+    return (mpoly_obj,buffered_shapefile,epsg)
 
 #-- PURPOSE: read ICESat-2 data and reduce to within buffer of grounding zone
 def main():
@@ -204,7 +204,7 @@ def main():
 
     #-- pyproj transformer for converting lat/lon to polar stereographic
     crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(epsg))
+    crs2 = pyproj.CRS.from_string(epsg)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
     #-- copy variables for outputting to HDF5 file

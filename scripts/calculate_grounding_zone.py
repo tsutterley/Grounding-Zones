@@ -12,7 +12,10 @@ Calculates ice sheet grounding zones following:
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
-    --model X: Set the digital elevation model (REMA, ArcticDEM, GIMP) to run
+    --model X: Set the digital elevation model to run
+        REMA
+        ArcticDEM
+        GIMP
     -F X, --format X: input and output data format
         csv (default)
         netCDF4

@@ -2,7 +2,7 @@
 u"""
 MPI_interpolate_DEM.py
 Written by Tyler Sutterley (01/2021)
-Determines which digital elevation model tiles to read for set of coordinates
+Determines which digital elevation model tiles for an input file
 Reads 3x3 array of tiles for points within bounding box of central mosaic tile
 Interpolates digital elevation model to coordinates
 
@@ -25,7 +25,10 @@ INPUTS:
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
-    -m X, --model X: Digital elevation model (REMA, ArcticDEM, GIMP) to run
+    -m X, --model X: Digital elevation model to run
+        REMA
+        ArcticDEM
+        GIMP
     -F X, --format X: input and output data format
         csv (default)
         netCDF4
@@ -42,8 +45,6 @@ COMMAND LINE OPTIONS:
         4326: latitude and longitude coordinates on WGS84 reference ellipsoid
     -V, --verbose: Verbose output of processing run
     -M X, --mode X: Permission mode of output file
-    -V, --verbose: Output information about each created file
-    -M X, --mode X: Permission mode of directories and files created
 
 REQUIRES MPI PROGRAM
     MPI: standardized and portable message-passing system

@@ -345,8 +345,10 @@ def calculate_GZ_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
     #-- grounded ice line string to determine if segment crosses coastline
     mpoly_obj,input_file,epsg = read_grounded_ice(base_dir, HEM)
     #-- projections for converting lat/lon to polar stereographic
-    proj1 = pyproj.Proj("+init=EPSG:{0:d}".format(4326))
-    proj2 = pyproj.Proj("+init={0}".format(epsg))
+    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    crs2 = pyproj.CRS.from_string(epsg)
+    #-- transformer object for converting projections
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
     #-- densities of seawater and ice
     rho_w = 1030.0
@@ -412,7 +414,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
             #-- convert to calendar date with convert_julian.py
             cal_date = icesat2_toolkit.time.convert_julian(time_julian)
             #-- extract lat/lon and convert to polar stereographic
-            X,Y=pyproj.transform(proj1,proj2,v['longitude'][i],v['latitude'][i])
+            X,Y = transformer.transform(v['longitude'][i],v['latitude'][i])
             #-- shapely LineString object for altimetry segment
             segment_line = shapely.geometry.LineString(list(zip(X, Y)))
             #-- determine if line segment intersects previously known GZ

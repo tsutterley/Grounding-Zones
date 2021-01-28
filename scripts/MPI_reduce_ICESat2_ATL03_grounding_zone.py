@@ -8,10 +8,10 @@ Create masks for reducing ICESat-2 geolocated photon height data to within
 Used to calculate a more definite grounding zone from the ICESat-2 data
 
 COMMAND LINE OPTIONS:
-    -D X, --directory=X: Working Data Directory
-    -B X, --buffer=X: Distance in kilometers to buffer from grounding line
+    -D X, --directory X: Working data directory
+    -B X, --buffer X: Distance in kilometers to buffer from grounding line
     -V, --verbose: Output information about each created file
-    -M X, --mode=X: Permission mode of directories and files created
+    -M X, --mode X: Permission mode of directories and files created
 
 REQUIRES MPI PROGRAM
     MPI: standardized and portable message-passing system
@@ -207,7 +207,7 @@ def main():
 
     #-- pyproj transformer for converting lat/lon to polar stereographic
     crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(epsg))
+    crs2 = pyproj.CRS.from_string(epsg)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
     #-- copy variables for outputting to HDF5 file

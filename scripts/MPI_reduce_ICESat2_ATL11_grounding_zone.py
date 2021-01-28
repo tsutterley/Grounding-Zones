@@ -8,7 +8,7 @@ Create masks for reducing ICESat-2 annual land ice height data to within
 Used to calculate a more definite grounding zone from the ICESat-2 data
 
 COMMAND LINE OPTIONS:
-    -D X, --directory X: Working Data Directory
+    -D X, --directory X: Working data directory
     -B X, --buffer X: Distance in kilometers to buffer from grounding line
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
@@ -117,7 +117,7 @@ def load_grounding_zone(base_dir, HEM, BUFFER):
     #-- close the shapefile
     shape_input.close()
     #-- return the polygon object for the ice sheet
-    return (poly_obj,buffered_shapefile,None)
+    return (mpoly_obj,buffered_shapefile,epsg)
 
 #-- PURPOSE: read ICESat-2 data and reduce to within buffer of grounding zone
 def main():
@@ -197,7 +197,7 @@ def main():
 
     #-- pyproj transformer for converting lat/lon to polar stereographic
     crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(epsg))
+    crs2 = pyproj.CRS.from_string(epsg)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
     #-- copy variables for outputting to HDF5 file
@@ -231,8 +231,6 @@ def main():
         #-- number of average segments and number of included cycles
         delta_time = fileID[ptx]['delta_time'][:].copy()
         n_points,n_cycles = np.shape(delta_time)
-        #-- invalid value for beam
-        fv = fileID[ptx]['h_li'].fillvalue
         #-- check if there are less segments than processes
         if (n_points < comm.Get_size()):
             continue
@@ -369,7 +367,7 @@ def main():
         #-- output mask to HDF5
         IS2_atl11_mask[ptx]['subsetting']['ice_gz'] = associated_map
         IS2_atl11_fill[ptx]['subsetting']['ice_gz'] = None
-        IS2_atl11_dims[ptx]['subsetting']['ice_gz'] = ['segment_id']
+        IS2_atl11_dims[ptx]['subsetting']['ice_gz'] = ['ref_pt']
         IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz'] = {}
         IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['contentType'] = "referenceInformation"
         IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['long_name'] = 'Grounding Zone Mask'
@@ -379,7 +377,7 @@ def main():
         IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['reference'] = grounded_reference[HEM]
         IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['source'] = args.buffer
         IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['coordinates'] = \
-            "../segment_id ../delta_time ../latitude ../longitude"
+            "../ref_pt ../delta_time ../latitude ../longitude"
         #-- wait for all processes to finish calculation
         comm.Barrier()
 
@@ -432,6 +430,7 @@ def HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_attrs, INPUT=None,
     pairs = [k for k in IS2_atl11_mask.keys() if bool(re.match(r'pt\d',k))]
     for ptx in pairs:
         fileID.create_group(ptx)
+        h5[ptx] = {}
         #-- add HDF5 group attributes for beam pair
         for att_name in ['description','beam_pair','ReferenceGroundTrack',
             'first_cycle','last_cycle','equatorial_radius','polar_radius']:
