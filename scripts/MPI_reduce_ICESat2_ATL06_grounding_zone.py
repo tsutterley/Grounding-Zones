@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL06_grounding_zone.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (02/2021)
 
 Create masks for reducing ICESat-2 land ice height data to within
     a buffer region near the ice sheet grounding zone
@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
     utilities: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 02/2021: replaced numpy bool to prevent deprecation warning
     Updated 01/2021: time utilities for converting times from JD and to decimal
     Updated 12/2020: H5py deprecation warning change to use make_scale
     Updated 10/2020: using argparse to set parameters.  update pyproj transforms
@@ -261,9 +262,9 @@ def main():
         xy_point = shapely.geometry.MultiPoint(np.c_[X, Y])
 
         #-- create distributed intersection map for calculation
-        distributed_map = np.zeros((n_seg),dtype=np.bool)
+        distributed_map = np.zeros((n_seg),dtype=bool)
         #-- create empty intersection map array for receiving
-        associated_map = np.zeros((n_seg),dtype=np.bool)
+        associated_map = np.zeros((n_seg),dtype=bool)
         #-- for each polygon
         for poly_obj in mpoly_obj:
             #-- finds if points are encapsulated (in grounding zone)
@@ -526,8 +527,8 @@ def HDF5_ATL06_mask_write(IS2_atl06_mask, IS2_atl06_attrs, INPUT=None,
     fileID.attrs['source'] = 'Spacecraft'
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
-    #-- add attributes for input ATL06 files
-    fileID.attrs['input_files'] = ','.join([os.path.basename(i) for i in INPUT])
+    #-- add attributes for input ATL06 file
+    fileID.attrs['input_files'] = os.path.basename(INPUT)
     #-- find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for gtx in beams:

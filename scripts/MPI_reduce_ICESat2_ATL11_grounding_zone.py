@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL11_grounding_zone.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (02/2021)
 
 Create masks for reducing ICESat-2 annual land ice height data to within
     a buffer region near the ice sheet grounding zone
@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
     utilities: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 02/2021: replaced numpy bool to prevent deprecation warning
     Updated 01/2021: time utilities for converting times from JD and to decimal
     Written 12/2020
 """
@@ -245,9 +246,9 @@ def main():
         xy_point = shapely.geometry.MultiPoint(list(zip(X[ind], Y[ind])))
 
         #-- create distributed intersection map for calculation
-        distributed_map = np.zeros((n_points),dtype=np.bool)
+        distributed_map = np.zeros((n_points),dtype=bool)
         #-- create empty intersection map array for receiving
-        associated_map = np.zeros((n_points),dtype=np.bool)
+        associated_map = np.zeros((n_points),dtype=bool)
         #-- for each polygon
         for poly_obj in mpoly_obj:
             #-- finds if points are encapsulated (in grounding zone)

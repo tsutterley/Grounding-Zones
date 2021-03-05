@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_interpolate_DEM.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (02/2021)
 Determines which digital elevation model tiles for an input file
 Reads 3x3 array of tiles for points within bounding box of central mosaic tile
 Interpolates digital elevation model to coordinates
@@ -85,6 +85,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 02/2021: replaced numpy bool to prevent deprecation warning
     Updated 01/2021: use argparse to set command line options
         use pyTMD spatial module for reading and writing data
     Updated 09/2019: round fill value for mask as some tiles can be incorrect
@@ -243,7 +244,7 @@ def read_DEM_file(elevation_file):
     xsize = ds.RasterXSize
     ysize = ds.RasterYSize
     #-- create mask for finding invalid values
-    mask = np.zeros((ysize,xsize),dtype=np.bool)
+    mask = np.zeros((ysize,xsize),dtype=bool)
     indy,indx = np.nonzero((im == fill_value) | (~np.isfinite(im)) |
         (np.ceil(im) == np.ceil(fill_value)))
     mask[indy,indx] = True
@@ -480,9 +481,9 @@ def main():
 
     #-- output interpolated digital elevation model
     distributed_dem = np.ma.zeros((n_pts),fill_value=-9999.0,dtype=np.float32)
-    distributed_dem.mask = np.ones((n_pts),dtype=np.bool)
+    distributed_dem.mask = np.ones((n_pts),dtype=bool)
     dem_h = np.ma.zeros((n_pts),fill_value=-9999.0,dtype=np.float32)
-    dem_h.mask = np.ones((n_pts),dtype=np.bool)
+    dem_h.mask = np.ones((n_pts),dtype=bool)
 
     #-- convert reduced x and y to shapely multipoint object
     xy_point = shapely.geometry.MultiPoint(np.c_[X[ind], Y[ind]])
@@ -533,7 +534,7 @@ def main():
         dy = np.abs(yi[1]-yi[0]).astype('i')
         #-- new buffered DEM and mask
         d = np.full((ny+2*bf//dy,nx+2*bf//dx),FV,dtype=np.float32)
-        m = np.ones((ny+2*bf//dy,nx+2*bf//dx),dtype=np.bool)
+        m = np.ones((ny+2*bf//dy,nx+2*bf//dx),dtype=bool)
         d[bf//dy:-bf//dy,bf//dx:-bf//dx] = DEM.copy()
         m[bf//dy:-bf//dy,bf//dx:-bf//dx] = MASK.copy()
         DEM,MASK = (None,None)
@@ -646,7 +647,7 @@ def main():
         maskout = f2.ev(X[tile_indices],Y[tile_indices])
         #-- save DEM to output variables
         distributed_dem.data[tile_indices] = dataout
-        distributed_dem.mask[tile_indices] = maskout.astype(np.bool)
+        distributed_dem.mask[tile_indices] = maskout.astype(bool)
         #-- clear DEM and mask variables
         f1,f2,dataout,maskout,d,m = (None,None,None,None,None,None)
 
