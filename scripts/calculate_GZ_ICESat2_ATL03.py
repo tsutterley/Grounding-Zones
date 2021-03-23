@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL03.py
-Written by Tyler Sutterley (09/2019)
+Written by Tyler Sutterley (03/2021)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -34,8 +34,10 @@ PYTHON DEPENDENCIES:
 PROGRAM DEPENDENCIES:
     read_ICESat2_ATL03.py: reads ICESat-2 ATL03 and ATL09 data files
     time.py: utilities for calculating time operations
+    utilities: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 03/2021: use utilities to set default path to shapefiles
     Updated 01/2021: using argparse to set command line options
         using time module for conversion operations
     Updated 09/2019: using date functions paralleling public repository
@@ -57,6 +59,7 @@ import scipy.stats
 import scipy.optimize
 import shapely.geometry
 import icesat2_toolkit.time
+from grounding_zones.utilities import get_data_path
 from icesat2_toolkit.read_ICESat2_ATL03 import read_HDF5_ATL03_main, \
     read_HDF5_ATL03_beam
 
@@ -322,8 +325,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
         ATTRIBUTES=True, VERBOSE=VERBOSE)
     DIRECTORY = os.path.dirname(FILE)
     #-- extract parameters from ICESat-2 ATLAS HDF5 file name
-    rx = re.compile('(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_'
-        '(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$',re.VERBOSE)
+    rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_'
+        r'(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$',re.VERBOSE)
     PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = rx.findall(FILE).pop()
     #-- set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRAN)
@@ -500,10 +503,10 @@ def main():
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='ICESat-2 ATL03 file to run')
-    #-- directory with tide data
+    # directory with mask data
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        default=get_data_path('data'),
         help='Working data directory')
     #-- verbosity settings
     #-- verbose will output information about each output file

@@ -15,6 +15,13 @@ Download and management utilities for syncing time and auxiliary files
 General Methods
 ===============
 
+.. method:: grounding_zones.utilities.get_data_path(relpath)
+
+    Get the absolute path within a package from a relative path
+
+    Arguments:
+
+        ``relpath``: local relative path as list or string
 
 .. method:: grounding_zones.utilities.pgc_list(HOST,timeout=None,context=ssl.SSLContext(),parser=None,format='%Y-%m-%d %H:%M',pattern='',sort=False)
 

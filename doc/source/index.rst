@@ -9,6 +9,7 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with ICESat-2
 
     getting_started/Install.rst
     getting_started/Parallel-HDF5.rst
+    getting_started/Contributing.rst
     getting_started/Citations.rst
 
 .. toctree::
@@ -19,6 +20,7 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with ICESat-2
     user_guide/calculate_grounding_zone.md
     user_guide/calculate_GZ_ICESat2_ATL03.md
     user_guide/calculate_GZ_ICESat2_ATL06.md
+    user_guide/calculate_GZ_ICESat2_ATL11.md
     user_guide/check_DEM_ICESat2_ATL06.md
     user_guide/create_GIMP_tile_index.md
     user_guide/MPI_interpolate_DEM.md

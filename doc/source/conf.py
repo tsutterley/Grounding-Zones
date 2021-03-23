@@ -21,7 +21,7 @@ import datetime
 project = 'ICESat-2-Grounding-Zones'
 year = datetime.date.today().year
 copyright = f"2018\u2013{year}, Tyler C. Sutterley"
-author = 'Tyler C. Sutterley'
+author = 'Tyler C. Sutterley and Kelly M. Brunt'
 
 # The full version, including alpha/beta/rc tags
 with open(os.path.abspath('../../version.txt')) as fh:

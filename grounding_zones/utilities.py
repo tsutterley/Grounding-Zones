@@ -1,6 +1,6 @@
 """
 utilities.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (03/2021)
 Download and management utilities for syncing time and auxiliary files
 Adds additional modules to the icesat2_toolkit utilities
 
@@ -9,10 +9,28 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 03/2021: add data path function for this set of utilities
     Written 01/2021
 """
 #-- extend icesat2_toolkit utilities
 from icesat2_toolkit.utilities import *
+
+def get_data_path(relpath):
+    """
+    Get the absolute path within a package from a relative path
+
+    Arguments
+    ---------
+    relpath: relative path
+    """
+    #-- current file path
+    filename = inspect.getframeinfo(inspect.currentframe()).filename
+    filepath = os.path.dirname(os.path.abspath(filename))
+    if isinstance(relpath,list):
+        #-- use *splat operator to extract from list
+        return os.path.join(filepath,*relpath)
+    elif isinstance(relpath,str):
+        return os.path.join(filepath,relpath)
 
 #-- PURPOSE: list a directory on Polar Geospatial Center https server
 def pgc_list(HOST,timeout=None,context=ssl.SSLContext(),
