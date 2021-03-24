@@ -34,6 +34,7 @@ COMMAND LINE OPTIONS:
         ERA-Interim: http://apps.ecmwf.int/datasets/data/interim-full-moda
         ERA5: http://apps.ecmwf.int/data-catalogues/era5/?class=ea
         MERRA-2: https://gmao.gsfc.nasa.gov/reanalysis/MERRA-2/
+    -C, --crossovers: Run ATL11 Crossovers
     -P, --plot: Create plots of flexural zone
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
@@ -64,7 +65,9 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 03/2021: output HDF5 file of flexure scaled by a tide model
-        final extent of the flexure is estimated the grounding line
+        estimate flexure for crossovers using along-track model outputs
+        final extent of the flexure AT is the estimated grounding line
+        replaced numpy bool/int to prevent deprecation warnings
         use utilities to set default path to shapefiles
     Updated 01/2021: using standalone ATL11 reader
         using argparse to set command line options
@@ -123,21 +126,24 @@ def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # reduce to variables of interest if specified
     shape_entities = [f for f in shape.values() if int(f['id']) in VARIABLES]
     # create list of polygons
-    polygons = []
+    lines = []
     # extract the entities and assign by tile name
     for i,ent in enumerate(shape_entities):
         # extract coordinates for entity
-        poly_obj = shapely.geometry.Polygon(ent['geometry']['coordinates'])
-        # Valid Polygon cannot have overlapping exterior or interior rings
-        if (not poly_obj.is_valid):
-            poly_obj = poly_obj.buffer(0)
-        polygons.append(poly_obj)
-    # create shapely multipolygon object
-    mpoly_obj = shapely.geometry.MultiPolygon(polygons)
+        line_obj = shapely.geometry.LineString(ent['geometry']['coordinates'])
+        lines.append(line_obj)
+    # create shapely multilinestring object
+    mline_obj = shapely.geometry.MultiLineString(lines)
     # close the shapefile
     shape.close()
-    # return the polygon object for the ice sheet
-    return (mpoly_obj,epsg)
+    # return the line string object for the ice sheet
+    return (mline_obj,epsg)
+
+# PURPOSE: Find indices of common reference points between two lists
+# Determines which along-track points correspond with the across-track
+def common_reference_points(XT, AT):
+    ind2 = np.squeeze([np.flatnonzero(AT == p) for p in XT])
+    return ind2
 
 # PURPOSE: compress complete list of valid indices into a set of ranges
 def compress_list(i,n):
@@ -244,15 +250,15 @@ def piecewise_fit(x, y, STEP=1, CONF=0.95):
 # D. G. Vaughan, Journal of Geophysical Research Solid Earth, 1995
 # A. M. Smith, Journal of Glaciology, 1991
 # density of water [kg/m^3]
-def physical_elastic_model(XI,YI,GZ=[0,0,0],METHOD='trf',ORIENTATION=False,
-    THICKNESS=None,CONF=0.95,XOUT=None):
+def physical_elastic_model(XI,YI,METHOD='trf',GRZ=[0,0,0],TIDE=[0,0,0],
+    ORIENTATION=False,THICKNESS=None,CONF=0.95,XOUT=None):
     # reorient input parameters to go from land ice to floating
     if XOUT is None:
         XOUT = np.copy(XI)
     if ORIENTATION:
         Xm1 = XI[-1]
-        GZ = Xm1 - GZ
-        GZ[1:] = GZ[:0:-1]
+        GRZ = Xm1 - GRZ
+        GRZ[1:] = GRZ[:0:-1]
         XI = Xm1 - XI[::-1]
         YI = YI[::-1]
         XOUT = Xm1 - XOUT[::-1]
@@ -274,14 +280,15 @@ def physical_elastic_model(XI,YI,GZ=[0,0,0],METHOD='trf',ORIENTATION=False,
     # E0: Effective Elastic modulus of ice [Pa]
     # T0: ice thickness of ice shelf [m]
     # dH0: mean height change (thinning/thickening)
-    p0 = [GZ[0], 1.2, 1e9, MTH, 0.0]
+    p0 = [GRZ[0], TIDE[0], 1e9, MTH, 0.0]
     # tuple for parameter bounds (lower and upper)
     # G0: 95% confidence interval of initial fit
     # A0: greater than +/- 2.4m value from Padman (2002)
     # E0: Range from Table 1 of Vaughan (1995)
     # T0: Range of ice thicknesses from Chuter (2015)
     # dH0: mean height change +/- 10 m/yr
-    bounds = ([GZ[1], -3.0, 8.3e8, MNTH, -10],[GZ[2], 3.0, 1e10, MXTH, 10])
+    bounds = ([GRZ[1], TIDE[1], 8.3e8, MNTH, -10],
+        [GRZ[2], TIDE[2], 1e10, MXTH, 10])
     # optimized curve fit with Levenberg-Marquardt algorithm
     popt,pcov = scipy.optimize.curve_fit(elasticmodel, XI, YI,
         p0=p0, bounds=bounds, method=METHOD)
@@ -349,13 +356,13 @@ def conf_interval(x,f,p):
 # calculate inflexion point using elevation surface slopes
 # use mean elevation to calculate elevation anomalies
 # use anomalies to calculate inward and seaward limits of tidal flexure
-def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
-    PLOT=False, VERBOSE=False, MODE=0o775):
+def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
+    REANALYSIS=None, PLOT=False, VERBOSE=False, MODE=0o775):
     # print file information
     print(os.path.basename(FILE)) if VERBOSE else None
     # read data from FILE
     mds1,attr1,pairs1 = read_HDF5_ATL11(FILE, REFERENCE=True,
-        CROSSOVERS=False, ATTRIBUTES=True, VERBOSE=VERBOSE)
+        CROSSOVERS=CROSSOVERS, ATTRIBUTES=True, VERBOSE=VERBOSE)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
@@ -366,7 +373,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
     # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRAN)
     # grounded ice line string to determine if segment crosses coastline
-    mpoly_obj,epsg = read_grounded_ice(base_dir, HEM)
+    mline_obj,epsg = read_grounded_ice(base_dir, HEM)
 
     # height threshold (filter points below 0m elevation)
     THRESHOLD = 0.0
@@ -379,10 +386,6 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
     crs2 = pyproj.CRS.from_string(epsg)
     # transformer object for converting projections
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
-
-    # number of GPS seconds between the GPS epoch
-    # and ATLAS Standard Data Product (SDP) epoch
-    atlas_sdp_gps_epoch = mds1['ancillary_data']['atlas_sdp_gps_epoch']
 
     # copy variables for outputting to HDF5 file
     IS2_atl11_gz = {}
@@ -401,47 +404,88 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         IS2_atl11_gz_attrs['ancillary_data'][key] = {}
         for att_name,att_val in attr1['ancillary_data'][key].items():
             IS2_atl11_gz_attrs['ancillary_data'][key][att_name] = att_val
+    # HDF5 group name for across-track data
+    XT = 'crossing_track_data'
 
     # for each input beam within the file
     for ptx in sorted(pairs1):
-        # output data dictionaries for beam
-        IS2_atl11_gz[ptx] = dict(cycle_stats=collections.OrderedDict())
-        IS2_atl11_fill[ptx] = dict(cycle_stats={})
-        IS2_atl11_dims[ptx] = dict(cycle_stats={})
-        IS2_atl11_gz_attrs[ptx] = dict(cycle_stats={})
+        # output data dictionaries for beam pair
+        IS2_atl11_gz[ptx] = dict(cycle_stats=collections.OrderedDict(),
+            crossing_track_data=collections.OrderedDict())
+        IS2_atl11_fill[ptx] = dict(cycle_stats={},crossing_track_data={})
+        IS2_atl11_dims[ptx] = dict(cycle_stats={},crossing_track_data={})
+        IS2_atl11_gz_attrs[ptx] = dict(cycle_stats={},crossing_track_data={})
 
-        # extract along-track variables
+        # extract along-track and across-track variables
+        ref_pt = {}
+        latitude = {}
+        longitude = {}
+        delta_time = {}
+        h_corr = {}
+        tide_ocean = {}
+        groups = ['AT']
+        # dictionary with output inverse barometer variables
+        IB = {}
+        # number of average segments and number of included cycles
+        # fill_value for invalid heights and corrections
+        fv = attr1[ptx]['h_corr']['_FillValue']
         # shape of along-track data
         n_points,n_cycles = mds1[ptx]['delta_time'].shape
         # along-track (AT) reference point, latitude, longitude and time
-        ref_pt = mds1[ptx]['ref_pt'].copy()
-        latitude = np.ma.array(mds1[ptx]['latitude'],
+        ref_pt['AT'] = mds1[ptx]['ref_pt'].copy()
+        latitude['AT'] = np.ma.array(mds1[ptx]['latitude'],
             fill_value=attr1[ptx]['latitude']['_FillValue'])
-        latitude.mask = (latitude == latitude.fill_value)
-        longitude = np.ma.array(mds1[ptx]['longitude'],
+        latitude['AT'].mask = (latitude['AT'] == latitude['AT'].fill_value)
+        longitude['AT'] = np.ma.array(mds1[ptx]['longitude'],
             fill_value=attr1[ptx]['longitude']['_FillValue'])
-        longitude.mask = (longitude == longitude.fill_value)
-        delta_time = np.ma.array(mds1[ptx]['delta_time'],
+        longitude['AT'].mask = (longitude['AT'] == longitude['AT'].fill_value)
+        delta_time['AT'] = np.ma.array(mds1[ptx]['delta_time'],
             fill_value=attr1[ptx]['delta_time']['_FillValue'])
-        delta_time.mask = (delta_time == delta_time.fill_value)
+        delta_time['AT'].mask = (delta_time['AT'] == delta_time['AT'].fill_value)
         # corrected height
-        h_corr = np.ma.array(mds1[ptx]['h_corr'],
+        h_corr['AT'] = np.ma.array(mds1[ptx]['h_corr'],
             fill_value=attr1[ptx]['h_corr']['_FillValue'])
-        h_corr.mask = (h_corr.data == h_corr.fill_value)
+        h_corr['AT'].mask = (h_corr['AT'].data == h_corr['AT'].fill_value)
         # quality summary
         quality_summary = (mds1[ptx]['quality_summary'] == 0)
         # ocean corrections
-        tide_ocean = np.ma.array(mds1[ptx]['cycle_stats']['tide_ocean'],
+        tide_ocean['AT'] = np.ma.array(mds1[ptx]['cycle_stats']['tide_ocean'],
             fill_value=attr1[ptx]['cycle_stats']['tide_ocean']['_FillValue'])
-        tide_ocean.mask = (tide_ocean == tide_ocean.fill_value)
-        ib = np.ma.array(mds1[ptx]['cycle_stats']['dac'],
+        tide_ocean['AT'].mask = (tide_ocean['AT'] == tide_ocean['AT'].fill_value)
+        IB['AT'] = np.ma.array(mds1[ptx]['cycle_stats']['dac'],
             fill_value=attr1[ptx]['cycle_stats']['dac']['_FillValue'])
-        ib.mask = (ib == ib.fill_value)
+        IB['AT'].mask = (IB['AT'] == IB['AT'].fill_value)
         # ATL11 reference surface elevations (derived from ATL06)
         dem_h = mds1[ptx]['ref_surf']['dem_h']
         # geoid_h = mds1[ptx]['ref_surf']['geoid_h']
-        # extract lat/lon and convert to polar stereographic
-        X,Y = transformer.transform(longitude,latitude)
+        # if running ATL11 crossovers
+        if CROSSOVERS:
+            # add to group
+            groups.append('XT')
+            # shape of across-track data
+            n_cross, = mds1[ptx][XT]['delta_time'].shape
+            # across-track (XT) reference point, latitude, longitude and time
+            ref_pt['XT'] = mds1[ptx][XT]['ref_pt'].copy()
+            latitude['XT'] = np.ma.array(mds1[ptx][XT]['latitude'],
+                fill_value=attr1[ptx][XT]['latitude']['_FillValue'])
+            latitude['XT'].mask = (latitude['XT'] == latitude['XT'].fill_value)
+            longitude['XT'] = np.ma.array(mds1[ptx][XT]['longitude'],
+                fill_value=attr1[ptx][XT]['longitude']['_FillValue'])
+            latitude['XT'].mask = (latitude['XT'] == longitude['XT'].fill_value)
+            delta_time['XT'] = np.ma.array(mds1[ptx][XT]['delta_time'],
+                fill_value=attr1[ptx][XT]['delta_time']['_FillValue'])
+            delta_time['XT'].mask = (delta_time['XT'] == delta_time['XT'].fill_value)
+            # corrected height at crossovers
+            h_corr['XT'] = np.ma.array(mds1[ptx][XT]['h_corr'],
+                fill_value=attr1[ptx][XT]['h_corr']['_FillValue'])
+            h_corr['XT'].mask = (h_corr['XT'].data == h_corr['XT'].fill_value)
+            # across-track (XT) ocean corrections
+            tide_ocean['XT'] = np.ma.array(mds1[ptx][XT]['tide_ocean'],
+                fill_value=attr1[ptx][XT]['tide_ocean']['_FillValue'])
+            tide_ocean['XT'].mask = (tide_ocean['XT'] == tide_ocean['XT'].fill_value)
+            IB['XT'] = np.ma.array(mds1[ptx][XT]['dac'],
+                fill_value=attr1[ptx][XT]['dac']['_FillValue'])
+            IB['XT'].mask = (IB['XT'] == IB['XT'].fill_value)
 
         # read buffered grounding zone mask
         a2 = (PRD,'GROUNDING_ZONE','MASK',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
@@ -455,7 +499,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             mds2,attr2 = read_HDF5_ATL11_pair(f3,ptx,
                 ATTRIBUTES=True,VERBOSE=False,SUBSETTING=True)
         except:
-            continue
+            pass
         else:
             mds1[ptx]['subsetting']['ice_gz'] = \
                 mds2[ptx]['subsetting']['ice_gz']
@@ -469,19 +513,25 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             # check that sea level file exists
             try:
                 mds3,attr3 = read_HDF5_ATL11_pair(f3,ptx,
-                    VERBOSE=False,SUBSETTING=True)
+                    VERBOSE=False,CROSSOVERS=CROSSOVERS)
             except:
-                tide_ocean.mask[:] = True
+                # mask all values
+                for group in groups:
+                    tide_ocean[group].mask[:] = True
+                pass
             else:
-                tide_ocean.data[:] = mds3[ptx]['cycle_stats']['tide_ocean']
+                tide_ocean['AT'].data[:] = mds3[ptx]['cycle_stats']['tide_ocean']
+                if CROSSOVERS:
+                    tide_ocean['XT'].data[:] = mds3[ptx][XT]['tide_ocean']
             # source of tide model
             tide_source = TIDE_MODEL
         else:
             tide_source = 'ATL06'
         # set masks and fill values
-        tide_ocean.mask[:] = (tide_ocean.data == tide_ocean.fill_value)
-        tide_ocean.mask[:] |= (h_corr.data == h_corr.fill_value)
-        tide_ocean.data[tide_ocean.mask] = tide_ocean.fill_value
+        for group,val in tide_ocean.items():
+            val.mask[:] = (val.data == val.fill_value)
+            val.mask[:] |= (h_corr[group].data == h_corr[group].fill_value)
+            val.data[val.mask] = val.fill_value
 
         # read inverse barometer correction
         if REANALYSIS:
@@ -491,34 +541,46 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             # check that sea level file exists
             try:
                 mds4,attr4 = read_HDF5_ATL11_pair(f4,ptx,
-                    VERBOSE=False,SUBSETTING=True)
+                    VERBOSE=False,CROSSOVERS=CROSSOVERS)
             except:
-                ib.mask[:] = True
+                # mask all values
+                for group in groups:
+                    IB[group].mask[:] = True
+                pass
             else:
-                ib.data[:] = mds4[ptx]['cycle_stats']['ib']
+                IB['AT'].data[:] = mds4[ptx]['cycle_stats']['ib']
+                if CROSSOVERS:
+                    IB['XT'].data[:] = mds4[ptx][XT]['ib']
         # set masks and fill values
-        ib.mask[:] = (ib.data == ib.fill_value)
-        ib.mask[:] |= (h_corr.data == h_corr.fill_value)
-        ib.data[ib.mask] = ib.fill_value
+        for group,val in IB.items():
+            val.mask[:] = (val.data == val.fill_value)
+            val.mask[:] |= (h_corr[group].data == h_corr[group].fill_value)
+            val.data[val.mask] = val.fill_value
 
         # mean dynamic topography
         a5 = (PRD,'AVISO','SEA_LEVEL',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         f5 = os.path.join(DIRECTORY,file_format.format(*a5))
         # check that sea level file exists
         try:
-            mds5,attr5 = read_HDF5_ATL11_pair(f5,ptx,
-                VERBOSE=False,SUBSETTING=True)
+            mds5,attr5 = read_HDF5_ATL11_pair(f5,ptx,VERBOSE=False)
         except:
             mdt = np.zeros((n_points))
+            pass
         else:
             mdt = mds5[ptx]['cycle_stats']['mdt']
 
+        # extract lat/lon and convert to polar stereographic
+        X,Y = transformer.transform(longitude['AT'],latitude['AT'])
         # along-track (AT) flexure corrections
-        # initally copy the ocean tide estimate
         fv = attr1[ptx]['cycle_stats']['tide_ocean']['_FillValue']
         flexure = np.ma.zeros((n_points,n_cycles),fill_value=fv)
-        flexure.data[:] = np.copy(tide_ocean.data)
-        flexure.mask = np.copy(tide_ocean.mask)
+        # initally copy the ocean tide estimate
+        flexure.data[:] = np.copy(tide_ocean['AT'].data)
+        flexure.mask = np.copy(tide_ocean['AT'].mask)
+        # scaling factor for segment tides
+        scaling = np.ma.ones((n_points,n_cycles),fill_value=0.0)
+        scaling.mask = np.copy(tide_ocean['AT'].mask)
+        scaling.data[scaling.mask]
 
         # if creating a test plot
         valid_plot = False
@@ -528,45 +590,56 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         # for each cycle of ATL11 data
         for c,CYCLE in enumerate(mds1[ptx]['cycle_number']):
             # find valid points with GZ for any ATL11 cycle
-            segment_mask = np.logical_not(h_corr.mask[:,c])
+            segment_mask = np.logical_not(h_corr['AT'].mask[:,c])
+            segment_mask = np.logical_not(tide_ocean['AT'].mask[:,c])
+            segment_mask &= (h_corr['AT'].data[:,c] > THRESHOLD)
             segment_mask &= mds1[ptx]['subsetting']['ice_gz']
-            valid, = np.nonzero(segment_mask)
-            fit, = np.nonzero(segment_mask & quality_summary[:,c])
+            segment_mask &= quality_summary[:,c]
+            ifit, = np.nonzero(segment_mask)
+            # segment of points within grounding zone
+            igz, = np.nonzero(mds1[ptx]['subsetting']['ice_gz'])
 
             # compress list (separate geosegs into sets of ranges)
-            ice_gz_indices = compress_list(valid,1000)
+            ice_gz_indices = compress_list(ifit,1000)
             for imin,imax in ice_gz_indices:
                 # find valid indices within range
-                i = sorted(set(np.arange(imin,imax+1)) & set(fit))
-                iout = sorted(set(np.arange(imin,imax+1)) & set(valid))
+                i = sorted(set(np.arange(imin,imax+1)) & set(ifit))
+                iout = sorted(set(np.arange(imin,imax+1)) & set(igz))
                 coords = np.sqrt((X-X[i[0]])**2 + (Y-Y[i[0]])**2)
                 # shapely LineString object for altimetry segment
                 try:
-                    segment_line = shapely.geometry.LineString(np.c_[X, Y])
+                    segment_line = shapely.geometry.LineString(np.c_[X[i],Y[i]])
                 except:
                     continue
                 # determine if line segment intersects previously known GZ
-                if segment_line.intersects(mpoly_obj):
+                if segment_line.intersects(mline_obj):
+                    # extract intersected point (find minimum distance)
+                    try:
+                        xi,yi = mline_obj.intersection(segment_line).xy
+                    except:
+                        continue
+                    else:
+                        iint = np.argmin((Y[i]-yi)**2 + (X[i]-xi)**2)
                     # horizontal eulerian distance from start of segment
                     dist = coords[i]
                     output = coords[iout]
                     # land ice height for grounding zone
-                    h_gz = np.copy(h_corr.data[i,c])
+                    h_gz = np.copy(h_corr['AT'].data[i,c])
                     # mean land ice height from digital elevation model
-                    h_mean = np.mean(h_corr[i,:],axis=1)
-                    # h_mean = h_corr[i,0]
+                    h_mean = np.mean(h_corr['AT'][i,:],axis=1)
+                    # h_mean = h_corr['AT'][i,0]
                     # ocean tide height for scaling model
-                    tide_mean =  np.mean(tide_ocean[i,:],axis=1)
+                    tide_mean =  np.mean(tide_ocean['AT'][i,:],axis=1)
                     # tide_mean = tide_ocean[i,0]
-                    h_tide = np.ma.array(tide_ocean.data[i,c] - tide_mean,
-                        fill_value=tide_ocean.fill_value)
-                    h_tide.mask = tide_ocean.mask[i,c] | tide_mean.mask
+                    h_tide = np.ma.array(tide_ocean['AT'].data[i,c] - tide_mean,
+                        fill_value=tide_ocean['AT'].fill_value)
+                    h_tide.mask = tide_ocean['AT'].mask[i,c] | tide_mean.mask
                     # inverse-barometer response
-                    ib_mean =  np.mean(ib[i,:],axis=1)
-                    # ib_mean = ib[i,0]
-                    h_ib = np.ma.array(ib.data[i,c] - ib_mean,
-                        fill_value=ib.fill_value)
-                    h_ib.mask = ib.mask[i,c] | ib_mean.mask
+                    ib_mean =  np.mean(IB['AT'][i,:],axis=1)
+                    # ib_mean = IB['AT'][i,0]
+                    h_ib = np.ma.array(IB['AT'].data[i,c] - ib_mean,
+                        fill_value=IB['AT'].fill_value)
+                    h_ib.mask = IB['AT'].mask[i,c] | ib_mean.mask
                     # deflection from mean land ice height in grounding zone
                     dh_gz = h_gz - h_mean
                     # quasi-freeboard: WGS84 elevation - geoid height
@@ -582,62 +655,111 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
                     d = (dist - C1[0]).astype(int)
                     # determine if spacecraft is approaching coastline
                     sco = True if np.mean(h_gz[d<0]) < np.mean(h_gz[d>0]) else False
-                    # fit physical elastic model
-                    try:
-                        PGZ,PA,PE,PT,PdH,PEMODEL = physical_elastic_model(dist, dh_gz,
-                            GZ=C1, ORIENTATION=sco, THICKNESS=w_thick, CONF=0.95,
-                            XOUT=output)
-                    except:
-                        continue
+                    # set initial fit outputs to infinite
+                    PGZ = np.array([np.inf,np.inf])
+                    # set grounding zone estimates for testing
+                    GRZ = []
+                    # 1,2: use GZ location values from piecewise fit
+                    # 3,4: use GZ location values from known grounding line
+                    GRZ.append(C1)
+                    GRZ.append(C1)
+                    GRZ.append([dist[iint],dist[iint]-2e3,dist[iint]+2e3])
+                    GRZ.append([dist[iint],dist[iint]-2e3,dist[iint]+2e3])
+                    # set tide values for testing
+                    TIDE = []
+                    i0 = 0 if sco else -1
+                    tplus = h_tide[i0] + h_ib[i0]
+                    # 1,3: use tide range values from Padman (2002)
+                    # 2,4: use tide range values from model+ib
+                    TIDE.append([1.2,-3.0,3.0])
+                    TIDE.append([tplus,tplus-0.3,tplus+0.3])
+                    TIDE.append([1.2,-3.0,3.0])
+                    TIDE.append([tplus,tplus-0.3,tplus+0.3])
+                    # iterate through tests
+                    for grz,tide in zip(GRZ,TIDE):
+                        # fit physical elastic model
+                        try:
+                            GZ,PA,PE,PT,PdH,MODEL = physical_elastic_model(dist,
+                                dh_gz, GRZ=grz, TIDE=tide, ORIENTATION=sco,
+                                THICKNESS=w_thick, CONF=0.95, XOUT=output)
+                        except:
+                            pass
+                        # copy grounding zone parameters to get best fit
+                        if (GZ[1] < PGZ[1]):
+                            PGZ = np.copy(GZ)
+                            model_scale = np.copy(PA[0])
+                            PEMODEL = np.copy(MODEL)
+                        # use parameters if fit significance is within tolerance
+                        if (GZ[1] < 800):
+                            break
+
                     # linearly interpolate distance to grounding line
-                    SGZ = np.interp(PGZ[0],dist,ref_pt[i])
+                    SGZ = np.interp(PGZ[0],dist,ref_pt['AT'][i])
                     # reorient input parameters to go from land ice to floating
                     flexure_mask = np.ones_like(iout,dtype=bool)
                     if sco:
+                        # start of segment in orientation
                         i0 = iout[0]
-                        tide_scale = tide_ocean.data[i0,c] - np.mean(tide_ocean[i0,:])
-                        # tide_scale = tide_ocean.data[i0,c] - tide_ocean.data[i0,0]
-                        model_scale = PEMODEL[0] - PdH[0]
+                        # mean tide for scaling and plots
+                        # mean_tide = tide_ocean.data['AT'][i0,0]
+                        mean_tide = np.mean(tide_ocean['AT'][i0,:])
+                        tide_scale = tide_ocean['AT'].data[i0,c] - mean_tide
                         # replace mask values for points beyond the grounding line
-                        ii, = np.nonzero(ref_pt[iout] <= SGZ)
+                        ii, = np.nonzero(ref_pt['AT'][iout] <= SGZ)
                         flexure_mask[ii] = False
                     else:
+                        # start of segment in orientation
                         i0 = iout[-1]
-                        tide_scale = tide_ocean.data[i0,c] - np.mean(tide_ocean[i0,:])
-                        # tide_scale = tide_ocean.data[i0,c] - tide_ocean.data[i0,0]
-                        model_scale = PEMODEL[-1] - PdH[0]
+                        # mean tide for scaling and plots
+                        # mean_tide = tide_ocean.data['AT'][i0,0]
+                        mean_tide = np.mean(tide_ocean['AT'][i0,:])
+                        tide_scale = tide_ocean['AT'].data[i0,c] - mean_tide
                         # replace mask values for points beyond the grounding line
-                        ii, = np.nonzero(ref_pt[iout] >= SGZ)
+                        ii, = np.nonzero(ref_pt['AT'][iout] >= SGZ)
                         flexure_mask[ii] = False
-                    # calculate scaling factor
-                    scale_factor = tide_scale/model_scale
-                    # if the grounding zone errors are within tolerance
-                    if (PGZ[1] < 1000.0):
-                        # scale flexure and restore mean ocean tide
-                        flexure[iout,c] = scale_factor*(PEMODEL-PdH[0]) + \
-                            np.mean(tide_ocean[i0,:])
-                        flexure.mask[iout,c] = flexure_mask
                     # add to test plot
-                    if PLOT and (PGZ[1] < 1000.0):
+                    if PLOT:
                         # plot height differences
-                        l, = ax1.plot(ref_pt[i],dh_gz-PdH[0],'.-',ms=1.5,lw=0,
+                        l, = ax1.plot(ref_pt['AT'][i],dh_gz-PdH[0],'.-',ms=1.5,lw=0,
                             label='Cycle {0}'.format(CYCLE))
                         # plot downstream tide
-                        ax1.axhline(tide_ocean.data[i0,c],color=l.get_color(),lw=3.0,ls='--')
-                        # plot elastic deformation model
-                        ax1.plot(ref_pt[iout],PEMODEL-PdH[0],color='0.3',lw=2,zorder=10)
-                        # plot scaled elastic deformation model
-                        ax1.plot(ref_pt[iout],flexure[iout,c],color='0.8',lw=2,zorder=10)
-                        # plot grounding line location
-                        ax1.axvline(SGZ,color=l.get_color(),ls='--',dashes=(8,4))
-                        # set valid plot for output
+                        ax1.axhline(tide_ocean['AT'].data[i0,c]-mean_tide,
+                            color=l.get_color(),lw=3.0,ls='--')
+                        # set valid plot flag
                         valid_plot = True
+
+                    # if the grounding zone errors are not within tolerance
+                    if (PGZ[1] >= 800.0):
+                        # leave iteration and keep original tide model
+                        # for segment
+                        continue
+                    # calculate scaling factor
+                    scale_factor = tide_scale/model_scale
+                    # scale flexure and restore mean ocean tide
+                    flexure[iout,c] = scale_factor*(PEMODEL-PdH[0]) + mean_tide
+                    flexure.mask[iout,c] = flexure_mask
+                    # scaling factor between current tide and flexure
+                    scaling[iout,c] = flexure[iout,c]/tide_ocean['AT'].data[iout,c]
+                    scaling.mask[iout,c] = flexure_mask
+                    # add to test plot
+                    if PLOT:
+                        # plot elastic deformation model
+                        ax1.plot(ref_pt['AT'][iout],PEMODEL-PdH[0],
+                            color='0.3',lw=2,zorder=9)
+                        # plot scaled elastic deformation model
+                        ax1.plot(ref_pt['AT'][iout],flexure[iout,c]-mean_tide,
+                            color='0.8',lw=2,zorder=10)
+                        # plot grounding line location
+                        ax1.axvline(SGZ,color=l.get_color(),
+                            ls='--',dashes=(8,4))
 
         # make final plot adjustments and save to file
         if valid_plot:
             # add legend
-            lgd = ax1.legend(frameon=False)
+            lgd = ax1.legend(frameon=True)
             # set width, color and style of lines
+            lgd.get_frame().set_boxstyle('square,pad=0.1')
+            lgd.get_frame().set_edgecolor('white')
             lgd.get_frame().set_alpha(1.0)
             for line,text in zip(lgd.get_lines(),lgd.get_texts()):
                 line.set_linewidth(6)
@@ -666,7 +788,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
 
         # geolocation, time and reference point
         # reference point
-        IS2_atl11_gz[ptx]['ref_pt'] = ref_pt.copy()
+        IS2_atl11_gz[ptx]['ref_pt'] = ref_pt['AT'].copy()
         IS2_atl11_fill[ptx]['ref_pt'] = None
         IS2_atl11_dims[ptx]['ref_pt'] = None
         IS2_atl11_gz_attrs[ptx]['ref_pt'] = collections.OrderedDict()
@@ -693,8 +815,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             "reference ground track (RGTs) is targeted in the polar regions once "
             "every 91 days.")
         # delta time
-        IS2_atl11_gz[ptx]['delta_time'] = delta_time.copy()
-        IS2_atl11_fill[ptx]['delta_time'] = delta_time.fill_value
+        IS2_atl11_gz[ptx]['delta_time'] = delta_time['AT'].copy()
+        IS2_atl11_fill[ptx]['delta_time'] = delta_time['AT'].fill_value
         IS2_atl11_dims[ptx]['delta_time'] = ['ref_pt','cycle_number']
         IS2_atl11_gz_attrs[ptx]['delta_time'] = collections.OrderedDict()
         IS2_atl11_gz_attrs[ptx]['delta_time']['units'] = "seconds since 2018-01-01"
@@ -711,8 +833,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         IS2_atl11_gz_attrs[ptx]['delta_time']['coordinates'] = \
             "ref_pt cycle_number latitude longitude"
         # latitude
-        IS2_atl11_gz[ptx]['latitude'] = latitude.copy()
-        IS2_atl11_fill[ptx]['latitude'] = latitude.fill_value
+        IS2_atl11_gz[ptx]['latitude'] = latitude['AT'].copy()
+        IS2_atl11_fill[ptx]['latitude'] = latitude['AT'].fill_value
         IS2_atl11_dims[ptx]['latitude'] = ['ref_pt']
         IS2_atl11_gz_attrs[ptx]['latitude'] = collections.OrderedDict()
         IS2_atl11_gz_attrs[ptx]['latitude']['units'] = "degrees_north"
@@ -727,8 +849,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         IS2_atl11_gz_attrs[ptx]['latitude']['coordinates'] = \
             "ref_pt delta_time longitude"
         # longitude
-        IS2_atl11_gz[ptx]['longitude'] = longitude.copy()
-        IS2_atl11_fill[ptx]['longitude'] = longitude.fill_value
+        IS2_atl11_gz[ptx]['longitude'] = longitude['AT'].copy()
+        IS2_atl11_fill[ptx]['longitude'] = longitude['AT'].fill_value
         IS2_atl11_dims[ptx]['longitude'] = ['ref_pt']
         IS2_atl11_gz_attrs[ptx]['longitude'] = collections.OrderedDict()
         IS2_atl11_gz_attrs[ptx]['longitude']['units'] = "degrees_east"
@@ -768,13 +890,145 @@ def calculate_GZ_ICESat2(base_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         IS2_atl11_gz_attrs[ptx]['cycle_stats']['tide_ocean']['coordinates'] = \
             "../ref_pt ../cycle_number ../delta_time ../latitude ../longitude"
 
+        # if estimating flexure for crossover measurements
+        if CROSSOVERS:
+            # calculate mean scaling for crossovers
+            scaling.data[scaling.mask] = scaling.fill_value
+            mean_scale = np.ma.zeros((n_points),fill_value=scaling.fill_value)
+            mean_scale.data[:] = scaling.mean(axis=1)
+            mean_scale.mask = np.all(scaling.mask,axis=1)
+            # find mapping between crossover and along-track reference points
+            ref_indices = common_reference_points(ref_pt['XT'], ref_pt['AT'])
+            # scale input tide model for estimated flexure in region
+            scaled_tide = np.ma.zeros((n_cross),fill_value=tide_ocean['XT'].fill_value)
+            scaled_tide.data[:] = tide_ocean['XT']*mean_scale[ref_indices]
+            scaled_tide.mask = mean_scale.mask[ref_indices]
+
+            # crossing track variables
+            IS2_atl11_gz_attrs[ptx][XT]['Description'] = ("The crossing_track_data "
+                "subgroup contains elevation data at crossover locations. These are "
+                "locations where two ICESat-2 pair tracks cross, so data are available "
+                "from both the datum track, for which the granule was generated, and "
+                "from the crossing track.")
+            IS2_atl11_gz_attrs[ptx][XT]['data_rate'] = ("Data within this group are "
+                "stored at the average segment rate.")
+
+            # reference point
+            IS2_atl11_gz[ptx][XT]['ref_pt'] = mds1[ptx][XT]['ref_pt'].copy()
+            IS2_atl11_fill[ptx][XT]['ref_pt'] = None
+            IS2_atl11_dims[ptx][XT]['ref_pt'] = None
+            IS2_atl11_gz_attrs[ptx][XT]['ref_pt'] = collections.OrderedDict()
+            IS2_atl11_gz_attrs[ptx][XT]['ref_pt']['units'] = "1"
+            IS2_atl11_gz_attrs[ptx][XT]['ref_pt']['contentType'] = "referenceInformation"
+            IS2_atl11_gz_attrs[ptx][XT]['ref_pt']['long_name'] = ("fit center reference point number, "
+                "segment_id")
+            IS2_atl11_gz_attrs[ptx][XT]['ref_pt']['source'] = "derived, ATL11 algorithm"
+            IS2_atl11_gz_attrs[ptx][XT]['ref_pt']['description'] = ("The reference-point number of the "
+                "fit center for the datum track. The reference point is the 7 digit segment_id number "
+                "corresponding to the center of the ATL06 data used for each ATL11 point.  These are "
+                "sequential, starting with 1 for the first segment after an ascending equatorial "
+                "crossing node.")
+            IS2_atl11_gz_attrs[ptx][XT]['ref_pt']['coordinates'] = \
+                "delta_time latitude longitude"
+
+            # reference ground track of the crossing track
+            IS2_atl11_gz[ptx][XT]['rgt'] = mds1[ptx][XT]['rgt'].copy()
+            IS2_atl11_fill[ptx][XT]['rgt'] = attr1[ptx][XT]['rgt']['_FillValue']
+            IS2_atl11_dims[ptx][XT]['rgt'] = None
+            IS2_atl11_gz_attrs[ptx][XT]['rgt'] = collections.OrderedDict()
+            IS2_atl11_gz_attrs[ptx][XT]['rgt']['units'] = "1"
+            IS2_atl11_gz_attrs[ptx][XT]['rgt']['contentType'] = "referenceInformation"
+            IS2_atl11_gz_attrs[ptx][XT]['rgt']['long_name'] = "crossover reference ground track"
+            IS2_atl11_gz_attrs[ptx][XT]['rgt']['source'] = "ATL06"
+            IS2_atl11_gz_attrs[ptx][XT]['rgt']['description'] = "The RGT number for the crossing data."
+            IS2_atl11_gz_attrs[ptx][XT]['rgt']['coordinates'] = \
+                "ref_pt delta_time latitude longitude"
+            # cycle_number of the crossing track
+            IS2_atl11_gz[ptx][XT]['cycle_number'] = mds1[ptx][XT]['cycle_number'].copy()
+            IS2_atl11_fill[ptx][XT]['cycle_number'] = attr1[ptx][XT]['cycle_number']['_FillValue']
+            IS2_atl11_dims[ptx][XT]['cycle_number'] = None
+            IS2_atl11_gz_attrs[ptx][XT]['cycle_number'] = collections.OrderedDict()
+            IS2_atl11_gz_attrs[ptx][XT]['cycle_number']['units'] = "1"
+            IS2_atl11_gz_attrs[ptx][XT]['cycle_number']['long_name'] = "crossover cycle number"
+            IS2_atl11_gz_attrs[ptx][XT]['cycle_number']['source'] = "ATL06"
+            IS2_atl11_gz_attrs[ptx][XT]['cycle_number']['description'] = ("Cycle number for the "
+                "crossing data. Number of 91-day periods that have elapsed since ICESat-2 entered "
+                "the science orbit. Each of the 1,387 reference ground track (RGTs) is targeted "
+                "in the polar regions once every 91 days.")
+            # delta time of the crossing track
+            IS2_atl11_gz[ptx][XT]['delta_time'] = delta_time['XT'].copy()
+            IS2_atl11_fill[ptx][XT]['delta_time'] = delta_time['XT'].fill_value
+            IS2_atl11_dims[ptx][XT]['delta_time'] = ['ref_pt']
+            IS2_atl11_gz_attrs[ptx][XT]['delta_time'] = {}
+            IS2_atl11_gz_attrs[ptx][XT]['delta_time']['units'] = "seconds since 2018-01-01"
+            IS2_atl11_gz_attrs[ptx][XT]['delta_time']['long_name'] = "Elapsed GPS seconds"
+            IS2_atl11_gz_attrs[ptx][XT]['delta_time']['standard_name'] = "time"
+            IS2_atl11_gz_attrs[ptx][XT]['delta_time']['calendar'] = "standard"
+            IS2_atl11_gz_attrs[ptx][XT]['delta_time']['source'] = "ATL06"
+            IS2_atl11_gz_attrs[ptx][XT]['delta_time']['description'] = ("Number of GPS "
+                "seconds since the ATLAS SDP epoch. The ATLAS Standard Data Products (SDP) epoch offset "
+                "is defined within /ancillary_data/atlas_sdp_gps_epoch as the number of GPS seconds "
+                "between the GPS epoch (1980-01-06T00:00:00.000000Z UTC) and the ATLAS SDP epoch. By "
+                "adding the offset contained within atlas_sdp_gps_epoch to delta time parameters, the "
+                "time in gps_seconds relative to the GPS epoch can be computed.")
+            IS2_atl11_gz_attrs[ptx]['delta_time']['coordinates'] = \
+                "ref_pt latitude longitude"
+            # latitude of the crossover measurement
+            IS2_atl11_gz[ptx][XT]['latitude'] = latitude['XT'].copy()
+            IS2_atl11_fill[ptx][XT]['latitude'] = latitude['XT'].fill_value
+            IS2_atl11_dims[ptx][XT]['latitude'] = ['ref_pt']
+            IS2_atl11_gz_attrs[ptx][XT]['latitude'] = collections.OrderedDict()
+            IS2_atl11_gz_attrs[ptx][XT]['latitude']['units'] = "degrees_north"
+            IS2_atl11_gz_attrs[ptx][XT]['latitude']['contentType'] = "physicalMeasurement"
+            IS2_atl11_gz_attrs[ptx][XT]['latitude']['long_name'] = "crossover latitude"
+            IS2_atl11_gz_attrs[ptx][XT]['latitude']['standard_name'] = "latitude"
+            IS2_atl11_gz_attrs[ptx][XT]['latitude']['source'] = "ATL06"
+            IS2_atl11_gz_attrs[ptx][XT]['latitude']['description'] = ("Center latitude of "
+                "selected segments")
+            IS2_atl11_gz_attrs[ptx][XT]['latitude']['valid_min'] = -90.0
+            IS2_atl11_gz_attrs[ptx][XT]['latitude']['valid_max'] = 90.0
+            IS2_atl11_gz_attrs[ptx][XT]['latitude']['coordinates'] = \
+                "ref_pt delta_time longitude"
+            # longitude of the crossover measurement
+            IS2_atl11_gz[ptx][XT]['longitude'] = longitude['XT'].copy()
+            IS2_atl11_fill[ptx][XT]['longitude'] = longitude['XT'].fill_value
+            IS2_atl11_dims[ptx][XT]['longitude'] = ['ref_pt']
+            IS2_atl11_gz_attrs[ptx][XT]['longitude'] = collections.OrderedDict()
+            IS2_atl11_gz_attrs[ptx][XT]['longitude']['units'] = "degrees_east"
+            IS2_atl11_gz_attrs[ptx][XT]['longitude']['contentType'] = "physicalMeasurement"
+            IS2_atl11_gz_attrs[ptx][XT]['longitude']['long_name'] = "crossover longitude"
+            IS2_atl11_gz_attrs[ptx][XT]['longitude']['standard_name'] = "longitude"
+            IS2_atl11_gz_attrs[ptx][XT]['longitude']['source'] = "ATL06"
+            IS2_atl11_gz_attrs[ptx][XT]['longitude']['description'] = ("Center longitude of "
+                "selected segments")
+            IS2_atl11_gz_attrs[ptx][XT]['longitude']['valid_min'] = -180.0
+            IS2_atl11_gz_attrs[ptx][XT]['longitude']['valid_max'] = 180.0
+            IS2_atl11_gz_attrs[ptx][XT]['longitude']['coordinates'] = \
+                "ref_pt delta_time latitude"
+            # computed tide with flexure for the crossover measurement
+            IS2_atl11_gz[ptx][XT]['tide_ocean'] = scaled_tide.copy()
+            IS2_atl11_fill[ptx][XT]['tide_ocean'] = scaled_tide.fill_value
+            IS2_atl11_dims[ptx][XT]['tide_ocean'] = ['ref_pt']
+            IS2_atl11_gz_attrs[ptx][XT]['tide_ocean'] = collections.OrderedDict()
+            IS2_atl11_gz_attrs[ptx][XT]['tide_ocean']['units'] = "meters"
+            IS2_atl11_gz_attrs[ptx][XT]['tide_ocean']['contentType'] = "referenceInformation"
+            IS2_atl11_gz_attrs[ptx][XT]['tide_ocean']['long_name'] = "Ocean Tide"
+            IS2_atl11_gz_attrs[ptx][XT]['tide_ocean']['description'] = ("Ocean Tides with "
+                "Near-Grounding Zone Flexure that includes diurnal and semi-diurnal (harmonic analysis), "
+                "and longer period tides (dynamic and self-consistent equilibrium).")
+            IS2_atl11_gz_attrs[ptx][XT]['tide_ocean']['source'] = tide_source
+            IS2_atl11_gz_attrs[ptx][XT]['tide_ocean']['reference'] = \
+                "https://doi.org/10.3189/172756410791392790"
+            IS2_atl11_gz_attrs[ptx][XT]['tide_ocean']['coordinates'] = \
+                "ref_pt delta_time latitude longitude"
+
     # output flexure correction HDF5 file
     args = (PRD,TIDE_MODEL,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
     file_format = '{0}_{1}_GZ_TIDES_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
     # print file information
     print('\t{0}'.format(file_format.format(*args))) if VERBOSE else None
     HDF5_ATL11_corr_write(IS2_atl11_gz, IS2_atl11_gz_attrs,
-        CLOBBER=True, INPUT=os.path.basename(FILE),
+        CLOBBER=True, INPUT=os.path.basename(FILE), CROSSOVERS=CROSSOVERS,
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
         FILENAME=os.path.join(DIRECTORY,file_format.format(*args)))
     # change the permissions mode
@@ -942,11 +1196,11 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(MJD + 2400000.5,
         FORMAT='tuple')
     # add attributes with measurement date start, end and duration
-    tcs = datetime.datetime(np.int(YY[0]), np.int(MM[0]), np.int(DD[0]),
-        np.int(HH[0]), np.int(MN[0]), np.int(SS[0]), np.int(1e6*(SS[0] % 1)))
+    tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
+        int(HH[0]), int(MN[0]), int(SS[0]), int(1e6*(SS[0] % 1)))
     fileID.attrs['time_coverage_start'] = tcs.isoformat()
-    tce = datetime.datetime(np.int(YY[1]), np.int(MM[1]), np.int(DD[1]),
-        np.int(HH[1]), np.int(MN[1]), np.int(SS[1]), np.int(1e6*(SS[1] % 1)))
+    tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
+        int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = '{0:0.0f}'.format(tmx-tmn)
     # Closing the HDF5 file
@@ -984,6 +1238,10 @@ def main():
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str, choices=ib_choices,
         help='Reanalysis model to use in inverse-barometer correction')
+    #-- run with ATL11 crossovers
+    parser.add_argument('--crossovers','-C',
+        default=False, action='store_true',
+        help='Run ATL11 Crossovers')
     # create test plots
     parser.add_argument('--plot','-P',
         default=False, action='store_true',
@@ -1002,8 +1260,8 @@ def main():
     # run for each input ATL11 file
     for FILE in args.infile:
         calculate_GZ_ICESat2(args.directory, FILE, TIDE_MODEL=args.tide,
-            REANALYSIS=args.reanalysis, PLOT=args.plot, VERBOSE=args.verbose,
-            MODE=args.mode)
+            REANALYSIS=args.reanalysis, CROSSOVERS=args.crossovers,
+            PLOT=args.plot, VERBOSE=args.verbose, MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

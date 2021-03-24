@@ -85,7 +85,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
-    Updated 02/2021: replaced numpy bool to prevent deprecation warning
+    Updated 02/2021: replaced numpy bool/int to prevent deprecation warnings
     Updated 01/2021: use argparse to set command line options
         use pyTMD spatial module for reading and writing data
     Updated 09/2019: round fill value for mask as some tiles can be incorrect
@@ -284,10 +284,10 @@ def read_DEM_buffer(elevation_file, xlimits, ylimits):
     ymax = info_geotiff[3]
     #-- reduce input image with GDAL
     #-- Specify offset and rows and columns to read
-    xoffset = np.int((xlimits[0] - xmin)/info_geotiff[1])
-    yoffset = np.int((ymax - ylimits[1])/np.abs(info_geotiff[5]))
-    xcount = np.int((xlimits[1] - xlimits[0])/info_geotiff[1]) + 1
-    ycount = np.int((ylimits[1] - ylimits[0])/np.abs(info_geotiff[5])) + 1
+    xoffset = int((xlimits[0] - xmin)/info_geotiff[1])
+    yoffset = int((ymax - ylimits[1])/np.abs(info_geotiff[5]))
+    xcount = int((xlimits[1] - xlimits[0])/info_geotiff[1]) + 1
+    ycount = int((ylimits[1] - ylimits[0])/np.abs(info_geotiff[5])) + 1
     #-- read data matrix
     im = ds.GetRasterBand(1).ReadAsArray(xoffset, yoffset, xcount, ycount)
     fill_value = ds.GetRasterBand(1).GetNoDataValue()
@@ -477,7 +477,7 @@ def main():
         n_pts = len(dinput['x'].flatten())
 
     #-- define indices to run for specific process
-    ind = np.arange(comm.Get_rank(), n_pts, comm.Get_size(), dtype=np.int)
+    ind = np.arange(comm.Get_rank(), n_pts, comm.Get_size(), dtype=int)
 
     #-- output interpolated digital elevation model
     distributed_dem = np.ma.zeros((n_pts),fill_value=-9999.0,dtype=np.float32)
@@ -492,9 +492,9 @@ def main():
     associated_map = {}
     for key,poly_obj in tile_dict.items():
         #-- create empty intersection map array for distributing
-        distributed_map = np.zeros((n_pts),dtype=np.int)
+        distributed_map = np.zeros((n_pts),dtype=int)
         #-- create empty intersection map array for receiving
-        associated_map[key] = np.zeros((n_pts),dtype=np.int)
+        associated_map[key] = np.zeros((n_pts),dtype=int)
         #-- finds if points are encapsulated (within tile)
         int_test = poly_obj.intersects(xy_point)
         if int_test:
@@ -566,10 +566,10 @@ def main():
                     buffer_file = os.path.join(elevation_directory,bkey,btar)
                     if os.access(buffer_file, os.F_OK):
                         DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)
-                        xmin = np.int((x1[0] - x[0])//dx)
-                        xmax = np.int((x1[-1] - x[0])//dx) + 1
-                        ymin = np.int((y1[0] - y[0])//dy)
-                        ymax = np.int((y1[-1] - y[0])//dy) + 1
+                        xmin = int((x1[0] - x[0])//dx)
+                        xmax = int((x1[-1] - x[0])//dx) + 1
+                        ymin = int((y1[0] - y[0])//dy)
+                        ymax = int((y1[-1] - y[0])//dy) + 1
                         #-- add to buffered DEM and mask
                         d[ymin:ymax,xmin:xmax] = DEM.copy()
                         m[ymin:ymax,xmin:xmax] = MASK.copy()
@@ -591,10 +591,10 @@ def main():
                     buffer_file = os.path.join(elevation_directory,bkey,btar)
                     if os.access(buffer_file, os.F_OK):
                         DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)
-                        xmin = np.int((x1[0] - x[0])//dx)
-                        xmax = np.int((x1[-1] - x[0])//dx) + 1
-                        ymin = np.int((y1[0] - y[0])//dy)
-                        ymax = np.int((y1[-1] - y[0])//dy) + 1
+                        xmin = int((x1[0] - x[0])//dx)
+                        xmax = int((x1[-1] - x[0])//dx) + 1
+                        ymin = int((y1[0] - y[0])//dy)
+                        ymax = int((y1[-1] - y[0])//dy) + 1
                         #-- add to buffered DEM and mask
                         d[ymin:ymax,xmin:xmax] = DEM.copy()
                         m[ymin:ymax,xmin:xmax] = MASK.copy()
@@ -629,10 +629,10 @@ def main():
                     buffer_file = os.path.join(elevation_directory,bsub,btar)
                     if os.access(buffer_file, os.F_OK):
                         DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)
-                        xmin = np.int((x1[0] - x[0])//dx)
-                        xmax = np.int((x1[-1] - x[0])//dx) + 1
-                        ymin = np.int((y1[0] - y[0])//dy)
-                        ymax = np.int((y1[-1] - y[0])//dy) + 1
+                        xmin = int((x1[0] - x[0])//dx)
+                        xmax = int((x1[-1] - x[0])//dx) + 1
+                        ymin = int((y1[0] - y[0])//dy)
+                        ymax = int((y1[-1] - y[0])//dy) + 1
                         #-- add to buffered DEM and mask
                         d[ymin:ymax,xmin:xmax] = DEM.copy()
                         m[ymin:ymax,xmin:xmax] = MASK.copy()

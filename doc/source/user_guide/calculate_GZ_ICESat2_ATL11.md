@@ -39,6 +39,7 @@ python3 calculate_GZ_ICESat2_ATL11.py --verbose input_file
     * [`ERA-Interim`](http://apps.ecmwf.int/datasets/data/interim-full-moda)
     * [`ERA5`](http://apps.ecmwf.int/data-catalogues/era5/?class=ea)
     * [`MERRA-2`](https://gmao.gsfc.nasa.gov/reanalysis/MERRA-2/)
-- `-V`, `--verbose`: Verbose output of processing run
+- `-C`, `--crossovers`: Run ATL11 Crossovers
 - `-P`, `--plot`: Create plots of flexural zone
+- `-V`, `--verbose`: Verbose output of processing run
 - `-M X`, `--mode X`: Permission mode of output file
