@@ -6,6 +6,7 @@ calculate_GZ_ICESat2_ATL11.py
     * [Fricker et al. Geophysical Research Letters, 33(15), 2006](https://doi.org/10.1029/2006GL026907)
     * [Fricker et al. Antarctic Science, 21(5), 2009](https://doi.org/10.1017/S095410200999023X)
 - Outputs an HDF5 file of flexure scaled to match the downstream tide model
+- Outputs the grounding zone location, time and spatial uncertainty
 
 ### Calling Sequence
 ```bash

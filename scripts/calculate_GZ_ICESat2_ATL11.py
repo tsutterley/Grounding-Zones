@@ -67,6 +67,7 @@ UPDATE HISTORY:
     Updated 03/2021: output HDF5 file of flexure scaled by a tide model
         estimate flexure for crossovers using along-track model outputs
         final extent of the flexure AT is the estimated grounding line
+        output grounding zone data group to output fit statistics
         replaced numpy bool/int to prevent deprecation warnings
         use utilities to set default path to shapefiles
     Updated 01/2021: using standalone ATL11 reader
@@ -406,15 +407,22 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
             IS2_atl11_gz_attrs['ancillary_data'][key][att_name] = att_val
     # HDF5 group name for across-track data
     XT = 'crossing_track_data'
+    # HDF5 group name for grounding zone data
+    GZD = 'grounding_zone_data'
+    GROUNDING_ZONE = True
 
     # for each input beam within the file
     for ptx in sorted(pairs1):
         # output data dictionaries for beam pair
         IS2_atl11_gz[ptx] = dict(cycle_stats=collections.OrderedDict(),
-            crossing_track_data=collections.OrderedDict())
-        IS2_atl11_fill[ptx] = dict(cycle_stats={},crossing_track_data={})
-        IS2_atl11_dims[ptx] = dict(cycle_stats={},crossing_track_data={})
-        IS2_atl11_gz_attrs[ptx] = dict(cycle_stats={},crossing_track_data={})
+            crossing_track_data=collections.OrderedDict(),
+            grounding_zone_data=collections.OrderedDict())
+        IS2_atl11_fill[ptx] = dict(cycle_stats={},crossing_track_data={},
+            grounding_zone_data={})
+        IS2_atl11_dims[ptx] = dict(cycle_stats={},crossing_track_data={},
+            grounding_zone_data={})
+        IS2_atl11_gz_attrs[ptx] = dict(cycle_stats={},crossing_track_data={},
+            grounding_zone_data={})
 
         # extract along-track and across-track variables
         ref_pt = {}
@@ -582,6 +590,19 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
         scaling.mask = np.copy(tide_ocean['AT'].mask)
         scaling.data[scaling.mask]
 
+        # outputs of grounding zone fit
+        grounding_zone_data = {}
+        grounding_zone_data['ref_pt'] = []
+        grounding_zone_data['latitude'] = []
+        grounding_zone_data['longitude'] = []
+        grounding_zone_data['delta_time'] = []
+        grounding_zone_data['cycle_number'] = []
+        # grounding_zone_data['tide_ocean'] = []
+        grounding_zone_data['gz_sigma'] = []
+        # grounding_zone_data['e_mod'] = []
+        # grounding_zone_data['H_ice'] = []
+        # grounding_zone_data['delta_h'] = []
+
         # if creating a test plot
         valid_plot = False
         if PLOT:
@@ -690,11 +711,27 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                             model_scale = np.copy(PA[0])
                             PEMODEL = np.copy(MODEL)
                         # use parameters if fit significance is within tolerance
-                        if (GZ[1] < 800):
+                        if (GZ[1] < 400.0):
                             break
 
                     # linearly interpolate distance to grounding line
-                    SGZ = np.interp(PGZ[0],dist,ref_pt['AT'][i])
+                    GZrpt = np.interp(PGZ[0],output,ref_pt['AT'][iout])
+                    GZlat = np.interp(PGZ[0],output,latitude['AT'][iout])
+                    GZlon = np.interp(PGZ[0],output,longitude['AT'][iout])
+                    GZtime = np.interp(PGZ[0],ifit,delta_time['AT'][i,c])
+                    # append outputs of grounding zone fit
+                    # save all outputs (not just within tolerance)
+                    grounding_zone_data['ref_pt'].append(GZrpt)
+                    grounding_zone_data['latitude'].append(GZlat)
+                    grounding_zone_data['longitude'].append(GZlon)
+                    grounding_zone_data['delta_time'].append(GZtime)
+                    grounding_zone_data['cycle_number'].append(CYCLE)
+                    # grounding_zone_data['tide_ocean'].append(PA)
+                    grounding_zone_data['gz_sigma'].append(PGZ[1])
+                    # grounding_zone_data['e_mod'].append(PE)
+                    # grounding_zone_data['H_ice'].append(PT)
+                    # grounding_zone_data['delta_h'].append(PdH)
+
                     # reorient input parameters to go from land ice to floating
                     flexure_mask = np.ones_like(iout,dtype=bool)
                     if sco:
@@ -705,7 +742,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                         mean_tide = np.mean(tide_ocean['AT'][i0,:])
                         tide_scale = tide_ocean['AT'].data[i0,c] - mean_tide
                         # replace mask values for points beyond the grounding line
-                        ii, = np.nonzero(ref_pt['AT'][iout] <= SGZ)
+                        ii, = np.nonzero(ref_pt['AT'][iout] <= GZrpt)
                         flexure_mask[ii] = False
                     else:
                         # start of segment in orientation
@@ -715,7 +752,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                         mean_tide = np.mean(tide_ocean['AT'][i0,:])
                         tide_scale = tide_ocean['AT'].data[i0,c] - mean_tide
                         # replace mask values for points beyond the grounding line
-                        ii, = np.nonzero(ref_pt['AT'][iout] >= SGZ)
+                        ii, = np.nonzero(ref_pt['AT'][iout] >= GZrpt)
                         flexure_mask[ii] = False
                     # add to test plot
                     if PLOT:
@@ -733,6 +770,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                         # leave iteration and keep original tide model
                         # for segment
                         continue
+
                     # calculate scaling factor
                     scale_factor = tide_scale/model_scale
                     # scale flexure and restore mean ocean tide
@@ -750,7 +788,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                         ax1.plot(ref_pt['AT'][iout],flexure[iout,c]-mean_tide,
                             color='0.8',lw=2,zorder=10)
                         # plot grounding line location
-                        ax1.axvline(SGZ,color=l.get_color(),
+                        ax1.axvline(GZrpt,color=l.get_color(),
                             ls='--',dashes=(8,4))
 
         # make final plot adjustments and save to file
@@ -889,11 +927,125 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
             "https://doi.org/10.3189/172756410791392790"
         IS2_atl11_gz_attrs[ptx]['cycle_stats']['tide_ocean']['coordinates'] = \
             "../ref_pt ../cycle_number ../delta_time ../latitude ../longitude"
+        # ratio of flexure with respect to downstream ocean tide
+        scaling.data[scaling.mask] = scaling.fill_value
+        IS2_atl11_gz[ptx]['cycle_stats']['flexure'] = scaling.copy()
+        IS2_atl11_fill[ptx]['cycle_stats']['flexure'] = scaling.fill_value
+        IS2_atl11_dims[ptx]['cycle_stats']['flexure'] = ['ref_pt','cycle_number']
+        IS2_atl11_gz_attrs[ptx]['cycle_stats']['flexure'] = collections.OrderedDict()
+        IS2_atl11_gz_attrs[ptx]['cycle_stats']['flexure']['units'] = "1"
+        IS2_atl11_gz_attrs[ptx]['cycle_stats']['flexure']['contentType'] = "referenceInformation"
+        IS2_atl11_gz_attrs[ptx]['cycle_stats']['flexure']['long_name'] = "Flexure Ratio"
+        IS2_atl11_gz_attrs[ptx]['cycle_stats']['flexure']['description'] = ("Ratio of "
+            "Near-Grounding Zone Flexure with respect to Downstream Ocean Tide Height.")
+        IS2_atl11_gz_attrs[ptx]['cycle_stats']['flexure']['source'] = tide_source
+        IS2_atl11_gz_attrs[ptx]['cycle_stats']['flexure']['reference'] = \
+            "https://doi.org/10.3189/172756410791392790"
+        IS2_atl11_gz_attrs[ptx]['cycle_stats']['flexure']['coordinates'] = \
+            "../ref_pt ../cycle_number ../delta_time ../latitude ../longitude"
+
+        # grounding zone variables
+        IS2_atl11_gz_attrs[ptx][GZD]['Description'] = ("The grounding_zone_data "
+            "subgroup contains statistic data at grounding zone locations.")
+        IS2_atl11_gz_attrs[ptx][GZD]['data_rate'] = ("Data within this group are "
+            "stored at the average segment rate.")
+
+        # reference point of the grounding zone
+        IS2_atl11_gz[ptx][GZD]['ref_pt'] = np.copy(grounding_zone_data['ref_pt'])
+        IS2_atl11_fill[ptx][GZD]['ref_pt'] = None
+        IS2_atl11_dims[ptx][GZD]['ref_pt'] = None
+        IS2_atl11_gz_attrs[ptx][GZD]['ref_pt'] = collections.OrderedDict()
+        IS2_atl11_gz_attrs[ptx][GZD]['ref_pt']['units'] = "1"
+        IS2_atl11_gz_attrs[ptx][GZD]['ref_pt']['contentType'] = "referenceInformation"
+        IS2_atl11_gz_attrs[ptx][GZD]['ref_pt']['long_name'] = ("fit center reference point number, "
+            "segment_id")
+        IS2_atl11_gz_attrs[ptx][GZD]['ref_pt']['source'] = "derived, ATL11 algorithm"
+        IS2_atl11_gz_attrs[ptx][GZD]['ref_pt']['description'] = ("The reference-point number of the "
+            "fit center for the datum track. The reference point is the 7 digit segment_id number "
+            "corresponding to the center of the ATL06 data used for each ATL11 point.  These are "
+            "sequential, starting with 1 for the first segment after an ascending equatorial "
+            "crossing node.")
+        IS2_atl11_gz_attrs[ptx][GZD]['ref_pt']['coordinates'] = \
+            "delta_time latitude longitude"
+        # cycle_number of the grounding zone
+        IS2_atl11_gz[ptx][GZD]['cycle_number'] = np.copy(grounding_zone_data['cycle_number'])
+        IS2_atl11_fill[ptx][GZD]['cycle_number'] = None
+        IS2_atl11_dims[ptx][GZD]['cycle_number'] = ['ref_pt']
+        IS2_atl11_gz_attrs[ptx][GZD]['cycle_number'] = collections.OrderedDict()
+        IS2_atl11_gz_attrs[ptx][GZD]['cycle_number']['units'] = "1"
+        IS2_atl11_gz_attrs[ptx][GZD]['cycle_number']['long_name'] = "cycle number"
+        IS2_atl11_gz_attrs[ptx][GZD]['cycle_number']['source'] = "ATL06"
+        IS2_atl11_gz_attrs[ptx][GZD]['cycle_number']['description'] = ("Cycle number for the "
+            "grounding zone data. Number of 91-day periods that have elapsed since ICESat-2 entered "
+            "the science orbit. Each of the 1,387 reference ground track (RGTs) is targeted "
+            "in the polar regions once every 91 days.")
+        # delta time of the grounding zone
+        IS2_atl11_gz[ptx][GZD]['delta_time'] = np.copy(grounding_zone_data['delta_time'])
+        IS2_atl11_fill[ptx][GZD]['delta_time'] = delta_time['AT'].fill_value
+        IS2_atl11_dims[ptx][GZD]['delta_time'] = ['ref_pt']
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_time'] = {}
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_time']['units'] = "seconds since 2018-01-01"
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_time']['long_name'] = "Elapsed GPS seconds"
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_time']['standard_name'] = "time"
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_time']['calendar'] = "standard"
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_time']['source'] = "ATL06"
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_time']['description'] = ("Number of GPS "
+            "seconds since the ATLAS SDP epoch. The ATLAS Standard Data Products (SDP) epoch offset "
+            "is defined within /ancillary_data/atlas_sdp_gps_epoch as the number of GPS seconds "
+            "between the GPS epoch (1980-01-06T00:00:00.000000Z UTC) and the ATLAS SDP epoch. By "
+            "adding the offset contained within atlas_sdp_gps_epoch to delta time parameters, the "
+            "time in gps_seconds relative to the GPS epoch can be computed.")
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_time']['coordinates'] = \
+            "ref_pt latitude longitude"
+        # latitude of the grounding zone
+        IS2_atl11_gz[ptx][GZD]['latitude'] = np.copy(grounding_zone_data['latitude'])
+        IS2_atl11_fill[ptx][GZD]['latitude'] = latitude['AT'].fill_value
+        IS2_atl11_dims[ptx][GZD]['latitude'] = ['ref_pt']
+        IS2_atl11_gz_attrs[ptx][GZD]['latitude'] = collections.OrderedDict()
+        IS2_atl11_gz_attrs[ptx][GZD]['latitude']['units'] = "degrees_north"
+        IS2_atl11_gz_attrs[ptx][GZD]['latitude']['contentType'] = "physicalMeasurement"
+        IS2_atl11_gz_attrs[ptx][GZD]['latitude']['long_name'] = "grounding zone latitude"
+        IS2_atl11_gz_attrs[ptx][GZD]['latitude']['standard_name'] = "latitude"
+        IS2_atl11_gz_attrs[ptx][GZD]['latitude']['source'] = "ATL06"
+        IS2_atl11_gz_attrs[ptx][GZD]['latitude']['description'] = ("Center latitude of "
+            "the grounding zone")
+        IS2_atl11_gz_attrs[ptx][GZD]['latitude']['valid_min'] = -90.0
+        IS2_atl11_gz_attrs[ptx][GZD]['latitude']['valid_max'] = 90.0
+        IS2_atl11_gz_attrs[ptx][GZD]['latitude']['coordinates'] = \
+            "ref_pt delta_time longitude"
+        # longitude of the grounding zone
+        IS2_atl11_gz[ptx][GZD]['longitude'] = np.copy(grounding_zone_data['longitude'])
+        IS2_atl11_fill[ptx][GZD]['longitude'] = longitude['AT'].fill_value
+        IS2_atl11_dims[ptx][GZD]['longitude'] = ['ref_pt']
+        IS2_atl11_gz_attrs[ptx][GZD]['longitude'] = collections.OrderedDict()
+        IS2_atl11_gz_attrs[ptx][GZD]['longitude']['units'] = "degrees_east"
+        IS2_atl11_gz_attrs[ptx][GZD]['longitude']['contentType'] = "physicalMeasurement"
+        IS2_atl11_gz_attrs[ptx][GZD]['longitude']['long_name'] = "grounding zone longitude"
+        IS2_atl11_gz_attrs[ptx][GZD]['longitude']['standard_name'] = "longitude"
+        IS2_atl11_gz_attrs[ptx][GZD]['longitude']['source'] = "ATL06"
+        IS2_atl11_gz_attrs[ptx][GZD]['longitude']['description'] = ("Center longitude of "
+            "the grounding zone")
+        IS2_atl11_gz_attrs[ptx][GZD]['longitude']['valid_min'] = -180.0
+        IS2_atl11_gz_attrs[ptx][GZD]['longitude']['valid_max'] = 180.0
+        IS2_atl11_gz_attrs[ptx][GZD]['longitude']['coordinates'] = \
+            "ref_pt delta_time latitude"
+        # uncertainty of the grounding zone
+        IS2_atl11_gz[ptx][GZD]['gz_sigma'] = np.copy(grounding_zone_data['gz_sigma'])
+        IS2_atl11_fill[ptx][GZD]['gz_sigma'] = 0.0
+        IS2_atl11_dims[ptx][GZD]['gz_sigma'] = ['ref_pt']
+        IS2_atl11_gz_attrs[ptx][GZD]['gz_sigma'] = collections.OrderedDict()
+        IS2_atl11_gz_attrs[ptx][GZD]['gz_sigma']['units'] = "meters"
+        IS2_atl11_gz_attrs[ptx][GZD]['gz_sigma']['contentType'] = "physicalMeasurement"
+        IS2_atl11_gz_attrs[ptx][GZD]['gz_sigma']['long_name'] = "grounding zone uncertainty"
+        IS2_atl11_gz_attrs[ptx][GZD]['gz_sigma']['source'] = "ATL11"
+        IS2_atl11_gz_attrs[ptx][GZD]['gz_sigma']['description'] = ("Uncertainty in grounding"
+            "zone location derived by the physical elastic bending model")
+        IS2_atl11_gz_attrs[ptx][GZD]['gz_sigma']['coordinates'] = \
+            "ref_pt delta_time latitude longitude"
 
         # if estimating flexure for crossover measurements
         if CROSSOVERS:
             # calculate mean scaling for crossovers
-            scaling.data[scaling.mask] = scaling.fill_value
             mean_scale = np.ma.zeros((n_points),fill_value=scaling.fill_value)
             mean_scale.data[:] = scaling.mean(axis=1)
             mean_scale.mask = np.all(scaling.mask,axis=1)
@@ -930,7 +1082,6 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                 "crossing node.")
             IS2_atl11_gz_attrs[ptx][XT]['ref_pt']['coordinates'] = \
                 "delta_time latitude longitude"
-
             # reference ground track of the crossing track
             IS2_atl11_gz[ptx][XT]['rgt'] = mds1[ptx][XT]['rgt'].copy()
             IS2_atl11_fill[ptx][XT]['rgt'] = attr1[ptx][XT]['rgt']['_FillValue']
@@ -971,7 +1122,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                 "between the GPS epoch (1980-01-06T00:00:00.000000Z UTC) and the ATLAS SDP epoch. By "
                 "adding the offset contained within atlas_sdp_gps_epoch to delta time parameters, the "
                 "time in gps_seconds relative to the GPS epoch can be computed.")
-            IS2_atl11_gz_attrs[ptx]['delta_time']['coordinates'] = \
+            IS2_atl11_gz_attrs[ptx][XT]['delta_time']['coordinates'] = \
                 "ref_pt latitude longitude"
             # latitude of the crossover measurement
             IS2_atl11_gz[ptx][XT]['latitude'] = latitude['XT'].copy()
@@ -1028,7 +1179,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
     # print file information
     print('\t{0}'.format(file_format.format(*args))) if VERBOSE else None
     HDF5_ATL11_corr_write(IS2_atl11_gz, IS2_atl11_gz_attrs,
-        CLOBBER=True, INPUT=os.path.basename(FILE), CROSSOVERS=CROSSOVERS,
+        CLOBBER=True, INPUT=os.path.basename(FILE),
+        GROUNDING_ZONE=GROUNDING_ZONE, CROSSOVERS=CROSSOVERS,
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
         FILENAME=os.path.join(DIRECTORY,file_format.format(*args)))
     # change the permissions mode
@@ -1036,8 +1188,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
 
 # PURPOSE: outputting the correction values for ICESat-2 data to HDF5
 def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
-    FILENAME='', FILL_VALUE=None, DIMENSIONS=None, CROSSOVERS=False,
-    CLOBBER=False):
+    FILENAME='', FILL_VALUE=None, DIMENSIONS=None, GROUNDING_ZONE=False,
+    CROSSOVERS=False, CLOBBER=False):
     # setting HDF5 clobber attribute
     if CLOBBER:
         clobber = 'w'
@@ -1100,6 +1252,9 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
 
         # add to cycle_stats variables
         groups = ['cycle_stats']
+        # if there were valid fits: add to grounding_zone_data variables
+        if GROUNDING_ZONE:
+            groups.append('grounding_zone_data')
         # if running crossovers: add to crossing_track_data variables
         if CROSSOVERS:
             groups.append('crossing_track_data')
