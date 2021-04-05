@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 create_GIMP_tile_index.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (04/2021)
 
 Reads GIMP 30m DEM tiles from the OSU Greenland Ice Mapping Project
     https://nsidc.org/data/nsidc-0645/versions/1
@@ -22,6 +22,7 @@ https://urs.earthdata.nasa.gov/oauth/authorize?client_id=_JLuwMHxb2xX6NwYTb4dRA
 COMMAND LINE OPTIONS:
     -D X, --directory X: working data directory for output GIMP files
     -U X, --user X: username for NASA Earthdata Login
+    -P X, --password X: password for NASA Earthdata Login
     -N X, --netrc X: path to .netrc file for alternative authentication
     -v X, --version X: data release of the GIMP dataset
     -M X, --mode X: Local permissions mode of the directories and files synced
@@ -42,6 +43,8 @@ PROGRAM DEPENDENCIES:
     utilities: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 04/2021: set a default netrc file and check access
+        default credentials from environmental variables
     Updated 01/2021: using utilities modules to list and download from server
         using argparse to set command line options
     Updated 09/2019: remove suffix from name attribute.  add perimeter and area
@@ -221,10 +224,14 @@ def main():
     #-- command line parameters
     #-- NASA Earthdata credentials
     parser.add_argument('--user','-U',
-        type=str, default='',
+        type=str, default=os.environ.get('EARTHDATA_USERNAME'),
         help='Username for NASA Earthdata Login')
+    parser.add_argument('--password','-P',
+        type=str, default=os.environ.get('EARTHDATA_PASSWORD'),
+        help='Password for NASA Earthdata Login')
     parser.add_argument('--netrc','-N',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.path.join(os.path.expanduser('~'),'.netrc'),
         help='Path to .netrc file for authentication')
     #-- working data directory
     parser.add_argument('--directory','-D',
@@ -244,20 +251,20 @@ def main():
     #-- NASA Earthdata hostname
     HOST = 'urs.earthdata.nasa.gov'
     #-- get authentication
-    if not args.user and not args.netrc:
+    if not args.user and not os.access(args.netrc,os.F_OK):
         #-- check that NASA Earthdata credentials were entered
         args.user=builtins.input('Username for {0}: '.format(HOST))
         #-- enter password securely from command-line
-        PASSWORD=getpass.getpass('Password for {0}@{1}: '.format(args.user,HOST))
-    elif args.netrc:
-        args.user,_,PASSWORD=netrc.netrc(args.netrc).authenticators(HOST)
-    else:
+        args.password=getpass.getpass('Password for {0}@{1}: '.format(args.user,HOST))
+    elif os.access(args.netrc, os.F_OK):
+        args.user,_,args.password=netrc.netrc(args.netrc).authenticators(HOST)
+    elif args.user and not args.password:
         #-- enter password securely from command-line
-        PASSWORD=getpass.getpass('Password for {0}@{1}: '.format(args.user,HOST))
+        args.password=getpass.getpass('Password for {0}@{1}: '.format(args.user,HOST))
 
     #-- build a urllib opener for NSIDC
     #-- Add the username and password for NASA Earthdata Login system
-    grounding_zones.utilities.build_opener(args.user,PASSWORD)
+    grounding_zones.utilities.build_opener(args.user,args.password)
 
     #-- check internet connection before attempting to run program
     #-- check NASA earthdata credentials before attempting to run program

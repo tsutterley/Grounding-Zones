@@ -13,6 +13,7 @@ python3 nsidc_convert_GIMP_DEM.py --user <username> --directory <outgoing> \
 
 #### Command Line Options
  - `-U X`, `--user X`: username for NASA Earthdata Login
+ - `-P X,` `--password X`: password for NASA Earthdata Login
  - `-N X`, `--netrc X`: path to .netrc file for alternative authentication
  - `-D X`, `--directory`: working data directory for output GIMP files
  - `-v X`, `--version X:` data release of the GIMP dataset
