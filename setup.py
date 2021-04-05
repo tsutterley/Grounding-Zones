@@ -7,9 +7,13 @@ from setuptools import setup, find_packages
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 log = logging.getLogger()
 
-# get long_description from README.md
-with open("README.md", "r") as fh:
+# package description and keywords
+description = 'Python Tools for Estimating Ice Sheet Grounding Zone Locations with ICESat-2'
+keywords = 'ICESat-2 laser altimetry, Elastic Bending, Grounding Zones, Ice Shelves, Ice Sheets'
+# get long_description from README.rst
+with open("README.rst", "r") as fh:
     long_description = fh.read()
+long_description_content_type = "text/x-rst"
 
 # get install requirements
 with open('requirements.txt') as fh:
@@ -44,9 +48,9 @@ if gdal_output[3]:
 setup(
     name='ICESat-2-Grounding-Zones',
     version=version,
-    description='Python Tools for Estimating Ice Sheet Grounding Zone Locations with ICESat-2',
+    description=description,
     long_description=long_description,
-    long_description_content_type="text/markdown",
+    long_description_content_type=long_description_content_type,
     url='https://github.com/tsutterley/ICESat-2-Grounding-Zones',
     author='Tyler Sutterley',
     author_email='tsutterl@uw.edu',
@@ -61,7 +65,7 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
     ],
-    keywords='Elastic Bending, Grounding Zones, Ice Shelves, Ice Sheets',
+    keywords=keywords,
     packages=find_packages(),
     install_requires=install_requires,
     dependency_links=['https://github.com/tsutterley/read-ICESat-2/tarball/main',

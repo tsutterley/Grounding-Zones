@@ -16,8 +16,7 @@ extension routines for the sets of
 Contributors
 ############
 
-- `Kelly Brunt (NASA Goddard Space Flight Center) <https://science.gsfc.nasa.gov/sed/bio/kelly.m.brunt>`_
-- `Tyler Sutterley (University of Washington) <http://psc.apl.uw.edu/people/investigators/tyler-sutterley/>`_
+.. include:: ../../../CONTRIBUTORS.rst
 
 Development
 ###########
