@@ -250,7 +250,6 @@ def piecewise_fit(x, y, STEP=1, CONF=0.95):
 # PURPOSE: run a physical elastic bending model with Levenberg-Marquardt
 # D. G. Vaughan, Journal of Geophysical Research Solid Earth, 1995
 # A. M. Smith, Journal of Glaciology, 1991
-# density of water [kg/m^3]
 def physical_elastic_model(XI,YI,METHOD='trf',GRZ=[0,0,0],TIDE=[0,0,0],
     ORIENTATION=False,THICKNESS=None,CONF=0.95,XOUT=None):
     # reorient input parameters to go from land ice to floating
@@ -342,13 +341,11 @@ def elasticmodel(x, GZ, A, E, T, dH):
 def conf_interval(x,f,p):
     # sorting probability distribution from smallest probability to largest
     ii = np.argsort(f)
-    # # compute the sorted cumulative probability distribution
+    # compute the sorted cumulative probability distribution
     cdf = np.cumsum(f[ii])
-    # find the min and max interval that contains the probability
-    jj = np.max(np.nonzero(cdf < p))
-    kk = np.min(np.nonzero(cdf >= p))
     # linearly interpolate to confidence interval
-    J = x[ii[jj]] + (p - cdf[jj])/(cdf[kk] - cdf[jj])*(x[ii[kk]] - x[ii[jj]])
+    J = np.interp(p, cdf, x[ii])
+    # position with maximum probability
     K = x[ii[-1]]
     return np.abs(K-J)
 
@@ -431,9 +428,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
         delta_time = {}
         h_corr = {}
         tide_ocean = {}
-        groups = ['AT']
-        # dictionary with output inverse barometer variables
         IB = {}
+        groups = ['AT']
         # number of average segments and number of included cycles
         # fill_value for invalid heights and corrections
         fv = attr1[ptx]['h_corr']['_FillValue']
