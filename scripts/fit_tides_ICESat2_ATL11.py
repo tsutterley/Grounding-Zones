@@ -38,16 +38,15 @@ PYTHON DEPENDENCIES:
     scipy: Scientific Tools for Python (Spatial algorithms and data structures)
         https://docs.scipy.org/doc/
         https://docs.scipy.org/doc/scipy/reference/spatial.html
-    matplotlib: Python 2D plotting library
-        http://matplotlib.org/
-        https://github.com/matplotlib/matplotlib
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
 
 PROGRAM DEPENDENCIES:
     read_ICESat2_ATL11.py: reads ICESat-2 annual land ice height data files
     time.py: utilities for calculating time operations
-    utilities: download and management utilities for syncing files
 
 UPDATE HISTORY:
     Written 04/2021

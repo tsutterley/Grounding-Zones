@@ -644,16 +644,16 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                     h_gz = np.copy(h_corr['AT'].data[i,c])
                     # mean land ice height from digital elevation model
                     h_mean = np.mean(h_corr['AT'][i,:],axis=1)
-                    # h_mean = h_corr['AT'][i,0]
+                    # h_mean = h_corr['AT'].data[i,0]
                     # ocean tide height for scaling model
                     tide_mean =  np.mean(tide_ocean['AT'][i,:],axis=1)
-                    # tide_mean = tide_ocean[i,0]
+                    # tide_mean = tide_ocean['AT'].data[i,0]
                     h_tide = np.ma.array(tide_ocean['AT'].data[i,c] - tide_mean,
                         fill_value=tide_ocean['AT'].fill_value)
                     h_tide.mask = tide_ocean['AT'].mask[i,c] | tide_mean.mask
                     # inverse-barometer response
                     ib_mean =  np.mean(IB['AT'][i,:],axis=1)
-                    # ib_mean = IB['AT'][i,0]
+                    # ib_mean = IB['AT'].data[i,0]
                     h_ib = np.ma.array(IB['AT'].data[i,c] - ib_mean,
                         fill_value=IB['AT'].fill_value)
                     h_ib.mask = IB['AT'].mask[i,c] | ib_mean.mask
@@ -714,7 +714,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                     GZrpt = np.interp(PGZ[0],output,ref_pt['AT'][iout])
                     GZlat = np.interp(PGZ[0],output,latitude['AT'][iout])
                     GZlon = np.interp(PGZ[0],output,longitude['AT'][iout])
-                    GZtime = np.interp(PGZ[0],ifit,delta_time['AT'][i,c])
+                    GZtime = np.interp(PGZ[0],dist,delta_time['AT'][i,c])
                     # append outputs of grounding zone fit
                     # save all outputs (not just within tolerance)
                     grounding_zone_data['ref_pt'].append(GZrpt)
@@ -734,8 +734,9 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                         # start of segment in orientation
                         i0 = iout[0]
                         # mean tide for scaling and plots
-                        # mean_tide = tide_ocean.data['AT'][i0,0]
+                        # mean_tide = tide_ocean['AT'].data[i0,0]
                         mean_tide = np.mean(tide_ocean['AT'][i0,:])
+                        mean_ib = np.mean(IB['AT'][i0,:])
                         tide_scale = tide_ocean['AT'].data[i0,c] - mean_tide
                         # replace mask values for points beyond the grounding line
                         ii, = np.nonzero(ref_pt['AT'][iout] <= GZrpt)
@@ -744,8 +745,9 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                         # start of segment in orientation
                         i0 = iout[-1]
                         # mean tide for scaling and plots
-                        # mean_tide = tide_ocean.data['AT'][i0,0]
+                        # mean_tide = tide_ocean['AT'].data[i0,0]
                         mean_tide = np.mean(tide_ocean['AT'][i0,:])
+                        mean_ib = np.mean(IB['AT'][i0,:])
                         tide_scale = tide_ocean['AT'].data[i0,c] - mean_tide
                         # replace mask values for points beyond the grounding line
                         ii, = np.nonzero(ref_pt['AT'][iout] >= GZrpt)
@@ -755,9 +757,10 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                         # plot height differences
                         l, = ax1.plot(ref_pt['AT'][i],dh_gz-PdH[0],'.-',ms=1.5,lw=0,
                             label='Cycle {0}'.format(CYCLE))
-                        # plot downstream tide
-                        ax1.axhline(tide_ocean['AT'].data[i0,c]-mean_tide,
-                            color=l.get_color(),lw=3.0,ls='--')
+                        # plot downstream tide and IB
+                        hocean = tide_ocean['AT'].data[i0,c] - mean_tide
+                        # hocean += IB['AT'].data[i0,c] - mean_ib
+                        ax1.axhline(hocean,color=l.get_color(),lw=3.0,ls='--')
                         # set valid plot flag
                         valid_plot = True
 
@@ -790,7 +793,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
         # make final plot adjustments and save to file
         if valid_plot:
             # add legend
-            lgd = ax1.legend(frameon=True)
+            lgd = ax1.legend(loc=1,frameon=True)
             # set width, color and style of lines
             lgd.get_frame().set_boxstyle('square,pad=0.1')
             lgd.get_frame().set_edgecolor('white')
