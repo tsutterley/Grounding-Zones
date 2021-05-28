@@ -3,7 +3,7 @@ scipy
 pyproj
 python-dateutil
 matplotlib
-cartopy
+cartopy --no-binary=cartopy
 netCDF4
 h5py
 gdal
