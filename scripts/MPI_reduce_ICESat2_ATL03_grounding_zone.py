@@ -66,6 +66,7 @@ import datetime
 import numpy as np
 from mpi4py import MPI
 import shapely.geometry
+from grounding_zones.utilities import get_data_path
 from icesat2_toolkit.convert_delta_time import convert_delta_time
 import icesat2_toolkit.time
 
@@ -148,7 +149,7 @@ def main():
     #-- working data directory for shapefiles
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        default=get_data_path('data'),
         help='Working data directory')
     #-- buffer in kilometers for extracting grounding zone
     parser.add_argument('--buffer','-B',

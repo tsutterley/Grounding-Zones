@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (04/2021)
+Written by Tyler Sutterley (07/2021)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -49,6 +49,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 07/2021: add checks for data and fit quality
     Written 04/2021
 """
 from __future__ import print_function
@@ -104,6 +105,9 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
 
     # height threshold (filter points below 0m elevation)
     THRESHOLD = 0.0
+    #  maximum height sigmas allowed in tidal adjustment fit
+    sigma_tolerance = 0.5
+    output_tolerance = 0.5
 
     # select between tide models
     if (TIDE_MODEL == 'CATS0201'):
@@ -322,9 +326,11 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         longitude = {}
         delta_time = {}
         h_corr = {}
+        h_sigma = {}
         quality_summary = {}
         tide_ocean = {}
-        tide_error = {}
+        tide_adj = {}
+        tide_adj_sigma = {}
         IB = {}
         groups = ['AT','XT']
         # number of average segments and number of included cycles
@@ -343,24 +349,33 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         delta_time['AT'] = np.ma.array(mds1[ptx]['delta_time'],
             fill_value=attr1[ptx]['delta_time']['_FillValue'])
         delta_time['AT'].mask = (delta_time['AT'] == delta_time['AT'].fill_value)
-        # corrected height
+        # corrected height and corrected height errors
         h_corr['AT'] = np.ma.array(mds1[ptx]['h_corr'],
             fill_value=attr1[ptx]['h_corr']['_FillValue'])
         h_corr['AT'].mask = (h_corr['AT'].data == h_corr['AT'].fill_value)
+        h_sigma['AT'] = np.ma.array(mds1[ptx]['h_corr_sigma'],
+            fill_value=attr1[ptx]['h_corr_sigma']['_FillValue'])
+        h_sigma['AT'].mask = (h_sigma['AT'].data == h_sigma['AT'].fill_value)
         # quality summary
         quality_summary['AT'] = (mds1[ptx]['quality_summary'] == 0)
         # ocean corrections
         tide_ocean['AT'] = np.ma.array(mds1[ptx]['cycle_stats']['tide_ocean'],
             fill_value=attr1[ptx]['cycle_stats']['tide_ocean']['_FillValue'])
         tide_ocean['AT'].mask = (tide_ocean['AT'] == tide_ocean['AT'].fill_value)
-        tide_ocean['AT'] = np.ma.zeros((n_points,n_cycles),
+        tide_adj['AT'] = np.ma.ones((n_points,n_cycles),
             fill_value=tide_ocean['AT'].fill_value)
-        tide_ocean['AT'].mask = (tide_ocean['AT'] == tide_ocean['AT'].fill_value)
+        tide_adj['AT'].mask = (tide_ocean['AT'] == tide_ocean['AT'].fill_value)
+        tide_adj_sigma['AT'] = np.ma.zeros((n_points,n_cycles),
+            fill_value=tide_ocean['AT'].fill_value)
+        tide_adj_sigma['AT'].mask = (tide_ocean['AT'] == tide_ocean['AT'].fill_value)
         IB['AT'] = np.ma.array(mds1[ptx]['cycle_stats']['dac'],fill_value=0.0)
         IB['AT'].mask = (IB['AT'] == attr1[ptx]['cycle_stats']['dac']['_FillValue'])
         # ATL11 reference surface elevations (derived from ATL06)
         dem_h = mds1[ptx]['ref_surf']['dem_h']
-        # geoid_h = mds1[ptx]['ref_surf']['geoid_h']
+        try:
+            geoid_h = mds1[ptx]['ref_surf']['geoid_h']
+        except ValueError:
+            geoid_h = np.zeros_like(dem_h)
 
         # shape of across-track data
         n_cross, = mds1[ptx][XT]['delta_time'].shape
@@ -383,9 +398,12 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         tide_ocean['XT'] = np.ma.array(mds1[ptx][XT]['tide_ocean'],
             fill_value=attr1[ptx][XT]['tide_ocean']['_FillValue'])
         tide_ocean['XT'].mask = (tide_ocean['XT'] == tide_ocean['XT'].fill_value)
-        tide_error['XT'] = np.ma.zeros((n_cross),
+        tide_adj['XT'] = np.ma.ones((n_cross),
             fill_value=tide_ocean['XT'].fill_value)
-        tide_error['XT'].mask = (tide_ocean['XT'] == tide_ocean['XT'].fill_value)
+        tide_adj['XT'].mask = (tide_ocean['XT'] == tide_ocean['XT'].fill_value)
+        tide_adj_sigma['XT'] = np.ma.zeros((n_cross),
+            fill_value=tide_ocean['XT'].fill_value)
+        tide_adj_sigma['XT'].mask = (tide_ocean['XT'] == tide_ocean['XT'].fill_value)
         IB['XT'] = np.ma.array(mds1[ptx][XT]['dac'],fill_value=0.0)
         IB['XT'].mask = (IB['XT'] == attr1[ptx][XT]['dac']['_FillValue'])
         # find mapping between crossover and along-track reference points
@@ -506,14 +524,15 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             segment_mask &= np.logical_not(tide_ocean['AT'].mask[s,:])
             segment_mask &= quality_summary['AT'][s,:]
             segment_mask &= (h_corr['AT'].data[s,:] > THRESHOLD)
+            segment_mask &= (h_sigma['AT'].data[s,:] < sigma_tolerance)
             segment_mask &= mds1[ptx]['subsetting']['ice_gz'][s]
             if not np.any(segment_mask):
                 continue
             i1, = np.nonzero(segment_mask)
             i2 = np.squeeze(ref_indices[s])
             # height referenced to geoid
-            h1 = h_corr['AT'].data[s,i1] - IB['AT'].data[s,i1] #- geoid_h[s]
-            h2 = np.atleast_1d(h_corr['XT'].data[i2] - IB['XT'].data[i2]) #- geoid_h[s]
+            h1 = h_corr['AT'].data[s,i1] - IB['AT'].data[s,i1] - geoid_h[s]
+            h2 = np.atleast_1d(h_corr['XT'].data[i2] - IB['XT'].data[i2]) - geoid_h[s]
             n1 = len(h1)
             n2 = len(h2)
             # tide time
@@ -570,45 +589,51 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             # # combined tidal components
             # tide = ccos + ssin
 
+            # use linear least-squares with bounds on the variables
             # create design matrix
             p0 = np.ones_like(t)
-            DMAT = np.transpose([p0,t,tide])
+            p1 = 365.25*(t - np.median(t))
+            DMAT = np.c_[tide,p0,p1]
+            # check if there are enough unique dates for fit
+            u_days = np.unique(np.round(p1)/365.25)
+            if (len(u_days) <= 3):
+                continue
             n_max,n_terms = np.shape(DMAT)
+            # nu = Degrees of Freedom
+            nu = n_max - n_terms
 
             # tuple for parameter bounds (lower and upper)
-            lb,ub = ([np.min(h),-10.0,0.0],[np.max(h),10.0,1.0])
+            lb,ub = ([0.0,np.min(h),-2.0],[1.0,np.max(h),2.0])
             # use linear least-squares with bounds on the variables
             try:
                 results = scipy.optimize.lsq_linear(DMAT, h, bounds=(lb,ub))
-                # nu = Degrees of Freedom
-                nu = n_max - n_terms
                 # Mean square error
                 MSE = np.sum(results['fun']**2)/np.float(nu)
                 # Covariance Matrix
                 # Multiplying the design matrix by itself
                 Hinv = np.linalg.inv(np.dot(np.transpose(DMAT),DMAT))
-                # Taking the diagonal components of the cov matrix
-                hdiag = np.diag(Hinv)
-                # Default is 95% confidence interval
-                alpha = 1.0 - 0.95
-                # Student T-Distribution with D.O.F. nu
-                # t.ppf parallels tinv in matlab
-                tstar = scipy.stats.t.ppf(1.0-(alpha/2.0),nu)
-                # beta_err is the error for each coefficient
-                # beta_err = t(nu,1-alpha/2)*standard error
-                st_err = np.sqrt(MSE*hdiag)
-                beta_err = tstar*st_err
             except:
                 continue
             else:
-                # H,dH,cadj,sadj = np.copy(results['x'])
-                H,dH,adj = np.copy(results['x'])
+                # cadj,sadj,H,dH = np.copy(results['x'])
+                adj,H,dH = np.copy(results['x'])
+                # calculate mean square error
+                MSE = np.sum(results['fun']**2)/nu
+                # standard error from covariance matrix
+                adj_sigma,*_ = np.sqrt(MSE*np.diag(Hinv))
+            #-- check that errors are smaller than tolerance
+            if (adj_sigma > output_tolerance):
+                continue
             # extract along-track and across-track cosine and sine
             # tide_ocean['AT'][s,i1] = cadj*ccos[:n1] + sadj*ssin[:n1]
             tide_ocean['AT'][s,i1] = adj*tide[:n1]
+            tide_adj['AT'][s,i1] = np.copy(adj)
+            tide_adj_sigma['AT'][s,i1] = np.copy(adj_sigma)
             if np.any(i2):
                 # tide_ocean['XT'][i2] = cadj*ccos[n1:] + sadj*ssin[n1:]
                 tide_ocean['XT'][i2] = adj*tide[n1:]
+                tide_adj['XT'][i2] = np.copy(adj)
+                tide_adj_sigma['XT'][i2] = np.copy(adj_sigma)
 
         # group attributes for beam
         IS2_atl11_tide_attrs[ptx]['description'] = ('Contains the primary science parameters '
@@ -720,6 +745,35 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_ocean']['source'] = tide_source
         IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_ocean']['reference'] = tide_reference
         IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_ocean']['coordinates'] = \
+            "../ref_pt ../cycle_number ../delta_time ../latitude ../longitude"
+        # computed tide adjustments
+        IS2_atl11_tide[ptx]['cycle_stats']['tide_adj'] = tide_adj['AT'].copy()
+        IS2_atl11_fill[ptx]['cycle_stats']['tide_adj'] = tide_adj['AT'].fill_value
+        IS2_atl11_dims[ptx]['cycle_stats']['tide_adj'] = ['ref_pt','cycle_number']
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj'] = collections.OrderedDict()
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj']['units'] = "1"
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj']['contentType'] = "referenceInformation"
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj']['long_name'] = "Ocean Tide Adjustment"
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj']['description'] = ("Empirical "
+            "adjustment applied to the ocean tides for Near-Grounding Zone data.")
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj']['source'] = tide_source
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj']['reference'] = tide_reference
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj']['coordinates'] = \
+            "../ref_pt ../cycle_number ../delta_time ../latitude ../longitude"
+        # computed tide adjustment uncertainty
+        IS2_atl11_tide[ptx]['cycle_stats']['tide_adj_sigma'] = tide_adj_sigma['AT'].copy()
+        IS2_atl11_fill[ptx]['cycle_stats']['tide_adj_sigma'] = tide_adj_sigma['AT'].fill_value
+        IS2_atl11_dims[ptx]['cycle_stats']['tide_adj_sigma'] = ['ref_pt','cycle_number']
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj_sigma'] = collections.OrderedDict()
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj_sigma']['units'] = "1"
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj_sigma']['contentType'] = "referenceInformation"
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj_sigma']['long_name'] = \
+            "Ocean Tide Adjustment Uncertainty"
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj_sigma']['description'] = ("Empirical "
+            "adjustment uncertainty from the bounded least-squares fit.")
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj_sigma']['source'] = tide_source
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj_sigma']['reference'] = tide_reference
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_adj_sigma']['coordinates'] = \
             "../ref_pt ../cycle_number ../delta_time ../latitude ../longitude"
 
         # crossing track variables
@@ -836,6 +890,35 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         IS2_atl11_tide_attrs[ptx][XT]['tide_ocean']['source'] = tide_source
         IS2_atl11_tide_attrs[ptx][XT]['tide_ocean']['reference'] = tide_reference
         IS2_atl11_tide_attrs[ptx][XT]['tide_ocean']['coordinates'] = \
+            "ref_pt delta_time latitude longitude"
+        # computed tide adjustments
+        IS2_atl11_tide[ptx][XT]['tide_adj'] = tide_adj['XT'].copy()
+        IS2_atl11_fill[ptx][XT]['tide_adj'] = tide_adj['XT'].fill_value
+        IS2_atl11_dims[ptx][XT]['tide_adj'] = ['ref_pt']
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj'] = collections.OrderedDict()
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj']['units'] = "1"
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj']['contentType'] = "referenceInformation"
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj']['long_name'] = "Ocean Tide Adjustment"
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj']['description'] = ("Empirical "
+            "adjustment applied to the ocean tides for Near-Grounding Zone data.")
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj']['source'] = tide_source
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj']['reference'] = tide_reference
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj']['coordinates'] = \
+            "ref_pt delta_time latitude longitude"
+        # computed tide adjustment uncertainty
+        IS2_atl11_tide[ptx][XT]['tide_adj_sigma'] = tide_adj_sigma['XT'].copy()
+        IS2_atl11_fill[ptx][XT]['tide_adj_sigma'] = tide_adj_sigma['XT'].fill_value
+        IS2_atl11_dims[ptx][XT]['tide_adj_sigma'] = ['ref_pt']
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj_sigma'] = collections.OrderedDict()
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj_sigma']['units'] = "1"
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj_sigma']['contentType'] = "referenceInformation"
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj_sigma']['long_name'] = \
+            "Ocean Tide Adjustment Uncertainty"
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj_sigma']['description'] = ("Empirical "
+            "adjustment uncertainty from the bounded least-squares fit.")
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj_sigma']['source'] = tide_source
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj_sigma']['reference'] = tide_reference
+        IS2_atl11_tide_attrs[ptx][XT]['tide_adj_sigma']['coordinates'] = \
             "ref_pt delta_time latitude longitude"
 
     # output flexure correction HDF5 file
