@@ -38,6 +38,8 @@ else:
     # dependency links
     dependency_links = ['https://github.com/tsutterley/yapc/tarball/main',
         'https://github.com/tsutterley/read-ICESat-2/tarball/main',
+        'https://github.com/tsutterley/read-ATM1b-QFIT-binary/tarball/main',
+        'https://github.com/tsutterley/geoid-toolkit/tarball/main',
         'https://github.com/tsutterley/pyTMD/tarball/main']
 
 # check if GDAL is installed
@@ -56,7 +58,7 @@ if gdal_output[3]:
     install_requires[gdal_index] = 'gdal=={0}'.format(gdal_output[3])
 
 setup(
-    name='ICESat-2-Grounding-Zones',
+    name='grounding-zones',
     version=version,
     description=description,
     long_description=long_description,

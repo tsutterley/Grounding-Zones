@@ -341,7 +341,7 @@ def main():
     parser.add_argument('--model','-m',
         metavar='DEM', type=str, choices=('REMA', 'ArcticDEM', 'GIMP'),
         help='Digital Elevation Model to run')
-    args = parser.parse_args()
+    args,_ = parser.parse_known_args()
 
     #-- run program with parameters for each file
     for FILE in args.file:

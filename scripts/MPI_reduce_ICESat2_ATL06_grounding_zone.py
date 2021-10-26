@@ -163,7 +163,7 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='permissions mode of output files')
-    args = parser.parse_args()
+    args,_ = parser.parse_known_args()
 
     #-- output module information for process
     if args.verbose:
@@ -175,7 +175,7 @@ def main():
     fileID = h5py.File(args.file, 'r', driver='mpio', comm=comm)
     DIRECTORY = os.path.dirname(args.file)
     #-- extract parameters from ICESat-2 ATLAS HDF5 file name
-    rx = re.compile(r'(processed)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
+    rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
     SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX=rx.findall(args.file).pop()
     #-- set the hemisphere flag based on ICESat-2 granule
@@ -247,16 +247,10 @@ def main():
         ind = np.arange(comm.Get_rank(), n_seg, comm.Get_size(), dtype=int)
 
         #-- extract delta time
-        delta_time = np.ma.array(fileID[gtx]['land_ice_segments']['delta_time'][:],
-            mask=(fileID[gtx]['land_ice_segments']['delta_time'][:]==fv),
-            fill_value=fv)
+        delta_time = fileID[gtx]['land_ice_segments']['delta_time'][:].copy()
         #-- extract lat/lon
-        longitude = np.ma.array(fileID[gtx]['land_ice_segments']['longitude'][:],
-            mask=(fileID[gtx]['land_ice_segments']['longitude'][:]==fv),
-            fill_value=fv)
-        latitude = np.ma.array(fileID[gtx]['land_ice_segments']['latitude'][:],
-            mask=(fileID[gtx]['land_ice_segments']['latitude'][:]==fv),
-            fill_value=fv)
+        longitude = fileID[gtx]['land_ice_segments']['longitude'][:].copy()
+        latitude = fileID[gtx]['land_ice_segments']['latitude'][:].copy()
         #-- convert lat/lon to polar stereographic
         X,Y = transformer.transform(longitude[ind], latitude[ind])
         #-- convert reduced x and y to shapely multipoint object
@@ -307,7 +301,7 @@ def main():
         #-- geolocation, time and segment ID
         #-- delta time
         IS2_atl06_mask[gtx]['land_ice_segments']['delta_time'] = delta_time
-        IS2_atl06_fill[gtx]['land_ice_segments']['delta_time'] = delta_time.fill_value
+        IS2_atl06_fill[gtx]['land_ice_segments']['delta_time'] = None
         IS2_atl06_dims[gtx]['land_ice_segments']['delta_time'] = ['segment_id']
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['delta_time'] = {}
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['delta_time']['units'] = "seconds since 2018-01-01"
@@ -324,7 +318,7 @@ def main():
             "segment_id latitude longitude"
         #-- latitude
         IS2_atl06_mask[gtx]['land_ice_segments']['latitude'] = latitude
-        IS2_atl06_fill[gtx]['land_ice_segments']['latitude'] = latitude.fill_value
+        IS2_atl06_fill[gtx]['land_ice_segments']['latitude'] = None
         IS2_atl06_dims[gtx]['land_ice_segments']['latitude'] = ['segment_id']
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['latitude'] = {}
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['latitude']['units'] = "degrees_north"
@@ -339,7 +333,7 @@ def main():
             "segment_id delta_time longitude"
         #-- longitude
         IS2_atl06_mask[gtx]['land_ice_segments']['longitude'] = longitude
-        IS2_atl06_fill[gtx]['land_ice_segments']['longitude'] = longitude.fill_value
+        IS2_atl06_fill[gtx]['land_ice_segments']['longitude'] = None
         IS2_atl06_dims[gtx]['land_ice_segments']['longitude'] = ['segment_id']
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['longitude'] = {}
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['longitude']['units'] = "degrees_east"
