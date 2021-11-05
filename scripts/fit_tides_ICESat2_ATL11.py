@@ -368,6 +368,7 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         tide_adj_sigma['AT'] = np.ma.zeros((n_points,n_cycles),
             fill_value=tide_ocean['AT'].fill_value)
         tide_adj_sigma['AT'].mask = (tide_ocean['AT'] == tide_ocean['AT'].fill_value)
+        #-- inverse barometer correction
         IB['AT'] = np.ma.array(mds1[ptx]['cycle_stats']['dac'],fill_value=0.0)
         IB['AT'].mask = (IB['AT'] == attr1[ptx]['cycle_stats']['dac']['_FillValue'])
         # ATL11 reference surface elevations (derived from ATL06)
@@ -404,6 +405,7 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         tide_adj_sigma['XT'] = np.ma.zeros((n_cross),
             fill_value=tide_ocean['XT'].fill_value)
         tide_adj_sigma['XT'].mask = (tide_ocean['XT'] == tide_ocean['XT'].fill_value)
+        #-- inverse barometer correction
         IB['XT'] = np.ma.array(mds1[ptx][XT]['dac'],fill_value=0.0)
         IB['XT'].mask = (IB['XT'] == attr1[ptx][XT]['dac']['_FillValue'])
         # find mapping between crossover and along-track reference points
@@ -518,6 +520,8 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
         # nc = len(c)
         # for each ATL11 segment
         for s in range(n_points):
+            #-- indices for crossover points
+            i2 = np.squeeze(ref_indices[s])
             # create mask for valid points
             segment_mask = np.logical_not(h_corr['AT'].mask[s,:])
             # segment_mask &= np.logical_not(IB['AT'].mask[s,:])
@@ -527,9 +531,16 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             segment_mask &= (h_sigma['AT'].data[s,:] < sigma_tolerance)
             segment_mask &= mds1[ptx]['subsetting']['ice_gz'][s]
             if not np.any(segment_mask):
+                # set masks
+                tide_adj['AT'].mask[s,:] = True
+                tide_adj_sigma['AT'].mask[s,:] = True
+                if np.any(i2):
+                    tide_adj['XT'].mask[i2] = True
+                    tide_adj_sigma['XT'].mask[i2] = True
+                # continue to next iteration
                 continue
+            #-- indices for valid points within segment
             i1, = np.nonzero(segment_mask)
-            i2 = np.squeeze(ref_indices[s])
             # height referenced to geoid
             h1 = h_corr['AT'].data[s,i1] - IB['AT'].data[s,i1] - geoid_h[s]
             h2 = np.atleast_1d(h_corr['XT'].data[i2] - IB['XT'].data[i2]) - geoid_h[s]
@@ -597,6 +608,13 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             # check if there are enough unique dates for fit
             u_days = np.unique(np.round(p1)/365.25)
             if (len(u_days) <= 3):
+                # set masks
+                tide_adj['AT'].mask[s,:] = True
+                tide_adj_sigma['AT'].mask[s,:] = True
+                if np.any(i2):
+                    tide_adj['XT'].mask[i2] = True
+                    tide_adj_sigma['XT'].mask[i2] = True
+                # continue to next iteration
                 continue
             n_max,n_terms = np.shape(DMAT)
             # nu = Degrees of Freedom
@@ -613,6 +631,13 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
                 # Multiplying the design matrix by itself
                 Hinv = np.linalg.inv(np.dot(np.transpose(DMAT),DMAT))
             except:
+                # set masks
+                tide_adj['AT'].mask[s,:] = True
+                tide_adj_sigma['AT'].mask[s,:] = True
+                if np.any(i2):
+                    tide_adj['XT'].mask[i2] = True
+                    tide_adj_sigma['XT'].mask[i2] = True
+                # continue to next iteration
                 continue
             else:
                 # cadj,sadj,H,dH = np.copy(results['x'])
