@@ -8,7 +8,7 @@ MPI_reduce_ICESat2_ATL06_grounding_zone.py
 ```bash
 mpiexec -np <processes> python3 MPI_reduce_ICESat2_ATL06_ice_shelves.py <path_to_ATL06_file>
 ```
-[Source code](https://github.com/tsutterley/ICESat-2-Grounding-Zones/blob/main/scripts/MPI_reduce_ICESat2_ATL06_grounding_zone.py)
+[Source code](https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/MPI_reduce_ICESat2_ATL06_grounding_zone.py)
 
 #### Inputs
 1. `ATL06_file`: full path to ATL06 file

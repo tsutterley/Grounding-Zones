@@ -19,15 +19,15 @@ This software is dependent on open source programs that can be installed using O
 Installation
 ############
 Presently the software is only available for use as a
-`GitHub repository <https://github.com/tsutterley/ICESat-2-Grounding-Zones>`_.
+`GitHub repository <https://github.com/tsutterley/Grounding-Zones>`_.
 The contents of the repository can be download as a
-`zipped file <https://github.com/tsutterley/ICESat-2-Grounding-Zones/archive/main.zip>`_  or cloned.
+`zipped file <https://github.com/tsutterley/Grounding-Zones/archive/main.zip>`_  or cloned.
 
 To use this repository, please fork into your own account and then clone onto your system:
 
 .. code-block:: bash
 
-    git clone https://github.com/tsutterley/ICESat-2-Grounding-Zones.git
+    git clone https://github.com/tsutterley/Grounding-Zones.git
 
 Can then install using ``setuptools``:
 
@@ -45,4 +45,4 @@ Alternatively can install the programs directly from GitHub with ``pip``:
 
 .. code-block:: bash
 
-    python3 -m pip install --user git+https://github.com/tsutterley/ICESat-2-Grounding-Zones.git
+    python3 -m pip install --user git+https://github.com/tsutterley/Grounding-Zones.git

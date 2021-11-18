@@ -1,6 +1,6 @@
-========================
-ICESat-2-Grounding-Zones
-========================
+===============
+Grounding-Zones
+===============
 
 |Language|
 |License|
@@ -11,7 +11,7 @@ ICESat-2-Grounding-Zones
 .. |License| image:: https://img.shields.io/badge/license-MIT-green.svg
    :target: https://github.com/tsutterley/read-ICESat-2/blob/main/LICENSE
 
-Python Tools for Estimating Ice Sheet Grounding Zone Locations with ICESat-2
+Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NASA polar altimetry missions
 
 Dependencies
 ############
@@ -41,9 +41,9 @@ Download
 ########
 
 | The program homepage is:
-| https://github.com/tsutterley/ICESat-2-Grounding-Zones
+| https://github.com/tsutterley/Grounding-Zones
 | A zip archive of the latest version is available directly at:
-| https://github.com/tsutterley/ICESat-2-Grounding-Zones/archive/main.zip
+| https://github.com/tsutterley/Grounding-Zones/archive/main.zip
 
 Disclaimer
 ##########
@@ -51,7 +51,7 @@ Disclaimer
 This project contains work and contributions from the `scientific community <./CONTRIBUTORS.rst>`_.
 This package includes software developed at NASA Goddard Space Flight Center (GSFC) and the University of Washington Applied Physics Laboratory (UW-APL).
 It is not sponsored or maintained by the Universities Space Research Association (USRA) or NASA.
-The software is provided here for your convenience but _with no guarantees whatsoever_.
+The software is provided here for your convenience but *with no guarantees whatsoever*.
 
 License
 #######

@@ -10,7 +10,7 @@ calculate_grounding_zone.py
 ```bash
 python3 calculate_grounding_zone.py --model <model> --format <format> --verbose input_file output_file
 ```
-[Source code](https://github.com/tsutterley/ICESat-2-Grounding-Zones/blob/main/scripts/calculate_grounding_zone.py)
+[Source code](https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/calculate_grounding_zone.py)
 
 #### Inputs
  1. `input_file`: name of input file

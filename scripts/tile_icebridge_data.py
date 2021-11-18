@@ -28,20 +28,31 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 11/2021: adjust tiling to index by center coordinates
+        wait if merged HDF5 tile file is unavailable
     Written 10/2021
 """
 import sys
 import os
 import re
 import h5py
+import time
 import pyproj
 import logging
 import argparse
-import datetime
 import collections
 import numpy as np
 import pyTMD.time
 import read_ATM1b_QFIT_binary.read_ATM1b_QFIT_binary as ATM1b
+
+#-- PURPOSE: attempt to open an HDF5 file and wait if already open
+def multiprocess_h5py(filename, *args, **kwargs):
+    while True:
+        try:
+            fileID = h5py.File(filename, *args, **kwargs)
+            break
+        except (IOError, OSError, PermissionError) as e:
+            time.sleep(1)
+    return fileID
 
 #-- PURPOSE: reading the number of file lines removing commented lines
 def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
@@ -409,6 +420,7 @@ def tile_icebridge_data(arg,
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- dictionary of coordinate reference system variables
     cs_to_cf = crs2.cs_to_cf()
+    crs_to_dict = crs2.to_dict()
 
     #-- attributes for each output item
     attributes = collections.OrderedDict()
@@ -459,7 +471,7 @@ def tile_icebridge_data(arg,
     f2.attrs['featureType'] = 'trajectory'
     f2.attrs['GDAL_AREA_OR_POINT'] = 'Point'
     f2.attrs['time_type'] = 'UTC'
-    today = datetime.datetime.now().isoformat()
+    today = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     f2.attrs['date_created'] = today
     #-- create projection variable
     h5 = f2.create_dataset('Polar_Stereographic',(),dtype=np.byte)
@@ -467,6 +479,8 @@ def tile_icebridge_data(arg,
     h5.attrs['standard_name'] = 'Polar_Stereographic'
     h5.attrs['spatial_epsg'] = crs2.to_epsg()
     h5.attrs['spatial_ref'] = crs2.to_wkt()
+    h5.attrs['proj4_params'] = crs2.to_proj4()
+    h5.attrs['latitude_of_projection_origin'] = crs_to_dict['lat_0']
     for att_name,att_val in crs2.to_cf().items():
         h5.attrs[att_name] = att_val
     #-- for each valid tile pair
@@ -487,7 +501,7 @@ def tile_icebridge_data(arg,
             '{0}.h5'.format(tile_group))
         clobber = 'a' if os.access(tile_file,os.F_OK) else 'w'
         #-- open output merged tile file
-        f3 = h5py.File(tile_file,clobber)
+        f3 = multiprocess_h5py(tile_file,clobber)
         g3 = f3.create_group(os.path.basename(input_file))
         #-- add file-level variables and attributes
         if (clobber == 'w'):
@@ -573,7 +587,7 @@ def main():
         help='Permission mode of directories and files')
     args,_ = parser.parse_known_args()
 
-    #-- run program for each product
+    #-- run program for each file
     for arg in args.infile:
         tile_icebridge_data(arg,
             SPACING=args.spacing,

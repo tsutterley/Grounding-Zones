@@ -1,7 +1,7 @@
-ICESat-2-Grounding-Zones
-========================
+Grounding-Zones
+===============
 
-Python Tools for Estimating Ice Sheet Grounding Zone Locations with ICESat-2
+Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NASA polar altimetry missions
 
 .. toctree::
     :maxdepth: 2

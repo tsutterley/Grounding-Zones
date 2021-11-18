@@ -9,7 +9,7 @@ Download and management utilities for syncing time and auxiliary files
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/ICESat-2-Grounding-Zones/blob/main/grounding_zones/utilities.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/grounding_zones/utilities.py
 
 
 General Methods

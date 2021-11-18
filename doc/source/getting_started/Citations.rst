@@ -8,7 +8,8 @@ References
 This work was initially supported by an appointment to the NASA Postdoctoral
 Program (NPP) at NASA Goddard Space Flight Center (GSFC), administered by
 Universities Space Research Association (USRA) under contract with NASA.
-`ICESat-2-Grounding-Zones <https://github.com/tsutterley/ICESat-2-Grounding-Zones>`__ consists of
+It is currently supported under the NASA Cryospheric Sciences Program.
+`Grounding-Zones <https://github.com/tsutterley/Grounding-Zones>`__ consists of
 extension routines for the sets of
 `read-ICESat-2 <https://github.com/tsutterley/read-ICESat-2>`__ and
 `pyTMD <https://github.com/tsutterley/pyTMD>`__ tools.
@@ -21,15 +22,16 @@ Contributors
 Development
 ###########
 
-This is an open source project.
+``Grounding-Zones`` is an open source project.
 We welcome any help in maintaining and developing the software and documentation.
 Anyone at any career stage and with any level of coding experience can contribute.
+Please see the `Contribution Guidelines <./Contributing.html>`_ for more information.
 
 Problem Reports
 ###############
 
 If you have found a problem in this software, or you would like to suggest an improvement or modification,
-please submit a `GitHub issue <https://github.com/tsutterley/ICESat-2-Grounding-Zones/issues>`_ and we will get back to you.
+please submit a `GitHub issue <https://github.com/tsutterley/Grounding-Zones/issues>`_ and we will get back to you.
 
 Dependencies
 ############

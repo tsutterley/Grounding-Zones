@@ -9,7 +9,7 @@ create_GIMP_tile_index.py
 python3 create_GIMP_tile_index.py --user <username> --directory <outgoing> \
 	--release 1.1 --mode 0o775
 ```
-[Source code](https://github.com/tsutterley/ICESat-2-Grounding-Zones/blob/main/scripts/create_GIMP_tile_index.py)
+[Source code](https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/create_GIMP_tile_index.py)
 
 #### Command Line Options
  - `-U X`, `--user X`: username for NASA Earthdata Login

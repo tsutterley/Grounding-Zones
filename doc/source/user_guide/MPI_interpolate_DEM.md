@@ -21,7 +21,7 @@ MPI_interpolate_DEM.py
 mpiexec -np <processes> python3 MPI_interpolate_DEM.py --model <model> \
     --format <format> --verbose input_file output_file
 ```
-[Source code](https://github.com/tsutterley/ICESat-2-Grounding-Zones/blob/main/scripts/MPI_interpolate_DEM.py)
+[Source code](https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/MPI_interpolate_DEM.py)
 
 #### Inputs
  1. `input_file`: name of input file

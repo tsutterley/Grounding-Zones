@@ -12,7 +12,7 @@ calculate_GZ_ICESat2_ATL11.py
 ```bash
 python3 calculate_GZ_ICESat2_ATL11.py --verbose input_file
 ```
-[Source code](https://github.com/tsutterley/ICESat-2-Grounding-Zones/blob/main/scripts/calculate_GZ_ICESat2_ATL11.py)
+[Source code](https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/calculate_GZ_ICESat2_ATL11.py)
 
 #### Inputs
 1. `ATL11_file`: full path to ATL11 file

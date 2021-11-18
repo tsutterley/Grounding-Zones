@@ -9,7 +9,7 @@ nsidc_convert_GIMP_DEM.py
 python3 nsidc_convert_GIMP_DEM.py --user <username> --directory <outgoing> \
 	--release 1.1 --mode 0o775
 ```
-[Source code](https://github.com/tsutterley/ICESat-2-Grounding-Zones/blob/main/scripts/nsidc_convert_GIMP_DEM.py)
+[Source code](https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/nsidc_convert_GIMP_DEM.py)
 
 #### Command Line Options
  - `-U X`, `--user X`: username for NASA Earthdata Login

@@ -26,16 +26,17 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 11/2021: adjust tiling to index by center coordinates
+        wait if merged HDF5 tile file is unavailable
     Written 10/2021
 """
 import sys
 import os
 import re
 import h5py
+import time
 import pyproj
 import logging
 import argparse
-import datetime
 import collections
 import numpy as np
 from icesat2_toolkit.read_ICESat2_ATL06 import read_HDF5_ATL06
@@ -48,6 +49,16 @@ def set_hemisphere(GRANULE):
         return 'N'
     else:
         raise Exception('Non-polar granule')
+
+#-- PURPOSE: attempt to open an HDF5 file and wait if already open
+def multiprocess_h5py(filename, *args, **kwargs):
+    while True:
+        try:
+            fileID = h5py.File(filename, *args, **kwargs)
+            break
+        except (IOError, OSError, PermissionError) as e:
+            time.sleep(1)
+    return fileID
 
 #-- PURPOSE: create tile index files of ICESat-2 elevation data
 def tile_ICESat2_ATL06(FILE,
@@ -74,8 +85,8 @@ def tile_ICESat2_ATL06(FILE,
     index_directory = 'north' if (HEM == 'N') else 'south'
     #-- output directory and index file
     DIRECTORY = os.path.dirname(FILE)
-    output_file = os.path.join(DIRECTORY, index_directory,
-        os.path.basename(FILE))
+    BASENAME = os.path.basename(FILE)
+    output_file = os.path.join(DIRECTORY, index_directory, BASENAME)
 
     #-- pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413,S=3031)
@@ -84,6 +95,7 @@ def tile_ICESat2_ATL06(FILE,
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- dictionary of coordinate reference system variables
     cs_to_cf = crs2.cs_to_cf()
+    crs_to_dict = crs2.to_dict()
 
     #-- attributes for each output item
     attributes = dict(x={},y={},index={})
@@ -111,7 +123,7 @@ def tile_ICESat2_ATL06(FILE,
     f2.attrs['featureType'] = 'trajectory'
     f2.attrs['GDAL_AREA_OR_POINT'] = 'Point'
     f2.attrs['time_type'] = 'GPS'
-    today = datetime.datetime.now().isoformat()
+    today = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     f2.attrs['date_created'] = today
     #-- create projection variable
     h5 = f2.create_dataset('Polar_Stereographic',(),dtype=np.byte)
@@ -119,6 +131,8 @@ def tile_ICESat2_ATL06(FILE,
     h5.attrs['standard_name'] = 'Polar_Stereographic'
     h5.attrs['spatial_epsg'] = crs2.to_epsg()
     h5.attrs['spatial_ref'] = crs2.to_wkt()
+    h5.attrs['proj4_params'] = crs2.to_proj4()
+    h5.attrs['latitude_of_projection_origin'] = crs_to_dict['lat_0']
     for att_name,att_val in crs2.to_cf().items():
         h5.attrs[att_name] = att_val
 
@@ -138,7 +152,7 @@ def tile_ICESat2_ATL06(FILE,
         for key in ['delta_time','segment_id']:
             for att_name in ('DIMENSION_LIST','CLASS','NAME'):
                 IS2_atl06_attrs[gtx]['land_ice_segments'][key].pop(att_name,None)
-            attributes[key] =  IS2_atl06_attrs[gtx]['land_ice_segments'][key]
+            attributes[key] = IS2_atl06_attrs[gtx]['land_ice_segments'][key]
         #-- for each valid tile pair
         for xp,yp in set(zip(xtile,ytile)):
             #-- center of each tile (adjust due to integer truncation)
@@ -160,12 +174,12 @@ def tile_ICESat2_ATL06(FILE,
                 '{0}.h5'.format(tile_group))
             clobber = 'a' if os.access(tile_file,os.F_OK) else 'w'
             #-- open output merged tile file
-            f3 = h5py.File(tile_file,clobber)
+            f3 = multiprocess_h5py(tile_file,clobber)
             #-- create group for file
-            if os.path.basename(FILE) not in f3:
-                g3 = f3.create_group(os.path.basename(FILE))
+            if BASENAME not in f3:
+                g3 = f3.create_group(BASENAME)
             else:
-                g3 = f3[os.path.basename(FILE)]
+                g3 = f3[BASENAME]
             #-- add file-level variables and attributes
             if (clobber == 'w'):
                 #-- create projection variable
@@ -198,7 +212,7 @@ def tile_ICESat2_ATL06(FILE,
 
             #-- create group for beam
             g2 = f2.create_group('{0}/{1}'.format(tile_group,gtx))
-            g4 = f3.create_group('{0}/{1}'.format(os.path.basename(FILE),gtx))
+            g4 = f3.create_group('{0}/{1}'.format(BASENAME,gtx))
             #-- for each group
             for g in [g2,g4]:
                 #-- add attributes for ATL06 beam
@@ -254,7 +268,7 @@ def main():
         help='Permission mode of directories and files')
     args,_ = parser.parse_known_args()
 
-    #-- run program for each product
+    #-- run program for each file
     for FILE in args.infile:
         tile_ICESat2_ATL06(FILE,
             SPACING=args.spacing,

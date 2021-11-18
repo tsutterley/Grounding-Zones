@@ -8,7 +8,7 @@ pgc_rema_sync.py
 python3 pgc_rema_sync.py --directory <outgoing> --version v1.1 \
     --resolution 8m --mode 0o775
 ```
-[Source code](https://github.com/tsutterley/ICESat-2-Grounding-Zones/blob/main/scripts/pgc_rema_sync.py)
+[Source code](https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/pgc_rema_sync.py)
 
 #### Command Line Options
  - `-D X`, `--directory`: working data directory

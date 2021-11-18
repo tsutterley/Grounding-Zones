@@ -63,7 +63,7 @@ setup(
     description=description,
     long_description=long_description,
     long_description_content_type=long_description_content_type,
-    url='https://github.com/tsutterley/ICESat-2-Grounding-Zones',
+    url='https://github.com/tsutterley/Grounding-Zones',
     author='Tyler Sutterley',
     author_email='tsutterl@uw.edu',
     license='MIT',

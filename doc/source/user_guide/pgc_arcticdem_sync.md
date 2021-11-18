@@ -8,7 +8,7 @@ pgc_arcticdem_sync.py
 python3 pgc_arcticdem_sync.py --directory <outgoing> --version v3.0 \
     --resolution 2m --mode 0o775
 ```
-[Source code](https://github.com/tsutterley/ICESat-2-Grounding-Zones/blob/main/scripts/pgc_arcticdem_sync.py)
+[Source code](https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/pgc_arcticdem_sync.py)
 
 #### Command Line Options
  - `-D X`, `--directory`: working data directory

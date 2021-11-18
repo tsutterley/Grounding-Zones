@@ -18,7 +18,7 @@ check_DEM_ICESat2_ATL06.py
 ```bash
 python3 check_DEM_ICESat2_ATL06.py <path_to_ATL06_file>
 ```
-[Source code](https://github.com/tsutterley/ICESat-2-Grounding-Zones/blob/main/scripts/check_DEM_ICESat2_ATL06.py)
+[Source code](https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/check_DEM_ICESat2_ATL06.py)
 
 #### Inputs
 1. `ATL06_file`: full path to ATL06 file

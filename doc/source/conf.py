@@ -18,7 +18,7 @@ import datetime
 
 # -- Project information -----------------------------------------------------
 
-project = 'ICESat-2-Grounding-Zones'
+project = 'Grounding-Zones'
 year = datetime.date.today().year
 copyright = f"2018\u2013{year}, Tyler C. Sutterley"
 author = 'Tyler C. Sutterley and Kelly M. Brunt'
@@ -56,8 +56,8 @@ autosummary_generate = True
 
 # -- Options for HTML output -------------------------------------------------
 
-# html_title = "ICESat-2-Grounding-Zones"
-html_short_title = "ICESat-2-Grounding-Zones"
+# html_title = "Grounding-Zones"
+html_short_title = "Grounding-Zones"
 html_show_sourcelink = False
 html_show_sphinx = True
 html_show_copyright = True
@@ -72,7 +72,7 @@ html_theme_options = {}
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-repository_url = f"https://github.com/tsutterley/ICESat-2-Grounding-Zones"
+repository_url = f"https://github.com/tsutterley/Grounding-Zones"
 html_context = {
     "menu_links": [
         (
