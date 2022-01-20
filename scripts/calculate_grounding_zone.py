@@ -93,7 +93,7 @@ grounded_reference['S'] = 'https://doi.org/10.5067/IKBWW4RYHF1Q'
 def file_length(input_file):
     #-- read the input file, split at lines and remove all commented lines
     with open(input_file,'r') as f:
-        i = [i for i in f.read().splitlines() if re.match('^(?!#)',i)]
+        i = [i for i in f.readlines() if re.match(r'^(?!\#|\n)',i)]
     #-- return the number of lines
     return len(i)
 

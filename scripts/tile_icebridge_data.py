@@ -69,7 +69,7 @@ def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
     else:
         #-- read the input file, split at lines and remove all commented lines
         with open(input_file,'r') as f:
-            i = [i for i in f.read().splitlines() if re.match(r'^(?!\#)',i)]
+            i = [i for i in f.readlines() if re.match(r'^(?!\#|\n)',i)]
         file_lines = len(i)
     #-- return the number of lines
     return file_lines
@@ -99,7 +99,7 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         #-- read the input file, split at lines and remove all commented lines
         with open(input_file,'r') as f:
             file_contents = [i for i in f.read().splitlines() if
-                re.match(r'^(?!\#)',i)]
+                re.match(r'^(?!\#|\n)',i)]
         #-- number of lines of data within file
         file_lines = file_length(input_file,input_subsetter)
         #-- create output variables with length equal to the number of lines
@@ -209,7 +209,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     #-- read the input file, split at lines and remove all commented lines
     with open(input_file,'r') as f:
         file_contents = [i for i in f.read().splitlines() if
-            re.match(r'^(?!\#)',i)]
+            re.match(r'^(?!\#|\n)',i)]
     #-- number of lines of data within file
     file_lines = file_length(input_file,input_subsetter)
     #-- output python dictionary with variables
