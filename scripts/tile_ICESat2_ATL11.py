@@ -151,7 +151,7 @@ def tile_ICESat2_ATL11(FILE,
         #-- large-scale tiles
         xtile = (x-0.5*SPACING)//SPACING
         ytile = (y-0.5*SPACING)//SPACING
-        #-- allocate for output geoid undulation
+        #-- find valid latitudes
         valid, = np.nonzero(latitude.data != latitude.fill_value)
         #-- add ref_pt attributes
         for key in ['ref_pt']:

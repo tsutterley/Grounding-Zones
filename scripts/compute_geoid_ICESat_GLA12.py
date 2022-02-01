@@ -170,6 +170,8 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
         'identifier_product_doi_authority']
     for att in global_attribute_list:
         IS_gla12_geoid_attrs[att] = fileID.attrs[att]
+    #-- copy ICESat campaign name from ancillary data
+    IS_gla12_geoid_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     #-- add attributes for input GLA12 file
     IS_gla12_geoid_attrs['input_files'] = os.path.basename(INPUT_FILE)
