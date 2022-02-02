@@ -5,6 +5,9 @@ Written by Tyler Sutterley (10/2021)
 Computes geoid undulations for correcting ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
+INPUTS:
+    input_file: ICESat GLA12 data file
+
 COMMAND LINE OPTIONS:
     -G X, --gravity X: Gravity model file to use (.gfc format)
     -l X, --lmax X: maximum spherical harmonic degree (level of truncation)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_ICESat_GLA12.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (02/2022)
 Creates tile index files of ICESat/GLAS L2 GLA12 Antarctic and
     Greenland Ice Sheet elevation data
 
