@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 check_DEM_ICESat2_ATL06.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (05/2022)
 Determines which digital elevation model tiles to read for a given ATL06 file
 
 ArcticDEM 2m digital elevation model tiles
@@ -43,6 +43,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 01/2021: using argparse to set command line options
         using standalone ATL06 reader to get geolocations
     Written 09/2019
@@ -319,9 +320,8 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
     #-- sort and condense list
     print(','.join(sorted(set(all_tiles))))
 
-#-- PURPOSE: sets the parameters for running check_DEM_ICESat2_ATL06()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Determines which digital elevation model tiles
             to read for a given ICESat-2 ATL06 file
@@ -341,6 +341,13 @@ def main():
     parser.add_argument('--model','-m',
         metavar='DEM', type=str, choices=('REMA', 'ArcticDEM', 'GIMP'),
         help='Digital Elevation Model to run')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run program with parameters for each file

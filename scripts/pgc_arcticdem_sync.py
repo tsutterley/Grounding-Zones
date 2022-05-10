@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 pgc_arcticdem_sync.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (05/2022)
 
 Syncs ArcticDEM tar files from the Polar Geospatial Center (PGC)
     http://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/mosaic
@@ -44,6 +44,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 01/2021: using utilities modules to list from server
         using argparse to set command line options
     Updated 10/2019: added ssl context to urlopen instances
@@ -185,9 +186,8 @@ def http_pull_file(fid,remote_file,remote_mtime,local_file,LIST,CLOBBER,MODE):
             os.utime(local_file, (os.stat(local_file).st_atime, remote_mtime))
             os.chmod(local_file, MODE)
 
-#-- Main program that calls pgc_arcticdem_sync()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Sync ArcticDEM tar files from the Polar
             Geospatial Center (PGC)
@@ -227,6 +227,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files synced')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- check internet connection before attempting to run program

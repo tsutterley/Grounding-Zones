@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_interpolate_DEM.py
-Written by Tyler Sutterley (02/2021)
+Written by Tyler Sutterley (05/2022)
 Determines which digital elevation model tiles for an input file
 Reads 3x3 array of tiles for points within bounding box of central mosaic tile
 Interpolates digital elevation model to coordinates
@@ -85,6 +85,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 02/2021: replaced numpy bool/int to prevent deprecation warnings
     Updated 01/2021: use argparse to set command line options
         use pyTMD spatial module for reading and writing data
@@ -128,6 +129,66 @@ def info(rank, size):
     if hasattr(os, 'getppid'):
         print('parent process: {0:d}'.format(os.getppid()))
     print('process id: {0:d}'.format(os.getpid()))
+
+#-- PURPOSE: create argument parser
+def arguments():
+    parser = argparse.ArgumentParser(
+        description="""Interpolate DEMs to the coordinates of
+            an input file
+            """
+    )
+    #-- command line parameters
+    #-- input and output file
+    parser.add_argument('infile',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='?',
+        help='Input file')
+    parser.add_argument('outfile',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='?',
+        help='Output file')
+    #-- working data directory for shapefiles
+    parser.add_argument('--directory','-D',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.getcwd(),
+        help='Working data directory')
+    #-- Digital elevation model (REMA, ArcticDEM, GIMP) to run
+    #-- set the DEM model to run for a given granule (else set automatically)
+    parser.add_argument('--model','-m',
+        metavar='DEM', type=str, choices=('REMA', 'ArcticDEM', 'GIMP'),
+        help='Digital Elevation Model to run')
+    #-- input and output data format
+    parser.add_argument('--format','-F',
+        type=str, default='csv', choices=('csv','netCDF4','HDF5','geotiff'),
+        help='Input and output data format')
+    #-- variable names (for csv names of columns)
+    parser.add_argument('--variables','-v',
+        type=str, nargs='+', default=['time','lat','lon','data'],
+        help='Variable names of data in input file')
+    #-- number of header lines for csv files
+    parser.add_argument('--header','-H',
+        type=int, default=0,
+        help='Number of header lines for csv files')
+    #-- input data type
+    #-- drift: drift buoys or satellite/airborne altimetry (time per data point)
+    #-- grid: spatial grids or images (single time for all data points)
+    parser.add_argument('--type','-t',
+        type=str, default='drift',
+        choices=('drift','grid'),
+        help='Input data type')
+    #-- spatial projection (EPSG code or PROJ4 string)
+    parser.add_argument('--projection','-P',
+        type=str, default='4326',
+        help='Spatial projection as EPSG code or PROJ4 string')
+    #-- verbose output of processing run
+    #-- print information about each input and output file
+    parser.add_argument('--verbose','-V',
+        default=False, action='store_true',
+        help='Verbose output of run')
+    #-- permissions mode of the local files (number in octal)
+    parser.add_argument('--mode','-M',
+        type=lambda x: int(x,base=8), default=0o775,
+        help='Permission mode of output file')
+    #-- return the parser
+    return parser
 
 #-- PURPOSE: read zip file containing index shapefiles for finding DEM tiles
 def read_DEM_index(index_file, DEM_MODEL):
@@ -322,61 +383,7 @@ def main():
     comm = MPI.COMM_WORLD
 
     #-- Read the system arguments listed after the program
-    parser = argparse.ArgumentParser(
-        description="""Interpolate DEMs to the coordinates of
-            an input file
-            """
-    )
-    #-- command line parameters
-    #-- input and output file
-    parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='?',
-        help='Input file')
-    parser.add_argument('outfile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='?',
-        help='Output file')
-    #-- working data directory for shapefiles
-    parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
-        help='Working data directory')
-    #-- Digital elevation model (REMA, ArcticDEM, GIMP) to run
-    #-- set the DEM model to run for a given granule (else set automatically)
-    parser.add_argument('--model','-m',
-        metavar='DEM', type=str, choices=('REMA', 'ArcticDEM', 'GIMP'),
-        help='Digital Elevation Model to run')
-    #-- input and output data format
-    parser.add_argument('--format','-F',
-        type=str, default='csv', choices=('csv','netCDF4','HDF5','geotiff'),
-        help='Input and output data format')
-    #-- variable names (for csv names of columns)
-    parser.add_argument('--variables','-v',
-        type=str, nargs='+', default=['time','lat','lon','data'],
-        help='Variable names of data in input file')
-    #-- number of header lines for csv files
-    parser.add_argument('--header','-H',
-        type=int, default=0,
-        help='Number of header lines for csv files')
-    #-- input data type
-    #-- drift: drift buoys or satellite/airborne altimetry (time per data point)
-    #-- grid: spatial grids or images (single time for all data points)
-    parser.add_argument('--type','-t',
-        type=str, default='drift',
-        choices=('drift','grid'),
-        help='Input data type')
-    #-- spatial projection (EPSG code or PROJ4 string)
-    parser.add_argument('--projection','-P',
-        type=str, default='4326',
-        help='Spatial projection as EPSG code or PROJ4 string')
-    #-- verbose output of processing run
-    #-- print information about each input and output file
-    parser.add_argument('--verbose','-V',
-        default=False, action='store_true',
-        help='Verbose output of run')
-    #-- permissions mode of the local files (number in octal)
-    parser.add_argument('--mode','-M',
-        type=lambda x: int(x,base=8), default=0o775,
-        help='Permission mode of output file')
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- set output file from input filename if not entered

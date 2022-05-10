@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL11_grounding_zone.py
-Written by Tyler Sutterley (02/2021)
+Written by Tyler Sutterley (05/2022)
 
 Create masks for reducing ICESat-2 annual land ice height data to within
     a buffer region near the ice sheet grounding zone
@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 02/2021: replaced numpy bool/int to prevent deprecation warnings
     Updated 01/2021: time utilities for converting times from JD and to decimal
     Written 12/2020
@@ -83,6 +84,39 @@ def info(rank, size):
         print('parent process: {0:d}'.format(os.getppid()))
     print('process id: {0:d}'.format(os.getpid()))
 
+#-- PURPOSE: create argument parser
+def arguments():
+    parser = argparse.ArgumentParser(
+        description="""Create masks for reducing ICESat-2 annual
+            land ice height data to within a buffer region near
+            the ice sheet grounding zone
+            """
+    )
+    #-- command line parameters
+    parser.add_argument('file',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        help='ICESat-2 ATL11 file to run')
+    #-- working data directory for shapefiles
+    parser.add_argument('--directory','-D',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=get_data_path('data'),
+        help='Working data directory')
+    #-- buffer in kilometers for extracting grounding zone
+    parser.add_argument('--buffer','-B',
+        type=float, default=20.0,
+        help='Distance in kilometers to buffer grounding zone')
+    #-- verbosity settings
+    #-- verbose will output information about each output file
+    parser.add_argument('--verbose','-V',
+        default=False, action='store_true',
+        help='Verbose output of run')
+    #-- permissions mode of the local files (number in octal)
+    parser.add_argument('--mode','-M',
+        type=lambda x: int(x,base=8), default=0o775,
+        help='permissions mode of output files')
+    #-- return the parser
+    return parser
+
 #-- PURPOSE: set the hemisphere of interest based on the granule
 def set_hemisphere(GRANULE):
     if GRANULE in ('10','11','12'):
@@ -121,40 +155,14 @@ def load_grounding_zone(base_dir, HEM, BUFFER):
     #-- return the polygon object for the ice sheet
     return (mpoly_obj,buffered_shapefile,epsg)
 
-#-- PURPOSE: read ICESat-2 data and reduce to within buffer of grounding zone
+#-- PURPOSE: read ICESat-2 annual land ice height data (ATL11)
+#-- reduce data to within buffer of grounding zone
 def main():
     #-- start MPI communicator
     comm = MPI.COMM_WORLD
 
     #-- Read the system arguments listed after the program
-    parser = argparse.ArgumentParser(
-        description="""Create masks for reducing ICESat-2 annual
-            land ice height data to within a buffer region near
-            the ice sheet grounding zone
-            """
-    )
-    #-- command line parameters
-    parser.add_argument('file',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        help='ICESat-2 ATL11 file to run')
-    #-- working data directory for shapefiles
-    parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=get_data_path('data'),
-        help='Working data directory')
-    #-- buffer in kilometers for extracting grounding zone
-    parser.add_argument('--buffer','-B',
-        type=float, default=20.0,
-        help='Distance in kilometers to buffer grounding zone')
-    #-- verbosity settings
-    #-- verbose will output information about each output file
-    parser.add_argument('--verbose','-V',
-        default=False, action='store_true',
-        help='Verbose output of run')
-    #-- permissions mode of the local files (number in octal)
-    parser.add_argument('--mode','-M',
-        type=lambda x: int(x,base=8), default=0o775,
-        help='permissions mode of output files')
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- output module information for process

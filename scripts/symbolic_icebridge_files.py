@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 symbolic_icebridge_files.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (05/2022)
 Creates symbolic links for Operation IceBridge files organized by date
 
 CALLING SEQUENCE:
@@ -18,6 +18,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: permission mode of directories
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
     Updated 10/2020: using argparse to set command line parameters
     Written 07/2019
@@ -31,9 +32,8 @@ import logging
 import argparse
 import numpy as np
 
-#-- Main program that calls symbolic_icebridge_files()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Creates symbolic links for Operation IceBridge
             files to a separate directory organized by date
@@ -63,6 +63,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='permissions mode of output directories')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- create logger

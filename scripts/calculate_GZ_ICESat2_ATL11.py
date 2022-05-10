@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (03/2021)
+Written by Tyler Sutterley (05/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -64,6 +64,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 03/2021: output HDF5 file of flexure scaled by a tide model
         estimate flexure for crossovers using along-track model outputs
         final extent of the flexure AT is the estimated grounding line
@@ -1360,8 +1361,8 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     # Closing the HDF5 file
     fileID.close()
 
-# Main program that calls calculate_GZ_ICESat2()
-def main():
+# PURPOSE: create arguments parser
+def arguments():
     # Read the system arguments listed after the program
     parser = argparse.ArgumentParser(
         description="""Calculates ice sheet grounding zones with ICESat-2
@@ -1409,6 +1410,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files created')
+    # return the parser
+    return parser
+
+# This is the main part of the program that calls the individual functions
+def main():
+    # Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     # run for each input ATL11 file

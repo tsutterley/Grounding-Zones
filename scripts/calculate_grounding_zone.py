@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_grounding_zone.py
-Written by Tyler Sutterley (01/2021)
+Written by Tyler Sutterley (05/2022)
 Calculates ice sheet grounding zones following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 01/2021: using argparse to set command line options
         use pyTMD spatial module for reading and writing data
     Updated 09/2019: using date functions paralleling public repository
@@ -426,9 +427,8 @@ def calculate_grounding_zone(base_dir, input_file, output_file,
             plt.axvline(GZI)
     plt.show()
 
-#-- Main program that calls calculate_grounding_zone()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Calculates ice sheet grounding zones
             """
@@ -476,6 +476,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of output file')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- set output file from input filename if not entered

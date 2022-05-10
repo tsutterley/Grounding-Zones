@@ -17,17 +17,35 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     :hidden:
     :caption: User Guide
 
-    user_guide/calculate_grounding_zone.md
-    user_guide/calculate_GZ_ICESat2_ATL03.md
-    user_guide/calculate_GZ_ICESat2_ATL06.md
-    user_guide/calculate_GZ_ICESat2_ATL11.md
-    user_guide/check_DEM_ICESat2_ATL06.md
-    user_guide/create_GIMP_tile_index.md
-    user_guide/MPI_interpolate_DEM.md
-    user_guide/MPI_reduce_ICESat2_ATL03_grounding_zone.md
-    user_guide/MPI_reduce_ICESat2_ATL06_grounding_zone.md
-    user_guide/MPI_reduce_ICESat2_ATL11_grounding_zone.md
-    user_guide/nsidc_convert_GIMP_DEM.md
-    user_guide/pgc_arcticdem_sync.md
-    user_guide/pgc_rema_sync.md
+    user_guide/calculate_grounding_zone.rst
+    user_guide/calculate_GZ_ICESat2_ATL03.rst
+    user_guide/calculate_GZ_ICESat2_ATL06.rst
+    user_guide/calculate_GZ_ICESat2_ATL11.rst
+    user_guide/check_DEM_ICESat2_ATL06.rst
+    user_guide/compute_geoid_icebridge_data.rst
+    user_guide/compute_geoid_ICESat_GLA12.rst
+    user_guide/compute_geoid_ICESat2_ATL03.rst
+    user_guide/compute_geoid_ICESat2_ATL06.rst
+    user_guide/compute_geoid_ICESat2_ATL07.rst
+    user_guide/compute_geoid_ICESat2_ATL10.rst
+    user_guide/compute_geoid_ICESat2_ATL11.rst
+    user_guide/compute_geoid_ICESat2_ATL12.rst
+    user_guide/create_GIMP_tile_index.rst
+    user_guide/filter_ICESat_GLA12.rst
+    user_guide/fit_tides_ICESat2_ATL11.rst
+    user_guide/model_grounding_zone.rst
+    user_guide/MPI_interpolate_DEM.rst
+    user_guide/MPI_reduce_ICESat2_ATL03_grounding_zone.rst
+    user_guide/MPI_reduce_ICESat2_ATL06_grounding_zone.rst
+    user_guide/MPI_reduce_ICESat2_ATL11_grounding_zone.rst
+    user_guide/nsidc_convert_GIMP_DEM.rst
+    user_guide/pgc_arcticdem_sync.rst
+    user_guide/pgc_rema_sync.rst
+    user_guide/symbolic_icebridge_files.rst
+    user_guide/symbolic_ICESat_GLA12.rst
+    user_guide/tile_icebridge_data.rst
+    user_guide/tile_ICESat_GLA12.rst
+    user_guide/tile_ICESat2_ATL06.rst
+    user_guide/tile_ICESat2_ATL11.rst
     user_guide/utilities.rst
+

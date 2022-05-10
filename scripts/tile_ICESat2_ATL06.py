@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_ICESat2_ATL06.py
-Written by Tyler Sutterley (11/2021)
+Written by Tyler Sutterley (05/2022)
 Creates tile index files of ICESat-2 land ice elevation data
 
 COMMAND LINE OPTIONS:
@@ -25,6 +25,7 @@ PROGRAM DEPENDENCIES:
     read_ICESat2_ATL06.py: reads ICESat-2 land ice along-track height data files
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 11/2021: adjust tiling to index by center coordinates
         wait if merged HDF5 tile file is unavailable
     Written 10/2021
@@ -241,9 +242,8 @@ def tile_ICESat2_ATL06(FILE,
     #-- change the permissions mode of the output file
     os.chmod(output_file, mode=MODE)
 
-#-- Main program that calls tile_ICESat2_ATL06()
-def main():
-   #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Creates tile index files of ICESat-2 ATL06
             land ice elevation data
@@ -266,6 +266,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run program for each file

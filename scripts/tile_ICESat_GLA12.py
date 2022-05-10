@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_ICESat_GLA12.py
-Written by Tyler Sutterley (02/2022)
+Written by Tyler Sutterley (05/2022)
 Creates tile index files of ICESat/GLAS L2 GLA12 Antarctic and
     Greenland Ice Sheet elevation data
 
@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
     spatial: utilities for reading, writing and operating on spatial data
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Written 02/2022
 """
 import sys
@@ -265,9 +266,8 @@ def tile_ICESat_GLA12(input_file,
     #-- change the permissions mode of the output file
     os.chmod(output_file, mode=MODE)
 
-#-- Main program that calls tile_ICESat_GLA12()
-def main():
-   #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Creates tile index files of ICESat/GLAS L2 GLA12
             Antarctic and Greenland Ice Sheet elevation data
@@ -294,6 +294,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run program for each file

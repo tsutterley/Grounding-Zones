@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2021)
+Written by Tyler Sutterley (05/2022)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -49,6 +49,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 07/2021: add checks for data and fit quality
     Written 04/2021
 """
@@ -1133,12 +1134,11 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     # Closing the HDF5 file
     fileID.close()
 
-# Main program that calls fit_tides_ICESat2()
-def main():
-    # Read the system arguments listed after the program
+# PURPOSE: create arguments parser
+def arguments():
     parser = argparse.ArgumentParser(
-        description="""Calculates ice sheet grounding zones with ICESat-2
-            ATL11 annual land ice height data
+        description="""Fits tidal amplitudes to ICESat-2 data in
+            ice sheet grounding zones
             """
     )
     # command line parameters
@@ -1179,6 +1179,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files created')
+    # return the parser
+    return parser
+
+# This is the main part of the program that calls the individual functions
+def main():
+    # Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     # run for each input ATL11 file

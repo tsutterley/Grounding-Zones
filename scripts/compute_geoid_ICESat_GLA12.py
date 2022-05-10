@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_ICESat_GLA12.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (05/2022)
 Computes geoid undulations for correcting ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     gauss_weights.py: Computes Gaussian weights as a function of degree
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
         additionally output conversion between tide free and mean tide values
     Updated 07/2021: can use prefix files to define command line arguments
@@ -349,9 +350,8 @@ def HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_attrs,
     #-- Closing the HDF5 file
     fileID.close()
 
-#-- Main program that calls compute_geoid_ICESat()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Calculates geoid undunations for correcting ICESat/GLAS
             L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
@@ -385,6 +385,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files created')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run for each input GLA12 file
