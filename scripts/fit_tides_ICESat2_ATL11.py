@@ -50,6 +50,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2022: use argparse descriptions within documentation
+        use tide model class to get available models and references
     Updated 07/2021: add checks for data and fit quality
     Written 04/2021
 """
@@ -65,16 +66,8 @@ import numpy as np
 import collections
 import scipy.stats
 import scipy.optimize
+import pyTMD.model
 import icesat2_toolkit.time
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.read_tide_model import extract_tidal_constants
-from pyTMD.read_netcdf_model import extract_netcdf_constants
-from pyTMD.read_GOT_model import extract_GOT_constants
-from pyTMD.read_FES_model import extract_FES_constants
-from pyTMD.load_constituent import load_constituent
-from pyTMD.load_nodal_corrections import load_nodal_corrections
-from pyTMD.infer_minor_corrections import infer_minor_corrections
 from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11, \
     read_HDF5_ATL11_pair
 
@@ -89,8 +82,15 @@ def common_reference_points(XT, AT):
 # calculate inflexion point using elevation surface slopes
 # use mean elevation to calculate elevation anomalies
 # use anomalies to calculate inward and seaward limits of tidal flexure
-def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
-    METHOD='spline', VERBOSE=False, MODE=0o775):
+def fit_tides_ICESat2(tide_dir, FILE,
+    TIDE_MODEL=None,
+    REANALYSIS=None,
+    VERBOSE=False,
+    MODE=0o775):
+
+    # get tide model parameters
+    model = pyTMD.model(tide_dir, verify=False).elevation(TIDE_MODEL)
+
     # print file information
     print(os.path.basename(FILE)) if VERBOSE else None
     # read data from FILE
@@ -110,183 +110,9 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
     sigma_tolerance = 0.5
     output_tolerance = 0.5
 
-    # select between tide models
-    if (TIDE_MODEL == 'CATS0201'):
-        grid_file = os.path.join(tide_dir,'cats0201_tmd','grid_CATS')
-        model_file = os.path.join(tide_dir,'cats0201_tmd','h0_CATS02_01')
-        tide_reference = 'https://mail.esr.org/polar_tide_models/Model_CATS0201.html'
-        model_format = 'OTIS'
-        EPSG = '4326'
-        TYPE = 'z'
-    elif (TIDE_MODEL == 'CATS2008'):
-        grid_file = os.path.join(tide_dir,'CATS2008','grid_CATS2008')
-        model_file = os.path.join(tide_dir,'CATS2008','hf.CATS2008.out')
-        tide_reference = ('https://www.esr.org/research/polar-tide-models/'
-            'list-of-polar-tide-models/cats2008/')
-        model_format = 'OTIS'
-        EPSG = 'CATS2008'
-        TYPE = 'z'
-    elif (TIDE_MODEL == 'TPXO9-atlas'):
-        model_directory = os.path.join(tide_dir,'TPXO9_atlas')
-        grid_file = os.path.join(model_directory,'grid_tpxo9_atlas.nc.gz')
-        model_files = ['h_q1_tpxo9_atlas_30.nc.gz','h_o1_tpxo9_atlas_30.nc.gz',
-            'h_p1_tpxo9_atlas_30.nc.gz','h_k1_tpxo9_atlas_30.nc.gz',
-            'h_n2_tpxo9_atlas_30.nc.gz','h_m2_tpxo9_atlas_30.nc.gz',
-            'h_s2_tpxo9_atlas_30.nc.gz','h_k2_tpxo9_atlas_30.nc.gz',
-            'h_m4_tpxo9_atlas_30.nc.gz','h_ms4_tpxo9_atlas_30.nc.gz',
-            'h_mn4_tpxo9_atlas_30.nc.gz','h_2n2_tpxo9_atlas_30.nc.gz']
-        model_file = [os.path.join(model_directory,m) for m in model_files]
-        tide_reference = 'http://volkov.oce.orst.edu/tides/tpxo9_atlas.html'
-        model_format = 'netcdf'
-        TYPE = 'z'
-        SCALE = 1.0/1000.0
-        GZIP = True
-    elif (TIDE_MODEL == 'TPXO9-atlas-v2'):
-        model_directory = os.path.join(tide_dir,'TPXO9_atlas_v2')
-        grid_file = os.path.join(model_directory,'grid_tpxo9_atlas_30_v2.nc.gz')
-        model_files = ['h_q1_tpxo9_atlas_30_v2.nc.gz','h_o1_tpxo9_atlas_30_v2.nc.gz',
-            'h_p1_tpxo9_atlas_30_v2.nc.gz','h_k1_tpxo9_atlas_30_v2.nc.gz',
-            'h_n2_tpxo9_atlas_30_v2.nc.gz','h_m2_tpxo9_atlas_30_v2.nc.gz',
-            'h_s2_tpxo9_atlas_30_v2.nc.gz','h_k2_tpxo9_atlas_30_v2.nc.gz',
-            'h_m4_tpxo9_atlas_30_v2.nc.gz','h_ms4_tpxo9_atlas_30_v2.nc.gz',
-            'h_mn4_tpxo9_atlas_30_v2.nc.gz','h_2n2_tpxo9_atlas_30_v2.nc.gz']
-        model_file = [os.path.join(model_directory,m) for m in model_files]
-        tide_reference = 'https://www.tpxo.net/global/tpxo9-atlas'
-        model_format = 'netcdf'
-        TYPE = 'z'
-        SCALE = 1.0/1000.0
-        GZIP = True
-    elif (TIDE_MODEL == 'TPXO9-atlas-v3'):
-        model_directory = os.path.join(tide_dir,'TPXO9_atlas_v3')
-        grid_file = os.path.join(model_directory,'grid_tpxo9_atlas_30_v3.nc.gz')
-        model_files = ['h_q1_tpxo9_atlas_30_v3.nc.gz','h_o1_tpxo9_atlas_30_v3.nc.gz',
-            'h_p1_tpxo9_atlas_30_v3.nc.gz','h_k1_tpxo9_atlas_30_v3.nc.gz',
-            'h_n2_tpxo9_atlas_30_v3.nc.gz','h_m2_tpxo9_atlas_30_v3.nc.gz',
-            'h_s2_tpxo9_atlas_30_v3.nc.gz','h_k2_tpxo9_atlas_30_v3.nc.gz',
-            'h_m4_tpxo9_atlas_30_v3.nc.gz','h_ms4_tpxo9_atlas_30_v3.nc.gz',
-            'h_mn4_tpxo9_atlas_30_v3.nc.gz','h_2n2_tpxo9_atlas_30_v3.nc.gz',
-            'h_mf_tpxo9_atlas_30_v3.nc.gz','h_mm_tpxo9_atlas_30_v3.nc.gz']
-        model_file = [os.path.join(model_directory,m) for m in model_files]
-        tide_reference = 'https://www.tpxo.net/global/tpxo9-atlas'
-        model_format = 'netcdf'
-        TYPE = 'z'
-        SCALE = 1.0/1000.0
-        GZIP = True
-    elif (TIDE_MODEL == 'TPXO9-atlas-v4'):
-        model_directory = os.path.join(tide_dir,'TPXO9_atlas_v4')
-        grid_file = os.path.join(model_directory,'grid_tpxo9_atlas_30_v4')
-        model_files = ['h_q1_tpxo9_atlas_30_v4','h_o1_tpxo9_atlas_30_v4',
-            'h_p1_tpxo9_atlas_30_v4','h_k1_tpxo9_atlas_30_v4',
-            'h_n2_tpxo9_atlas_30_v4','h_m2_tpxo9_atlas_30_v4',
-            'h_s2_tpxo9_atlas_30_v4','h_k2_tpxo9_atlas_30_v4',
-            'h_m4_tpxo9_atlas_30_v4','h_ms4_tpxo9_atlas_30_v4',
-            'h_mn4_tpxo9_atlas_30_v4','h_2n2_tpxo9_atlas_30_v4',
-            'h_mf_tpxo9_atlas_30_v4','h_mm_tpxo9_atlas_30_v4']
-        model_file = [os.path.join(model_directory,m) for m in model_files]
-        tide_reference = 'https://www.tpxo.net/global/tpxo9-atlas'
-        model_format = 'OTIS'
-        EPSG = '4326'
-        TYPE = 'z'
-    elif (TIDE_MODEL == 'TPXO9.1'):
-        grid_file = os.path.join(tide_dir,'TPXO9.1','DATA','grid_tpxo9')
-        model_file = os.path.join(tide_dir,'TPXO9.1','DATA','h_tpxo9.v1')
-        tide_reference = 'http://volkov.oce.orst.edu/tides/global.html'
-        model_format = 'OTIS'
-        EPSG = '4326'
-        TYPE = 'z'
-    elif (TIDE_MODEL == 'TPXO8-atlas'):
-        grid_file = os.path.join(tide_dir,'tpxo8_atlas','grid_tpxo8atlas_30_v1')
-        model_file = os.path.join(tide_dir,'tpxo8_atlas','hf.tpxo8_atlas_30_v1')
-        tide_reference = 'http://volkov.oce.orst.edu/tides/tpxo8_atlas.html'
-        model_format = 'ATLAS'
-        EPSG = '4326'
-        TYPE = 'z'
-    elif (TIDE_MODEL == 'TPXO7.2'):
-        grid_file = os.path.join(tide_dir,'TPXO7.2_tmd','grid_tpxo7.2')
-        model_file = os.path.join(tide_dir,'TPXO7.2_tmd','h_tpxo7.2')
-        tide_reference = 'http://volkov.oce.orst.edu/tides/global.html'
-        model_format = 'OTIS'
-        EPSG = '4326'
-        TYPE = 'z'
-    elif (TIDE_MODEL == 'AODTM-5'):
-        grid_file = os.path.join(tide_dir,'aodtm5_tmd','grid_Arc5km')
-        model_file = os.path.join(tide_dir,'aodtm5_tmd','h0_Arc5km.oce')
-        tide_reference = ('https://www.esr.org/research/polar-tide-models/'
-            'list-of-polar-tide-models/aodtm-5/')
-        model_format = 'OTIS'
-        EPSG = 'PSNorth'
-        TYPE = 'z'
-    elif (TIDE_MODEL == 'AOTIM-5'):
-        grid_file = os.path.join(tide_dir,'aotim5_tmd','grid_Arc5km')
-        model_file = os.path.join(tide_dir,'aotim5_tmd','h_Arc5km.oce')
-        tide_reference = ('https://www.esr.org/research/polar-tide-models/'
-            'list-of-polar-tide-models/aotim-5/')
-        model_format = 'OTIS'
-        EPSG = 'PSNorth'
-        TYPE = 'z'
-    elif (TIDE_MODEL == 'AOTIM-5-2018'):
-        grid_file = os.path.join(tide_dir,'Arc5km2018','grid_Arc5km2018')
-        model_file = os.path.join(tide_dir,'Arc5km2018','h_Arc5km2018')
-        tide_reference = ('https://www.esr.org/research/polar-tide-models/'
-            'list-of-polar-tide-models/aotim-5/')
-        model_format = 'OTIS'
-        EPSG = 'PSNorth'
-        TYPE = 'z'
-    elif (TIDE_MODEL == 'GOT4.7'):
-        model_directory = os.path.join(tide_dir,'GOT4.7','grids_oceantide')
-        model_files = ['q1.d.gz','o1.d.gz','p1.d.gz','k1.d.gz','n2.d.gz',
-            'm2.d.gz','s2.d.gz','k2.d.gz','s1.d.gz','m4.d.gz']
-        model_file = [os.path.join(model_directory,m) for m in model_files]
-        tide_reference = ('https://denali.gsfc.nasa.gov/personal_pages/ray/'
-            'MiscPubs/19990089548_1999150788.pdf')
-        model_format = 'GOT'
-        SCALE = 1.0/100.0
-        GZIP = True
-    elif (TIDE_MODEL == 'GOT4.8'):
-        model_directory = os.path.join(tide_dir,'got4.8','grids_oceantide')
-        model_files = ['q1.d.gz','o1.d.gz','p1.d.gz','k1.d.gz','n2.d.gz',
-            'm2.d.gz','s2.d.gz','k2.d.gz','s1.d.gz','m4.d.gz']
-        model_file = [os.path.join(model_directory,m) for m in model_files]
-        tide_reference = ('https://denali.gsfc.nasa.gov/personal_pages/ray/'
-            'MiscPubs/19990089548_1999150788.pdf')
-        model_format = 'GOT'
-        SCALE = 1.0/100.0
-        GZIP = True
-    elif (TIDE_MODEL == 'GOT4.10'):
-        model_directory = os.path.join(tide_dir,'GOT4.10c','grids_oceantide')
-        model_files = ['q1.d.gz','o1.d.gz','p1.d.gz','k1.d.gz','n2.d.gz',
-            'm2.d.gz','s2.d.gz','k2.d.gz','s1.d.gz','m4.d.gz']
-        model_file = [os.path.join(model_directory,m) for m in model_files]
-        tide_reference = ('https://denali.gsfc.nasa.gov/personal_pages/ray/'
-            'MiscPubs/19990089548_1999150788.pdf')
-        model_format = 'GOT'
-        SCALE = 1.0/100.0
-        GZIP = True
-    elif (TIDE_MODEL == 'FES2014'):
-        model_directory = os.path.join(tide_dir,'fes2014','ocean_tide')
-        model_files = ['2n2.nc.gz','eps2.nc.gz','j1.nc.gz','k1.nc.gz',
-            'k2.nc.gz','l2.nc.gz','la2.nc.gz','m2.nc.gz','m3.nc.gz','m4.nc.gz',
-            'm6.nc.gz','m8.nc.gz','mf.nc.gz','mks2.nc.gz','mm.nc.gz',
-            'mn4.nc.gz','ms4.nc.gz','msf.nc.gz','msqm.nc.gz','mtm.nc.gz',
-            'mu2.nc.gz','n2.nc.gz','n4.nc.gz','nu2.nc.gz','o1.nc.gz','p1.nc.gz',
-            'q1.nc.gz','r2.nc.gz','s1.nc.gz','s2.nc.gz','s4.nc.gz','sa.nc.gz',
-            'ssa.nc.gz','t2.nc.gz']
-        model_file = [os.path.join(model_directory,m) for m in model_files]
-        c = ['2n2','eps2','j1','k1','k2','l2','lambda2','m2','m3','m4','m6',
-            'm8','mf','mks2','mm','mn4','ms4','msf','msqm','mtm','mu2','n2',
-            'n4','nu2','o1','p1','q1','r2','s1','s2','s4','sa','ssa','t2']
-        tide_reference = ('https://www.aviso.altimetry.fr/en/data/products'
-            'auxiliary-products/global-tide-fes.html')
-        model_format = 'FES'
-        TYPE = 'z'
-        SCALE = 1.0/100.0
-        GZIP = True
-
     # number of GPS seconds between the GPS epoch
     # and ATLAS Standard Data Product (SDP) epoch
     atlas_sdp_gps_epoch = mds1['ancillary_data']['atlas_sdp_gps_epoch']
-    # delta time (TT - UT1) file
-    delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
 
     # copy variables for outputting to HDF5 file
     IS2_atl11_tide = {}
@@ -449,6 +275,7 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
                 tide_ocean['XT'].data[:] = mds3[ptx][XT]['tide_ocean']
             # source of tide model
             tide_source = TIDE_MODEL
+            tide_reference = model.reference
         else:
             tide_source = 'ATL06'
             tide_reference = 'ATL06 ATBD'
@@ -481,10 +308,8 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             val.mask[:] |= (h_corr[group].data == h_corr[group].fill_value)
             val.data[val.mask] = val.fill_value
 
-        # allocate for output tidal amplitude and phase
-        amp,ph = ({},{})
         # allocate for output tide times
-        tide_time,deltat = ({},{})
+        tide_time = ({},{})
         # calculate tides for along-track and across-track data
         for track in ['AT','XT']:
             # convert time from ATLAS SDP to days relative to Jan 1, 1992
@@ -493,32 +318,7 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             utc_seconds = gps_seconds - leap_seconds
             tide_time[track] = icesat2_toolkit.time.convert_delta_time(utc_seconds,
                 epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
-        #     # read tidal constants and interpolate to grid points
-        #     if model_format in ('OTIS','ATLAS'):
-        #         amp[track],ph[track],D,c = extract_tidal_constants(longitude[track],
-        #             latitude[track], grid_file, model_file, EPSG, TYPE=TYPE,
-        #             METHOD=METHOD, EXTRAPOLATE=True, GRID=model_format)
-        #         deltat[track] = np.zeros_like(tide_time[track])
-        #     elif (model_format == 'netcdf'):
-        #         amp[track],ph[track],D,c = extract_netcdf_constants(longitude[track],
-        #             latitude[track], grid_file, model_file, TYPE=TYPE, METHOD=METHOD,
-        #             EXTRAPOLATE=True, SCALE=SCALE, GZIP=GZIP)
-        #         deltat[track] = np.zeros_like(tide_time[track])
-        #     elif (model_format == 'GOT'):
-        #         amp[track],ph[track],c = extract_GOT_constants(longitude[track],
-        #             latitude[track], model_file, METHOD=METHOD, EXTRAPOLATE=True,
-        #             SCALE=SCALE, GZIP=GZIP)
-        #         # interpolate delta times from calendar dates to tide time
-        #         deltat[track] = calc_delta_time(delta_file, tide_time)
-        #     elif (model_format == 'FES'):
-        #         amp[track],ph[track] = extract_FES_constants(longitude[track],
-        #             latitude[track], model_file, TYPE=TYPE, VERSION=TIDE_MODEL,
-        #             METHOD=METHOD, EXTRAPOLATE=True, SCALE=SCALE, GZIP=GZIP)
-        #         # interpolate delta times from calendar dates to tide time
-        #         deltat[track] = calc_delta_time(delta_file, tide_time)
 
-        # # number of constituents
-        # nc = len(c)
         # for each ATL11 segment
         for s in range(n_points):
             #-- indices for crossover points
@@ -550,56 +350,19 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             # tide time
             t1 = tide_time['AT'].data[s,i1]
             t2 = np.atleast_1d(tide_time['XT'].data[i2])
-            # # tide delta time (TT - UT1)
-            # dt1 = deltat['AT'][s,i1]
-            # dt2 = np.atleast_1d(deltat['XT'][i2])
             # tide height
             ot1 = tide_ocean['AT'].data[s,i1]
             ot2 = np.atleast_1d(tide_ocean['XT'].data[i2])
-            # # tide amplitude and phase
-            # ph1 = np.broadcast_to(ph['AT'][s,:], (n1,nc))
-            # ph2 = np.broadcast_to(ph['XT'][i2,:], (n2,nc))
-            # amp1 = np.broadcast_to(amp['AT'][s,:], (n1,nc))
-            # amp2 = np.broadcast_to(amp['XT'][i2,:], (n2,nc))
 
             # combine along-track and across-track variables
             if np.any(i2):
                 h = np.concatenate((h1,h2),axis=0)
                 t = np.concatenate((t1,t2),axis=0)
-                # dt = np.concatenate((dt1,dt2),axis=0)
                 tide = np.concatenate((ot1,ot2),axis=0)
-                # # calculate complex phase in radians for Euler's
-                # cph = -1j*np.concatenate((ph1,ph2),axis=0)*np.pi/180.0
-                # # calculate constituent oscillation
-                # hc = np.concatenate((amp1,amp2),axis=0)*np.exp(cph)
             else:
                 h = np.copy(h1)
                 t = np.copy(t1)
-                # dt = np.copy(dt1)
                 tide = np.copy(ot1)
-                # # calculate complex phase in radians for Euler's
-                # cph = -1j*ph1*np.pi/180.0
-                # # calculate constituent oscillation
-                # hc = amp1*np.exp(cph)
-
-            # # convert time to Modified Julian Days (MJD)
-            # pu,pf,G = load_nodal_corrections(t + 48622.0, c,
-            #     DELTAT=dt, CORRECTIONS=model_format)
-            # # cosine and sine components of tidal oscillation
-            # ccos = np.zeros_like(t)
-            # ssin = np.zeros_like(t)
-            # for k,cons in enumerate(c):
-            #     if model_format in ('OTIS','ATLAS','netcdf'):
-            #         # load parameters for each constituent
-            #         _,phase,omega,_,_ = load_constituent(cons)
-            #         th = omega*t*86400.0 + phase + pu[:,k]
-            #     elif model_format in ('GOT','FES'):
-            #         th = G[:,k]*np.pi/180.0 + pu[:,k]
-            #     # add to sin and cosine components
-            #     ccos += pf[:,k]*hc.real[:,k]*np.cos(th)
-            #     ssin -= pf[:,k]*hc.imag[:,k]*np.sin(th)
-            # # combined tidal components
-            # tide = ccos + ssin
 
             # use linear least-squares with bounds on the variables
             # create design matrix
@@ -651,7 +414,6 @@ def fit_tides_ICESat2(tide_dir, FILE, TIDE_MODEL=None, REANALYSIS=None,
             if (adj_sigma > output_tolerance):
                 continue
             # extract along-track and across-track cosine and sine
-            # tide_ocean['AT'][s,i1] = cadj*ccos[:n1] + sadj*ssin[:n1]
             tide_ocean['AT'][s,i1] = adj*tide[:n1]
             tide_adj['AT'][s,i1] = np.copy(adj)
             tide_adj_sigma['AT'][s,i1] = np.copy(adj_sigma)
@@ -1145,18 +907,8 @@ def arguments():
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='ICESat-2 ATL11 file to run')
-    # directory with tide data
-    parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
-        help='Working data directory')
     # tide model to use
-    model_choices = ('CATS0201','CATS2008',
-        'TPXO9-atlas','TPXO9-atlas-v2','TPXO9-atlas-v3','TPXO9-atlas-v4',
-        'TPXO9.1','TPXO8-atlas','TPXO7.2',
-        'AODTM-5','AOTIM-5','AOTIM-5-2018',
-        'GOT4.7','GOT4.8','GOT4.10',
-        'FES2014')
+    model_choices = pyTMD.model.ocean_elevation()
     parser.add_argument('--tide','-T',
         metavar='TIDE', type=str, default='CATS2008',
         choices=model_choices,
@@ -1165,11 +917,6 @@ def arguments():
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str, choices=ib_choices,
         help='Reanalysis model to use in inverse-barometer correction')
-    # interpolation method
-    parser.add_argument('--interpolate','-I',
-        metavar='METHOD', type=str, default='spline',
-        choices=('spline','linear','nearest','bilinear'),
-        help='Spatial interpolation method')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -1190,9 +937,11 @@ def main():
 
     # run for each input ATL11 file
     for FILE in args.infile:
-        fit_tides_ICESat2(args.directory, FILE, TIDE_MODEL=args.tide,
-            REANALYSIS=args.reanalysis, METHOD=args.interpolate,
-            VERBOSE=args.verbose, MODE=args.mode)
+        fit_tides_ICESat2(args.directory, FILE,
+            TIDE_MODEL=args.tide,
+            REANALYSIS=args.reanalysis,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':
