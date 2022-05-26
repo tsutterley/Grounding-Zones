@@ -1,28 +1,24 @@
 #!/usr/bin/env python
 u"""
-pgc_arcticdem_sync.py
+pgc_rema_strip_sync.py
 Written by Tyler Sutterley (05/2022)
 
-Syncs ArcticDEM tar files from the Polar Geospatial Center (PGC)
-    https://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/mosaic
+Syncs Reference Elevation Map of Antarctica (REMA) DEM strip tar files
+    from the Polar Geospatial Center (PGC)
+    https://data.pgc.umn.edu/elev/dem/setsm/REMA/geocell
 
 CALLING SEQUENCE:
-    python pgc_arcticdem_sync.py --version v3.0 --resolution 2m
+    python pgc_rema_strip_sync.py --version v1.0 --resolution 8m
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
     -D X, --directory X: Working data directory
-    -v X, --version X: ArcticDEM version
-        v2.0
-        v3.0 (default)
-    -r X, --resolution X: ArcticDEM spatial resolution
-        1km
-        500m
-        100m
-        32m
-        10m
+    -v X, --version X: REMA DEM version
+        v1.0 (default)
+    -r X, --resolution X: REMA DEM spatial resolution
+        8m
         2m (default)
-    -t X, --tile X: ArcticDEM tiles to sync (default=All)
+    -s X, --strip X: REMA DEM strips to sync (default=All)
     -T X, --timeout X: Timeout in seconds for blocking operations
     -R X, --retry X: Connection retry attempts
     -L, --list: print files to be transferred, but do not execute transfer
@@ -46,15 +42,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
-    Updated 05/2022: use argparse descriptions within documentation
-        use logging for verbose output of sync
-    Updated 01/2021: using utilities modules to list from server
-        using argparse to set command line options
-    Updated 10/2019: added ssl context to urlopen instances
-    Updated 09/2019: set last modified time of subdirectories
-    Updated 05/2019: sort tile directories of interest.  copy tile shapefiles
-    Updated 04/2019: check python version for urllib compatibility with python 2
-    Written 04/2019
+    Written 05/2022
 """
 from __future__ import print_function
 
@@ -71,43 +59,44 @@ import traceback
 import lxml.etree
 import grounding_zones.utilities
 
-#-- PURPOSE: sync local ArcticDEM files with PGC public server
-def pgc_arcticdem_sync(base_dir, VERSION, RESOLUTION, TILES=None,
+#-- PURPOSE: sync local REMA strip files with PGC public server
+def pgc_rema_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
     TIMEOUT=None, RETRY=1, LOG=False, LIST=False, CLOBBER=False,
     MODE=None):
     #-- data directory
-    DIRECTORY = os.path.join(base_dir,'ArcticDEM')
+    DIRECTORY = os.path.join(base_dir,'REMA')
     #-- check if directory exists and recursively create if not
     os.makedirs(DIRECTORY,MODE) if not os.path.exists(DIRECTORY) else None
 
     #-- create log file with list of synchronized files (or print to terminal)
     if LOG:
-        #-- format: PGC_ArcticDEM_sync_2002-04-01.log
+        #-- format: PGC_REMA_strip_sync_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
-        LOGFILE = 'PGC_ArcticDEM_sync_{0}.log'.format(today)
+        LOGFILE = 'PGC_REMA_strip_sync_{0}.log'.format(today)
         logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
             level=logging.INFO)
-        logging.info('PGC ArcticDEM Strip Sync Log ({0})'.format(today))
+        logging.info('PGC REMA Strip Sync Log ({0})'.format(today))
         logging.info('VERSION={0}'.format(VERSION))
         logging.info('RESOLUTION={0}'.format(RESOLUTION))
-        logging.info('TILES={0}'.format(','.join(TILES))) if TILES else None
+        logging.info('STRIPS={0}'.format(','.join(STRIPS))) if STRIPS else None
     else:
         #-- standard output (terminal output)
         logging.basicConfig(level=logging.INFO)
 
     #-- remote http server for PGC DEM data
     HOST = ['http://data.pgc.umn.edu','elev','dem','setsm']
-    #-- compile regular expression operators for tiles
-    R1 = re.compile(r'|'.join(TILES)) if TILES else re.compile(r'\d+_\d+')
-    R2 = re.compile(r'(\d+_\d+)_(.*?)\.tar\.gz')
+    #-- compile regular expression operators for strips
+    R1 = re.compile(r'|'.join(STRIPS)) if STRIPS else re.compile(r'[n|s]\d+[e|w]\d+')
+    R2 = re.compile((r'(SETSM)_(\w+)_(\d{4})(\d{2})(\d{2})_'
+        r'(\w+)_(\w+)_(seg\d+)_(\d+m)_(.*?)\.tar\.gz'), re.VERBOSE)
     #-- compile regular expression operators for shapefiles
-    R3 = re.compile(r'(.*?)_Tile_Index_Rel(\d+)\.zip')
+    R3 = re.compile(r'(.*?)_Strip_Index_Rel(\d+)\.zip', re.VERBOSE)
 
     #-- compile HTML parser for lxml
     parser = lxml.etree.HTMLParser()
 
-    #-- remote directory for data version and resolution
-    remote_path = [*HOST, 'ArcticDEM', 'mosaic', VERSION, RESOLUTION]
+    #-- remote directory for strip version and resolution
+    remote_path = [*HOST, 'REMA', 'geocell', VERSION, RESOLUTION]
     #-- open connection with PGC server at remote directory
     remote_sub,collastmod,_ = grounding_zones.utilities.pgc_list(remote_path,
         timeout=TIMEOUT, parser=parser, pattern=R1, sort=True)
@@ -118,35 +107,35 @@ def pgc_arcticdem_sync(base_dir, VERSION, RESOLUTION, TILES=None,
         if not os.access(local_dir, os.F_OK) and not LIST:
             os.makedirs(local_dir,MODE)
         #-- open connection with PGC server at remote directory
-        remote_path = [*HOST, 'ArcticDEM', 'mosaic', VERSION, RESOLUTION, sd]
+        remote_path = [*HOST, 'REMA', 'geocell', VERSION, RESOLUTION, sd]
         remote_dir = posixpath.join(*remote_path)
         #-- read and parse request for files (names and modified dates)
         colnames,collastmod,_ = grounding_zones.utilities.pgc_list(remote_path,
             timeout=TIMEOUT, parser=parser, pattern=R2, sort=True)
-        #-- sync each ArcticDEM data file
+        #-- sync each REMA strip file
         for colname,remote_mtime in zip(colnames,collastmod):
             #-- remote and local versions of the file
             remote_file = posixpath.join(remote_dir,colname)
             local_file = os.path.join(local_dir,colname)
-            #-- sync ArcticDEM tar file
+            #-- sync REMA strip tar file
             http_pull_file(remote_file, remote_mtime, local_file,
                 TIMEOUT=TIMEOUT, RETRY=RETRY, LIST=LIST,
                 CLOBBER=CLOBBER, MODE=MODE)
         #-- keep remote modification time of directory and local access time
         os.utime(local_dir, (os.stat(local_dir).st_atime, lmd))
 
-    #-- remote directory for shapefiles of data version
-    remote_path = [*HOST, 'ArcticDEM', 'indexes']
+    #-- remote directory for shapefiles of strip version
+    remote_path = [*HOST, 'REMA', 'indexes']
     remote_dir = posixpath.join(*remote_path)
     #-- read and parse request for files (names and modified dates)
     colnames,collastmod,_ = grounding_zones.utilities.pgc_list(remote_path,
-        timeout=TIMEOUT, parser=parser, pattern=R3, sort=True)
-    #-- sync each ArcticDEM shapefile
+        timeout=20, parser=parser, pattern=R3, sort=True)
+    #-- sync each REMA strip shapefile
     for colname,remote_mtime in zip(colnames,collastmod):
         #-- remote and local versions of the file
         remote_file = posixpath.join(remote_dir,colname)
         local_file = os.path.join(DIRECTORY,colname)
-        #-- sync ArcticDEM shapefile
+        #-- sync REMA strip shapefile
         http_pull_file(remote_file, remote_mtime, local_file,
             TIMEOUT=TIMEOUT, RETRY=RETRY, LIST=LIST,
             CLOBBER=CLOBBER, MODE=MODE)
@@ -226,8 +215,8 @@ def http_pull_file(remote_file, remote_mtime, local_file, TIMEOUT=None,
 #-- PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
-        description="""Sync ArcticDEM tar files from the Polar
-            Geospatial Center (PGC)
+        description="""Syncs Reference Elevation Map of Antarctica (REMA)
+            DEM strip tar files from the Polar Geospatial Center (PGC)
             """
     )
     #-- command line parameters
@@ -236,18 +225,18 @@ def arguments():
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         default=os.getcwd(),
         help='Working data directory')
-    #-- ArcticDEM model version
+    #-- REMA DEM model version
     parser.add_argument('--version','-v',
-        type=str, choices=('v2.0','v3.0'), default='v3.0',
-        help='ArcticDEM version')
+        type=str, choices=('v1.0',), default='v1.0',
+        help='REMA DEM version')
     #-- DEM spatial resolution
     parser.add_argument('--resolution','-r',
-        type=str, choices=('2m','10m','32m','100m','500m','1km'),
-        default='2m', help='ArcticDEM spatial resolution')
-    #-- ArcticDEM parameters
-    parser.add_argument('--tile','-t',
+        type=str, choices=('2m','8m'), default='2m',
+        help='REMA DEM spatial resolution')
+    #-- REMA strip parameters
+    parser.add_argument('--strip','-s',
         type=str, nargs='+',
-        help='ArcticDEM tiles to sync')
+        help='REMA DEM strips to sync')
     #-- connection timeout and number of retry attempts
     parser.add_argument('--timeout','-T',
         type=int, default=120,
@@ -256,7 +245,7 @@ def arguments():
         type=int, default=5,
         help='Connection retry attempts')
     #-- Output log file in form
-    #-- format: PGC_ArcticDEM_sync_2002-04-01.log
+    #-- format: PGC_REMA_strip_sync_2002-04-01.log
     parser.add_argument('--log','-l',
         default=False, action='store_true',
         help='Output log file')
@@ -284,8 +273,8 @@ def main():
     #-- attempt to connect to public http Polar Geospatial Center host
     HOST = posixpath.join('http://data.pgc.umn.edu','elev','dem')
     if grounding_zones.utilities.check_connection(HOST):
-        pgc_arcticdem_sync(args.directory, args.version, args.resolution,
-            TILES=args.tile, TIMEOUT=args.timeout, RETRY=args.retry,
+        pgc_rema_strip_sync(args.directory, args.version, args.resolution,
+            STRIPS=args.strip, TIMEOUT=args.timeout, RETRY=args.retry,
             LIST=args.list, LOG=args.log, CLOBBER=args.clobber,
             MODE=args.mode)
 
