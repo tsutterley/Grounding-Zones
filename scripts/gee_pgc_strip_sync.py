@@ -1,27 +1,32 @@
 #!/usr/bin/env python
 u"""
-gee_rema_strip_sync.py
+gee_pgc_strip_sync.py
 Written by Tyler Sutterley (05/2022)
 
-Syncs Reference Elevation Map of Antarctica (REMA) DEM strip tar files
-    from Google Earth Engine
+Syncs Reference Elevation Map of Antarctica (REMA) DEM or ArcticDEM
+    strip tar files from Google Earth Engine
 
 CALLING SEQUENCE:
-    python gee_rema_strip_sync.py --version v1.0 --resolution 8m
+    python gee_pgc_strip_sync.py --model REMA
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
-    -v X, --version X: REMA DEM version
+    -m X, --model: PGC digital elevation model
+        ArcticDEM
+        REMA
+    -v X, --version X: DEM version
         v1.0 (default)
-    -r X, --resolution X: REMA DEM spatial resolution
+        v3.0
+    -r X, --resolution X: DEM spatial resolution
         8m
         2m (default)
-    -s X, --scale X: Output spatial resolution (resampled)
-        default is the same as the original REMA strip
-    -t X, --tolerance X: Tolerance for differences between fields
-    -Y X, --year X: Year of REMA DEM strips to sync (default=All)
-    -M, --matchtag: Output REMA matchtag raster files
-    -I, --index: Output REMA index shapefiles
+    -S X, --scale X: Output spatial resolution (resampled)
+        default is the same as the original strip
+    -s, --stdev: Calculate standard deviation raster files
+    -T X, --tolerance X: Tolerance for differences between fields
+    -Y X, --year X: Year of DEM strips to sync (default=All)
+    -M, --matchtag: Output matchtag raster files
+    -I, --index: Output index shapefiles
 
 PYTHON DEPENDENCIES:
     ee: Python bindings for calling the Earth Engine API
@@ -36,9 +41,15 @@ import ee
 import logging
 import argparse
 
-# PURPOSE: sync local REMA strip files with Google Earth Engine
-def gee_rema_strip_sync(version, resolution, YEARS=None,
-    SCALE=None, TOLERANCE=None, MATCHTAG=False, INDEX=False):
+# PURPOSE: sync local PGC DEM strip files with Google Earth Engine
+def gee_pgc_strip_sync(model, version, resolution,
+    YEARS=None,
+    SCALE=None,
+    TOLERANCE=None,
+    STDEV=False,
+    MATCHTAG=False,
+    INDEX=False):
+
     # initialize Google Earth Engine API
     ee.Initialize()
     #-- standard logging output
@@ -47,8 +58,8 @@ def gee_rema_strip_sync(version, resolution, YEARS=None,
     VERSION = version[:2].upper()
     if not SCALE:
         SCALE = int(resolution[:-1])
-    # image collection with REMA strip data
-    collection = ee.ImageCollection(f'UMN/PGC/REMA/{VERSION}/{resolution}')
+    # image collection with PGC DEM strip data
+    collection = ee.ImageCollection(f'UMN/PGC/{model}/{VERSION}/{resolution}')
     # for each year of strip data
     for _, year in enumerate(YEARS):
         # reduce image collection to year
@@ -80,12 +91,29 @@ def gee_rema_strip_sync(version, resolution, YEARS=None,
                 'description': f'{granule}_{SCALE}m_{version}_dem',
                 'scale': SCALE,
                 'fileFormat': 'GeoTIFF',
-                'folder': f'REMA_{SCALE}m',
+                'folder': f'{model}_{SCALE}m',
                 'formatOptions': {'cloudOptimized': True}
             })
             task.start()
 
-            # output the REMA matchtag raster file
+            # calculate DEM standard deviation raster files
+            if STDEV and (SCALE != int(resolution[:-1])):
+                elev = img.select('elevation')
+                maxPixels = (SCALE//int(resolution[:-1]))**2
+                stdev = elev.reduceResolution(ee.Reducer.sampleStdDev(),
+                    maxPixels=maxPixels)
+                # export to google drive
+                task = ee.batch.Export.image.toDrive(**{
+                    'image': stdev,
+                    'description': f'{granule}_{SCALE}m_{version}_stdev',
+                    'scale': SCALE,
+                    'fileFormat': 'GeoTIFF',
+                    'folder': f'{model}_{SCALE}m',
+                    'formatOptions': {'cloudOptimized': True}
+                })
+                task.start()
+
+            # output the DEM matchtag raster file
             if MATCHTAG:
                 # get matchtag geotiff
                 matchtag = img.select('matchtag')
@@ -98,12 +126,12 @@ def gee_rema_strip_sync(version, resolution, YEARS=None,
                     'description': f'{granule}_{SCALE}m_{version}_matchtag',
                     'scale': SCALE,
                     'fileFormat': 'GeoTIFF',
-                    'folder': f'REMA_{SCALE}m',
+                    'folder': f'{model}_{SCALE}m',
                     'formatOptions': {'cloudOptimized': True}
                 })
                 task.start()
 
-            # output the REMA index shapefiles
+            # output the DEM index shapefiles
             if INDEX:
                 # get coordinates of footprint linear ring
                 coordinates = ee.Geometry.LinearRing(
@@ -114,46 +142,55 @@ def gee_rema_strip_sync(version, resolution, YEARS=None,
                     'collection': features,
                     'description': f'{granule}_{SCALE}m_{version}_index',
                     'fileFormat': 'SHP',
-                    'folder': f'REMA_{SCALE}m',
+                    'folder': f'{model}_{SCALE}m',
                 })
                 task.start()
 
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
-        description="""Syncs Reference Elevation Map of Antarctica (REMA)
-            DEM strip tar files from Google Earth Engine
+        description="""Syncs Reference Elevation Map of Antarctica
+            (REMA) DEM or ArcticDEM strip tar files from Google
+            Earth Engine
             """
     )
     # command line parameters
-    # REMA DEM model version
+    # DEM model
+    parser.add_argument('--model', '-m',
+        type=str, choices=('ArcticDEM','REMA'), default='REMA',
+        help='PGC digital elevation model (DEM)')
+    # DEM model version
     parser.add_argument('--version', '-v',
-        type=str, choices=('v1.0',), default='v1.0',
-        help='REMA DEM version')
+        type=str, choices=('v1.0','v3.0'), default='v1.0',
+        help='PGC DEM version')
     # DEM spatial resolution
     parser.add_argument('--resolution', '-r',
         type=str, choices=('2m','8m'), default='2m',
-        help='REMA DEM spatial resolution')
+        help='PGC DEM spatial resolution')
     # output spatial resolution
-    # default is the same as the original REMA strip
-    parser.add_argument('--scale', '-s',
+    # default is the same as the original DEM strip
+    parser.add_argument('--scale', '-S',
         type=int, help='Output spatial resolution')
+    # output standard deviations
+    parser.add_argument('--stdev','-s',
+        default=False, action='store_true',
+        help='Calculate DEM standard deviation raster files')
     # tolerance for differences between smoothed fields and original
-    parser.add_argument('--tolerance', '-t',
+    parser.add_argument('--tolerance', '-T',
         type=float, default=5.0,
         help='Tolerance for differences between fields')
-    # REMA strip parameters
+    # PGC DEM strip parameters
     parser.add_argument('--year', '-Y',
         type=int, nargs='+', default=range(2014, 2018),
-        help='Years of REMA DEM strips to sync')
+        help='Years of PGC DEM strips to sync')
     # output matchtag raster files
     parser.add_argument('--matchtag','-M',
         default=False, action='store_true',
-        help='Output REMA matchtag raster files')
+        help='Output PGC DEM matchtag raster files')
     # output index shapefiles
     parser.add_argument('--index','-I',
         default=False, action='store_true',
-        help='Output REMA index shapefiles')
+        help='Output PGC DEM index shapefiles')
     # return the parser
     return parser
 
@@ -163,9 +200,13 @@ def main():
     parser = arguments()
     args, _ = parser.parse_known_args()
     # run Google Earth Engine sync
-    gee_rema_strip_sync(args.version, args.resolution,
-        YEARS=args.year, SCALE=args.scale, TOLERANCE=args.tolerance,
-        MATCHTAG=args.matchtag, INDEX=args.index)
+    gee_pgc_strip_sync(args.model, args.version, args.resolution,
+        YEARS=args.year,
+        SCALE=args.scale,
+        STDEV=args.stdev,
+        TOLERANCE=args.tolerance,
+        MATCHTAG=args.matchtag,
+        INDEX=args.index)
 
 # run main program
 if __name__ == '__main__':
