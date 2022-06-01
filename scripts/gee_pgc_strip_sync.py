@@ -22,8 +22,6 @@ COMMAND LINE OPTIONS:
         2m (default)
     -S X, --scale X: Output spatial resolution (resampled)
         default is the same as the original strip
-    -s, --stdev: Calculate standard deviation raster files
-    -T X, --tolerance X: Tolerance for differences between fields
     -Y X, --year X: Year of DEM strips to sync (default=All)
     -M, --matchtag: Output matchtag raster files
     -I, --index: Output index shapefiles
@@ -45,8 +43,6 @@ import argparse
 def gee_pgc_strip_sync(model, version, resolution,
     YEARS=None,
     SCALE=None,
-    TOLERANCE=None,
-    STDEV=False,
     MATCHTAG=False,
     INDEX=False):
 
@@ -76,18 +72,16 @@ def gee_pgc_strip_sync(model, version, resolution,
             properties = img.getInfo()['properties']
             # get elevation geotiff
             elev = img.select('elevation')
+            # calculate DEM standard deviation
+            maxPixels = (SCALE//int(resolution[:-1]))**2
+            stdev = elev.reduceResolution(ee.Reducer.sampleStdDev(),
+                maxPixels=maxPixels)
+            # combine elevation and standard deviation
+            image = ee.Image.cat([elev, stdev.float()])
             # scale and reduce resolution
-            # convolve with a gaussian kernel
-            # find where maximum deviations are less than tolerance
-            if SCALE != int(resolution[:-1]):
-                w_smooth = SCALE/int(resolution[:-1])/2.0
-                kernel = ee.Kernel.gaussian(radius=w_smooth, normalize=True)
-                smooth = elev.convolve(kernel)
-                absdiff = elev.subtract(smooth).abs()
-                elev = elev.updateMask(absdiff.lt(TOLERANCE))
             # export to google drive
             task = ee.batch.Export.image.toDrive(**{
-                'image': elev,
+                'image': image,
                 'description': f'{granule}_{SCALE}m_{version}_dem',
                 'scale': SCALE,
                 'fileFormat': 'GeoTIFF',
@@ -96,30 +90,10 @@ def gee_pgc_strip_sync(model, version, resolution,
             })
             task.start()
 
-            # calculate DEM standard deviation raster files
-            if STDEV and (SCALE != int(resolution[:-1])):
-                elev = img.select('elevation')
-                maxPixels = (SCALE//int(resolution[:-1]))**2
-                stdev = elev.reduceResolution(ee.Reducer.sampleStdDev(),
-                    maxPixels=maxPixels)
-                # export to google drive
-                task = ee.batch.Export.image.toDrive(**{
-                    'image': stdev,
-                    'description': f'{granule}_{SCALE}m_{version}_stdev',
-                    'scale': SCALE,
-                    'fileFormat': 'GeoTIFF',
-                    'folder': f'{model}_{SCALE}m',
-                    'formatOptions': {'cloudOptimized': True}
-                })
-                task.start()
-
             # output the DEM matchtag raster file
             if MATCHTAG:
                 # get matchtag geotiff
                 matchtag = img.select('matchtag')
-                # scale and reduce resolution
-                if SCALE != int(resolution[:-1]):
-                    matchtag = matchtag.updateMask(absdiff.lt(TOLERANCE))
                 # export to google drive
                 task = ee.batch.Export.image.toDrive(**{
                     'image': matchtag,
@@ -171,14 +145,6 @@ def arguments():
     # default is the same as the original DEM strip
     parser.add_argument('--scale', '-S',
         type=int, help='Output spatial resolution')
-    # output standard deviations
-    parser.add_argument('--stdev','-s',
-        default=False, action='store_true',
-        help='Calculate DEM standard deviation raster files')
-    # tolerance for differences between smoothed fields and original
-    parser.add_argument('--tolerance', '-T',
-        type=float, default=5.0,
-        help='Tolerance for differences between fields')
     # PGC DEM strip parameters
     parser.add_argument('--year', '-Y',
         type=int, nargs='+', default=range(2014, 2018),
@@ -203,8 +169,6 @@ def main():
     gee_pgc_strip_sync(args.model, args.version, args.resolution,
         YEARS=args.year,
         SCALE=args.scale,
-        STDEV=args.stdev,
-        TOLERANCE=args.tolerance,
         MATCHTAG=args.matchtag,
         INDEX=args.index)
 
