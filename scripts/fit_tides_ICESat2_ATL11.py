@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (06/2022)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -9,6 +9,7 @@ COMMAND LINE OPTIONS:
     -T X, --tide X: Tide model to use in correction
         CATS0201
         CATS2008
+        CATS2022
         TPXO9-atlas
         TPXO9-atlas-v2
         TPXO9-atlas-v3
@@ -49,6 +50,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 06/2022: include grounding zone adjusted DAC in HDF5 outputs
     Updated 05/2022: use argparse descriptions within documentation
         use tide model class to get available models and references
     Updated 07/2021: add checks for data and fit quality
@@ -309,7 +311,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
             val.data[val.mask] = val.fill_value
 
         # allocate for output tide times
-        tide_time = ({},{})
+        tide_time = {}
         # calculate tides for along-track and across-track data
         for track in ['AT','XT']:
             # convert time from ATLAS SDP to days relative to Jan 1, 1992
@@ -343,16 +345,16 @@ def fit_tides_ICESat2(tide_dir, FILE,
             #-- indices for valid points within segment
             i1, = np.nonzero(segment_mask)
             # height referenced to geoid
-            h1 = h_corr['AT'].data[s,i1] - IB['AT'].data[s,i1] - geoid_h[s]
-            h2 = np.atleast_1d(h_corr['XT'].data[i2] - IB['XT'].data[i2]) - geoid_h[s]
+            h1 = h_corr['AT'].data[s,i1] - geoid_h[s]
+            h2 = np.atleast_1d(h_corr['XT'].data[i2]) - geoid_h[s]
             n1 = len(h1)
             n2 = len(h2)
             # tide time
             t1 = tide_time['AT'].data[s,i1]
             t2 = np.atleast_1d(tide_time['XT'].data[i2])
-            # tide height
-            ot1 = tide_ocean['AT'].data[s,i1]
-            ot2 = np.atleast_1d(tide_ocean['XT'].data[i2])
+            # combined tide and dac height
+            ot1 = tide_ocean['AT'].data[s,i1] + IB['AT'].data[s,i1]
+            ot2 = np.atleast_1d(tide_ocean['XT'].data[i2] + IB['XT'].data[i2])
 
             # combine along-track and across-track variables
             if np.any(i2):
@@ -413,13 +415,14 @@ def fit_tides_ICESat2(tide_dir, FILE,
             #-- check that errors are smaller than tolerance
             if (adj_sigma > output_tolerance):
                 continue
-            # extract along-track and across-track cosine and sine
-            tide_ocean['AT'][s,i1] = adj*tide[:n1]
+            # extract along-track and across-track tide
+            tide_ocean['AT'].data[s,i1] *= adj
+            IB['AT'].data[s,i1] *= adj
             tide_adj['AT'][s,i1] = np.copy(adj)
             tide_adj_sigma['AT'][s,i1] = np.copy(adj_sigma)
             if np.any(i2):
-                # tide_ocean['XT'][i2] = cadj*ccos[n1:] + sadj*ssin[n1:]
-                tide_ocean['XT'][i2] = adj*tide[n1:]
+                tide_ocean['XT'].data[i2] *= adj
+                IB['XT'].data[i2] *= adj
                 tide_adj['XT'][i2] = np.copy(adj)
                 tide_adj_sigma['XT'][i2] = np.copy(adj_sigma)
 
@@ -533,6 +536,19 @@ def fit_tides_ICESat2(tide_dir, FILE,
         IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_ocean']['source'] = tide_source
         IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_ocean']['reference'] = tide_reference
         IS2_atl11_tide_attrs[ptx]['cycle_stats']['tide_ocean']['coordinates'] = \
+            "../ref_pt ../cycle_number ../delta_time ../latitude ../longitude"
+        # computed dac with fit
+        IS2_atl11_tide[ptx]['cycle_stats']['dac'] = IB['AT'].copy()
+        IS2_atl11_fill[ptx]['cycle_stats']['dac'] = IB['AT'].fill_value
+        IS2_atl11_dims[ptx]['cycle_stats']['dac'] = ['ref_pt','cycle_number']
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['dac'] = collections.OrderedDict()
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['dac']['units'] = "meters"
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['dac']['contentType'] = "referenceInformation"
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['dac']['long_name'] = "Dynamic atmosphere correction "
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['dac']['description'] = ("Weighted-average "
+            "dynamic atmosphere correction for each pass with Near-Grounding Zone fit.")
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['dac']['source'] = "ATL06"
+        IS2_atl11_tide_attrs[ptx]['cycle_stats']['dac']['coordinates'] = \
             "../ref_pt ../cycle_number ../delta_time ../latitude ../longitude"
         # computed tide adjustments
         IS2_atl11_tide[ptx]['cycle_stats']['tide_adj'] = tide_adj['AT'].copy()
@@ -678,6 +694,19 @@ def fit_tides_ICESat2(tide_dir, FILE,
         IS2_atl11_tide_attrs[ptx][XT]['tide_ocean']['source'] = tide_source
         IS2_atl11_tide_attrs[ptx][XT]['tide_ocean']['reference'] = tide_reference
         IS2_atl11_tide_attrs[ptx][XT]['tide_ocean']['coordinates'] = \
+            "ref_pt delta_time latitude longitude"
+        # computed dac with fit for the crossover measurement
+        IS2_atl11_tide[ptx][XT]['dac'] = IB['XT'].copy()
+        IS2_atl11_fill[ptx][XT]['dac'] = IB['XT'].fill_value
+        IS2_atl11_dims[ptx][XT]['dac'] = ['ref_pt']
+        IS2_atl11_tide_attrs[ptx][XT]['dac'] = collections.OrderedDict()
+        IS2_atl11_tide_attrs[ptx][XT]['dac']['units'] = "meters"
+        IS2_atl11_tide_attrs[ptx][XT]['dac']['contentType'] = "referenceInformation"
+        IS2_atl11_tide_attrs[ptx][XT]['dac']['long_name'] = "Dynamic atmosphere correction"
+        IS2_atl11_tide_attrs[ptx][XT]['dac']['description'] = ("Weighted-average "
+            "dynamic atmosphere correction for each pass with Near-Grounding Zone fit.")
+        IS2_atl11_tide_attrs[ptx][XT]['dac']['source'] = "ATL06"
+        IS2_atl11_tide_attrs[ptx][XT]['dac']['coordinates'] = \
             "ref_pt delta_time latitude longitude"
         # computed tide adjustments
         IS2_atl11_tide[ptx][XT]['tide_adj'] = tide_adj['XT'].copy()
@@ -907,6 +936,11 @@ def arguments():
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='ICESat-2 ATL11 file to run')
+    # directory with tide data
+    parser.add_argument('--directory','-D',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.getcwd(),
+        help='Working data directory')
     # tide model to use
     model_choices = pyTMD.model.ocean_elevation()
     parser.add_argument('--tide','-T',
