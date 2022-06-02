@@ -11,8 +11,8 @@ Calculates ice sheet grounding zones with ICESat-2 data following:
         https://doi.org/10.1017/S095410200999023X
 
 COMMAND LINE OPTIONS:
-    -D X, --directory=X: Working data directory
-    -M X, --mode=X: Permission mode of directories and files created
+    -D X, --directory X: Working data directory
+    -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
 
 PYTHON DEPENDENCIES:

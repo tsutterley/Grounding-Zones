@@ -15,7 +15,7 @@ COMMAND LINE OPTIONS:
     --reflctUC: criteria for reflectivity
     --numPk: criteria for number of peaks in waveform
     -V, --verbose: Output information about each created file
-    -M X, --mode=X: Permission mode of files created
+    -M X, --mode X: Permission mode of files created
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python

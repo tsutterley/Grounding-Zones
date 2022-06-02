@@ -62,7 +62,7 @@ import numpy as np
 import icesat2_toolkit.time
 from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
 from geoid_toolkit.geoid_undulation import geoid_undulation
-from geoid_toolkit.utilities import convert_arg_line_to_args
+from grounding_zones.utilities import convert_arg_line_to_args
 from icesat2_toolkit.read_ICESat2_ATL12 import read_HDF5_ATL12
 from icesat2_toolkit.convert_delta_time import convert_delta_time
 

@@ -61,7 +61,7 @@ import numpy as np
 import geoid_toolkit.spatial
 from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
 from geoid_toolkit.geoid_undulation import geoid_undulation
-from geoid_toolkit.utilities import convert_arg_line_to_args
+from grounding_zones.utilities import convert_arg_line_to_args
 
 #-- PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 #-- and computes geoid undulation at points
