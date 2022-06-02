@@ -40,7 +40,8 @@ else:
         'https://github.com/tsutterley/read-ICESat-2/tarball/main',
         'https://github.com/tsutterley/read-ATM1b-QFIT-binary/tarball/main',
         'https://github.com/tsutterley/geoid-toolkit/tarball/main',
-        'https://github.com/tsutterley/pyTMD/tarball/main']
+        'https://github.com/tsutterley/pyTMD/tarball/main',
+        'https://github.com/tsutterley/spatial-interpolators/tarball/master']
 
 # check if GDAL is installed
 gdal_output = [None] * 4
