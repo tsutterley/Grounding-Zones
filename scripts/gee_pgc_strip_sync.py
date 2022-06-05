@@ -25,6 +25,7 @@ COMMAND LINE OPTIONS:
     -Y X, --year X: Year of DEM strips to sync (default=All)
     -B X, --bbox X: Bounding box for spatial query
     -R X, --restart X: Indice for restarting PGC DEM sync
+    -A X, --active X: Number of currently active tasks allowed
     -M, --matchtag: Output matchtag raster files
     -I, --index: Output index shapefiles
 
@@ -39,6 +40,7 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import ee
+import time
 import logging
 import argparse
 
@@ -47,6 +49,7 @@ def gee_pgc_strip_sync(model, version, resolution,
     YEARS=None,
     BOUNDS=None,
     START=0,
+    ACTIVE=1,
     SCALE=None,
     MATCHTAG=False,
     INDEX=False):
@@ -99,6 +102,10 @@ def gee_pgc_strip_sync(model, version, resolution,
                 'formatOptions': {'cloudOptimized': True}
             })
             task.start()
+            # limit number of currently active tasks
+            task_limiter = (((i-START) % ACTIVE) == 0)
+            while task.active() and task_limiter:
+                time.sleep(1)
 
             # output the DEM matchtag raster file
             if MATCHTAG:
@@ -169,6 +176,10 @@ def arguments():
     parser.add_argument('--restart', '-R',
         type=int, default=0,
         help='Indice for restarting PGC DEM sync')
+    # limit number of currently active tasks
+    parser.add_argument('--active', '-A',
+        type=int, default=3000,
+        help='Number of currently active tasks allowed')
     # output matchtag raster files
     parser.add_argument('--matchtag','-M',
         default=False, action='store_true',
@@ -190,6 +201,7 @@ def main():
         YEARS=args.year,
         BOUNDS=args.bbox,
         START=args.restart,
+        ACTIVE=args.active,
         SCALE=args.scale,
         MATCHTAG=args.matchtag,
         INDEX=args.index)
