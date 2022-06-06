@@ -130,7 +130,7 @@ def tile_ICESat2_ATL11(FILE,
     today = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     f2.attrs['date_created'] = today
     #-- create projection variable
-    h5 = f2.create_dataset('Polar_Stereographic',(),dtype=np.byte)
+    h5 = f2.create_dataset('Polar_Stereographic', (), dtype=np.byte)
     #-- add projection attributes
     h5.attrs['standard_name'] = 'Polar_Stereographic'
     h5.attrs['spatial_epsg'] = crs2.to_epsg()

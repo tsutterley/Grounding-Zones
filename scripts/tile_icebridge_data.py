@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_icebridge_data.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (06/2022)
 Creates tile index files of Operation IceBridge elevation data
 
 INPUTS:
@@ -27,6 +27,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 06/2022: add checks if variables and groups already exist
     Updated 05/2022: use argparse descriptions within documentation
     Updated 11/2021: adjust tiling to index by center coordinates
         wait if merged HDF5 tile file is unavailable
@@ -450,7 +451,8 @@ def tile_icebridge_data(arg,
     index_directory = 'north' if (HEM == 'N') else 'south'
     #-- output directory and index file
     DIRECTORY = os.path.dirname(input_file)
-    fileBasename,_ = os.path.splitext(os.path.basename(input_file))
+    BASENAME = os.path.basename(input_file)
+    fileBasename,_ = os.path.splitext(BASENAME)
     output_file = os.path.join(DIRECTORY, index_directory,
         '{0}.h5'.format(fileBasename))
 
@@ -475,7 +477,7 @@ def tile_icebridge_data(arg,
     today = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     f2.attrs['date_created'] = today
     #-- create projection variable
-    h5 = f2.create_dataset('Polar_Stereographic',(),dtype=np.byte)
+    h5 = f2.create_dataset('Polar_Stereographic', (), dtype=np.byte)
     #-- add projection attributes
     h5.attrs['standard_name'] = 'Polar_Stereographic'
     h5.attrs['spatial_epsg'] = crs2.to_epsg()
@@ -490,8 +492,11 @@ def tile_icebridge_data(arg,
         xc = (xp+1)*SPACING
         yc = (yp+1)*SPACING
         #-- create group
-        tile_group = 'E{0:0.0f}_N{1:0.0f}'.format(xc/1e3,yc/1e3)
-        g2 = f2.create_group(tile_group)
+        tile_group = 'E{0:0.0f}_N{1:0.0f}'.format(xc/1e3, yc/1e3)
+        if tile_group not in f2:
+            g2 = f2.create_group(tile_group)
+        else:
+            g2 = f2[tile_group]
         #-- add group attributes
         g2.attrs['x_center'] = xc
         g2.attrs['y_center'] = yc
@@ -503,11 +508,14 @@ def tile_icebridge_data(arg,
         clobber = 'a' if os.access(tile_file,os.F_OK) else 'w'
         #-- open output merged tile file
         f3 = multiprocess_h5py(tile_file,clobber)
-        g3 = f3.create_group(os.path.basename(input_file))
+        if BASENAME not in f3:
+            g3 = f3.create_group(BASENAME)
+        else:
+            g3 = f3[BASENAME]
         #-- add file-level variables and attributes
         if (clobber == 'w'):
             #-- create projection variable
-            h5 = f3.create_dataset('Polar_Stereographic',(),
+            h5 = f3.create_dataset('Polar_Stereographic', (),
                 dtype=np.byte)
             #-- add projection attributes
             h5.attrs['standard_name'] = 'Polar_Stereographic'
@@ -537,11 +545,15 @@ def tile_icebridge_data(arg,
             #-- for each output variable
             h5 = {}
             for key,val in output.items():
-                #-- create HDF5 variables
-                h5[key] = g.create_dataset(key, val.shape,
-                    data=val,
-                    dtype=val.dtype,
-                    compression='gzip')
+                #-- check if HDF5 variable exists
+                if key not in g:
+                    #-- create HDF5 variable
+                    h5[key] = g.create_dataset(key, val.shape, data=val,
+                        dtype=val.dtype, compression='gzip')
+                else:
+                    #-- overwrite HDF5 variable
+                    h5[key] = g[key]
+                    h5[key][...] = val
                 #-- add variable attributes
                 for att_name,att_val in attributes[key].items():
                     h5[key].attrs[att_name] = att_val
