@@ -35,21 +35,61 @@ PYTHON DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 06/2022: added restart and bbox command line options
+        add task limiter to prevent maximum active worker stoppages
     Written 05/2022
 """
 from __future__ import print_function
-
-import ee
-import time
-import logging
 import argparse
+import logging
+import time
+import ee
+
+# PURPOSE: get number of currently pending or running tasks
+def current_tasks():
+    """
+    Get number of currently pending or running tasks in
+    Google Earth Engine
+    """
+    # list of tasks from Earth Engine Task Manager
+    tasks = ee.data.listOperations()
+    # reduce tasks to pending or running
+    queue = [t for t in tasks if t['metadata']['state'] in
+        ('PENDING', 'READY', 'RUNNING')]
+    return len(queue)
+
+# PURPOSE: limits number of currently active tasks
+def task_limiter(tasks, limit=3000, wait=5):
+    """
+    Limits number of currently active tasks in Google Earth Engine
+
+    Parameters
+    ----------
+    tasks: list
+        Tasks to be submitted to Google Earth Engine
+    limit: int, default 3000
+        Number of queued tasks allowed by the GEE batch system
+    wait: int, default 5
+        Number of seconds to wait before retrying submission
+    """
+    n_submit = len(tasks)
+    while True:
+        # get the number of current tasks
+        n_queue = current_tasks()
+        # check if number of tasks is under the limit
+        if ((n_queue + n_submit) < limit):
+            # start each task
+            for task in tasks:
+                task.start()
+        else:
+            # wait while other tasks are currently active
+            time.sleep(wait)
 
 # PURPOSE: sync local PGC DEM strip files with Google Earth Engine
 def gee_pgc_strip_sync(model, version, resolution,
     YEARS=None,
     BOUNDS=None,
     START=0,
-    ACTIVE=1,
+    LIMIT=3000,
     SCALE=None,
     MATCHTAG=False,
     INDEX=False):
@@ -58,7 +98,7 @@ def gee_pgc_strip_sync(model, version, resolution,
     ee.Initialize()
     # standard logging output
     logging.basicConfig(level=logging.INFO)
-    # format version and scale
+    # format model version and scale
     VERSION = version[:2].upper()
     if not SCALE:
         SCALE = int(resolution[:-1])
@@ -76,13 +116,15 @@ def gee_pgc_strip_sync(model, version, resolution,
         # create list from filtered image collection
         collection_list = filtered.toList(n_images)
         # for each image in the list
-        # (can restart at a particular image)
         for i in range(START,n_images):
+            # get image from collection
             img = ee.Image(collection_list.get(i))
             granule = img.id().getInfo()
             # log granule
             logging.info(granule)
             properties = img.getInfo()['properties']
+            # create task list for granule
+            tasks = []
             # get elevation geotiff
             elev = img.select('elevation')
             # calculate DEM standard deviation
@@ -101,12 +143,8 @@ def gee_pgc_strip_sync(model, version, resolution,
                 'folder': f'{model}_{SCALE}m',
                 'formatOptions': {'cloudOptimized': True}
             })
-            task.start()
-            # limit number of currently active tasks
-            task_limiter = (((i-START) % ACTIVE) == 0)
-            while task.active() and task_limiter:
-                time.sleep(1)
-
+            # add to task list
+            tasks.append(task)
             # output the DEM matchtag raster file
             if MATCHTAG:
                 # get matchtag geotiff
@@ -120,8 +158,8 @@ def gee_pgc_strip_sync(model, version, resolution,
                     'folder': f'{model}_{SCALE}m',
                     'formatOptions': {'cloudOptimized': True}
                 })
-                task.start()
-
+                # add to task list
+                tasks.append(task)
             # output the DEM index shapefiles
             if INDEX:
                 # get coordinates of footprint linear ring
@@ -135,7 +173,10 @@ def gee_pgc_strip_sync(model, version, resolution,
                     'fileFormat': 'SHP',
                     'folder': f'{model}_{SCALE}m',
                 })
-                task.start()
+                # add to task list
+                tasks.append(task)
+            # attempt to run tasks
+            task_limiter(tasks, limit=LIMIT)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -172,12 +213,12 @@ def arguments():
         type=float, nargs=4,
         metavar=('lon_min','lat_min','lon_max','lat_max'),
         help='Bounding box for spatial query')
-    # restart sync at indice
+    # restart sync at a particular image
     parser.add_argument('--restart', '-R',
         type=int, default=0,
         help='Indice for restarting PGC DEM sync')
     # limit number of currently active tasks
-    parser.add_argument('--active', '-A',
+    parser.add_argument('--limit', '-L',
         type=int, default=3000,
         help='Number of currently active tasks allowed')
     # output matchtag raster files
@@ -201,7 +242,7 @@ def main():
         YEARS=args.year,
         BOUNDS=args.bbox,
         START=args.restart,
-        ACTIVE=args.active,
+        LIMIT=args.limit,
         SCALE=args.scale,
         MATCHTAG=args.matchtag,
         INDEX=args.index)
