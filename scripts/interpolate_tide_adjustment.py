@@ -26,6 +26,7 @@ PYTHON DEPENDENCIES:
 UPDATE HISTORY:
     Updated 06/2022: use argparse descriptions within documentation
         use tide model class to get the list of available models
+        read mask files to not interpolate over grounded ice
     Updated 01/2022: added options for using radial basis functions
         wait if HDF5 tile file is unavailable for read or write
     Written 12/2021
@@ -84,8 +85,8 @@ def interpolate_tide_adjustment(tile_file,
     # directory with ATL11 data
     if DIRECTORY is None:
         DIRECTORY = os.path.dirname(tile_directory)
-    # file format for tide fit files
-    file_format = '{0}_{1}_FIT_TIDES_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
+    # file format for mask and tide fit files
+    file_format = '{0}_{1}{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
     # extract tile centers from filename
     tile_centers = R1.findall(os.path.basename(tile_file)).pop()
     xc,yc = 1000.0*np.array(tile_centers,dtype=np.float64)
@@ -143,6 +144,7 @@ def interpolate_tide_adjustment(tile_file,
     d['longitude'] = np.zeros((npts),dtype=np.float64)
     d['latitude'] = np.zeros((npts),dtype=np.float64)
     d['tide_adj_scale'] = np.zeros((npts),dtype=np.float64)
+    d['mask'] = np.zeros((npts),dtype=bool)
     # indices for each pair track
     pair = dict(pt1=1, pt2=2, pt3=3)
     # counter for filling arrays
@@ -163,13 +165,18 @@ def interpolate_tide_adjustment(tile_file,
             # extract parameters from ATL11 filename
             PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX=R2.findall(ATL11).pop()
             # ATL11 flexure correction HDF5 file
-            args = (PRD,TIDE_MODEL,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-            FILE2 = file_format.format(*args)
+            FILE2 = file_format.format(PRD,TIDE_MODEL,'_FIT_TIDES',
+                TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
+            # ATL11 raster mask HDF5 file
+            FILE3 = file_format.format(PRD,'MASK','',
+                TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
             # skip file if not currently accessible
             if not os.access(os.path.join(DIRECTORY,FILE2)):
                 continue
             # open ATL11 flexure correction HDF5 file
             f2 = multiprocess_h5py(os.path.join(DIRECTORY,FILE2), 'r')
+            # open ATL11 grounded mask HDF5 file
+            f3 = multiprocess_h5py(os.path.join(DIRECTORY,FILE3), 'r')
             # for each ATL11 beam pairs within the tile
             for ptx in f1[ATL11].keys():
                 # reference points and indices within tile
@@ -195,10 +202,20 @@ def interpolate_tide_adjustment(tile_file,
                     else:
                         # reduce to indices
                         d[k][c:c+file_length] = temp[indices]
+                # try to extract subsetting variables
+                for k in ['mask']:
+                    try:
+                        temp = f3[ptx]['subsetting'][k][:].copy()
+                    except Exception as e:
+                        pass
+                    else:
+                        # reduce to indices
+                        d[k][c:c+file_length] = temp[indices]
                 # add to counter
                 c += file_length
-            # close the ATL11 file
+            # close the ATL11 tidal flexure and mask file
             f2.close()
+            f3.close()
         # close the tile file
         f1.close()
 
@@ -276,6 +293,9 @@ def interpolate_tide_adjustment(tile_file,
                 u = {}
                 for key,val in d.items():
                     u[key] = val[clipped]
+                # mask out grounded points
+                masked = np.nonzero(u['mask'])
+                u['tide_adj_scale'][masked] = np.nan
                 # output coordinates for grid subset
                 X = np.arange(xm,xm+SUBSET+dx,dx)
                 Y = np.arange(ym,ym+SUBSET+dy,dy)
