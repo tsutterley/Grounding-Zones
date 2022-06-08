@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 utilities.py
-Written by Tyler Sutterley (03/2021)
+Written by Tyler Sutterley (05/2022)
 Download and management utilities for syncing time and auxiliary files
 Adds additional modules to the icesat2_toolkit utilities
 
@@ -10,6 +10,7 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 05/2022: updated docstrings to numpy documentation format
     Updated 03/2021: add data path function for this set of utilities
     Written 01/2021
 """
@@ -20,9 +21,10 @@ def get_data_path(relpath):
     """
     Get the absolute path within a package from a relative path
 
-    Arguments
-    ---------
-    relpath: relative path
+    Parameters
+    ----------
+    relpath: str,
+        relative path
     """
     #-- current file path
     filename = inspect.getframeinfo(inspect.currentframe()).filename
@@ -34,31 +36,41 @@ def get_data_path(relpath):
         return os.path.join(filepath,relpath)
 
 #-- PURPOSE: list a directory on Polar Geospatial Center https server
-def pgc_list(HOST,timeout=None,context=ssl.SSLContext(),
-    parser=lxml.etree.HTMLParser(),format='%Y-%m-%d %H:%M',
-    pattern='',sort=False):
+def pgc_list(HOST, timeout=None, context=ssl.SSLContext(),
+    parser=lxml.etree.HTMLParser(), format='%Y-%m-%d %H:%M',
+    pattern='', sort=False):
     """
     List a directory on Polar Geospatial Center (PGC) servers
 
-    Arguments
-    ---------
-    HOST: remote https host path split as list
-
-    Keyword arguments
-    -----------------
-    timeout: timeout in seconds for blocking operations
-    context: SSL context for url opener object
-    parser: HTML parser for lxml
-    format: format for input time string
-    pattern: regular expression pattern for reducing list
-    sort: sort output list
+    Parameters
+    ----------
+    HOST: str or list
+        remote https host path
+    timeout: int or NoneType, default None
+        timeout in seconds for blocking operations
+    context: obj, default ssl.SSLContext()
+        SSL context for url opener object
+    parser: obj, default lxml.etree.HTMLParser()
+        HTML parser for lxml
+    formatt: str, default '%Y-%m-%d %H:%M'
+        format for input time string
+    pattern: str, default ''
+        regular expression pattern for reducing list
+    sort: bool, default False
+        sort output list
 
     Returns
     -------
-    colnames: list of column names in a directory
-    collastmod: list of last modification times for items in the directory
-    colerror: notification for list error
+    colnames: list
+        column names in a directory
+    collastmod: list
+        last modification times for items in the directory
+    colerror: list
+        notification for list error
     """
+    #-- verify inputs for remote http host
+    if isinstance(HOST, str):
+        HOST = url_split(HOST)
     #-- try listing from https
     try:
         #-- Create and submit request.

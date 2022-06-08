@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 symbolic_ICESat_GLA12.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (05/2022)
 Creates symbolic links for ICESat/GLAS L2 GLA12 Antarctic and Greenland
     Ice Sheet elevation files organized by date
 
@@ -17,6 +17,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: permission mode of directories
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Written 02/2022
 """
 from __future__ import print_function
@@ -29,9 +30,8 @@ import h5py
 import logging
 import argparse
 
-#-- Main program that calls symbolic_ICESat_GLA12()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Creates symbolic links for ICESat/GLAS L2
             GLA12 Antarctic and Greenland Ice Sheet elevation files
@@ -56,6 +56,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='permissions mode of output directories')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- create logger

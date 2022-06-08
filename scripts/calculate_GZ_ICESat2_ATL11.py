@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (03/2021)
+Written by Tyler Sutterley (05/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -64,6 +64,9 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
+        use tide model class to get available models and references
+        output estimated elastic modulus in grounding zone data group
     Updated 03/2021: output HDF5 file of flexure scaled by a tide model
         estimate flexure for crossovers using along-track model outputs
         final extent of the flexure AT is the estimated grounding line
@@ -93,6 +96,7 @@ import scipy.stats
 import scipy.optimize
 import shapely.geometry
 import matplotlib.pyplot as plt
+import pyTMD.model
 import icesat2_toolkit.time
 from grounding_zones.utilities import get_data_path
 from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11, \
@@ -595,7 +599,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
         grounding_zone_data['cycle_number'] = []
         # grounding_zone_data['tide_ocean'] = []
         grounding_zone_data['gz_sigma'] = []
-        # grounding_zone_data['e_mod'] = []
+        grounding_zone_data['e_mod'] = []
+        grounding_zone_data['e_mod_sigma'] = []
         # grounding_zone_data['H_ice'] = []
         # grounding_zone_data['delta_h'] = []
 
@@ -724,7 +729,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                     grounding_zone_data['cycle_number'].append(CYCLE)
                     # grounding_zone_data['tide_ocean'].append(PA)
                     grounding_zone_data['gz_sigma'].append(PGZ[1])
-                    # grounding_zone_data['e_mod'].append(PE)
+                    grounding_zone_data['e_mod'].append(PE[0]/1e9)
+                    grounding_zone_data['e_mod_sigma'].append(PE[1]/1e9)
                     # grounding_zone_data['H_ice'].append(PT)
                     # grounding_zone_data['delta_h'].append(PdH)
 
@@ -1040,6 +1046,32 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
         IS2_atl11_gz_attrs[ptx][GZD]['gz_sigma']['description'] = ("Uncertainty in grounding"
             "zone location derived by the physical elastic bending model")
         IS2_atl11_gz_attrs[ptx][GZD]['gz_sigma']['coordinates'] = \
+            "ref_pt delta_time latitude longitude"
+        # effective elastic modulus
+        IS2_atl11_gz[ptx][GZD]['e_mod'] = np.copy(grounding_zone_data['e_mod'])
+        IS2_atl11_fill[ptx][GZD]['e_mod'] = 0.0
+        IS2_atl11_dims[ptx][GZD]['e_mod'] = ['ref_pt']
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod'] = collections.OrderedDict()
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod']['units'] = "GPa"
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod']['contentType'] = "physicalMeasurement"
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod']['long_name'] = "Elastic modulus"
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod']['source'] = "ATL11"
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod']['description'] = ("Effective Elastic modulus "
+            "of ice estimating using an elastic beam model")
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod']['coordinates'] = \
+            "ref_pt delta_time latitude longitude"
+        # uncertainty of the elastic modulus
+        IS2_atl11_gz[ptx][GZD]['e_mod_sigma'] = np.copy(grounding_zone_data['e_mod_sigma'])
+        IS2_atl11_fill[ptx][GZD]['e_mod_sigma'] = 0.0
+        IS2_atl11_dims[ptx][GZD]['e_mod_sigma'] = ['ref_pt']
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod_sigma'] = collections.OrderedDict()
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod_sigma']['units'] = "GPa"
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod_sigma']['contentType'] = "physicalMeasurement"
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod_sigma']['long_name'] = "Elastic modulus uncertainty"
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod_sigma']['source'] = "ATL11"
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod_sigma']['description'] = ("Uncertainty in the "
+            "effective Elastic modulus of ice")
+        IS2_atl11_gz_attrs[ptx][GZD]['e_mod_sigma']['coordinates'] = \
             "ref_pt delta_time latitude longitude"
 
         # if estimating flexure for crossover measurements
@@ -1360,8 +1392,8 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     # Closing the HDF5 file
     fileID.close()
 
-# Main program that calls calculate_GZ_ICESat2()
-def main():
+# PURPOSE: create arguments parser
+def arguments():
     # Read the system arguments listed after the program
     parser = argparse.ArgumentParser(
         description="""Calculates ice sheet grounding zones with ICESat-2
@@ -1378,12 +1410,7 @@ def main():
         default=get_data_path('data'),
         help='Working data directory')
     # tide model to use
-    model_choices = ('CATS0201','CATS2008',
-        'TPXO9-atlas','TPXO9-atlas-v2','TPXO9-atlas-v3','TPXO9-atlas-v4',
-        'TPXO9.1','TPXO8-atlas','TPXO7.2',
-        'AODTM-5','AOTIM-5','AOTIM-5-2018',
-        'GOT4.7','GOT4.8','GOT4.10',
-        'FES2014')
+    model_choices = pyTMD.model.ocean_elevation()
     parser.add_argument('--tide','-T',
         metavar='TIDE', type=str, default='CATS2008',
         choices=model_choices,
@@ -1409,6 +1436,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files created')
+    # return the parser
+    return parser
+
+# This is the main part of the program that calls the individual functions
+def main():
+    # Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     # run for each input ATL11 file

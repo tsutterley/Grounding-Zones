@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_icebridge_data.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (05/2022)
 Calculates geoid undulations for correcting Operation IceBridge elevation data
 
 INPUTS:
@@ -35,6 +35,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
         using collections to store attributes in order of creation
         additionally output conversion between tide free and mean tide values
@@ -64,7 +65,7 @@ import pyTMD.time
 import read_ATM1b_QFIT_binary.read_ATM1b_QFIT_binary as ATM1b
 from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
 from geoid_toolkit.geoid_undulation import geoid_undulation
-from geoid_toolkit.utilities import convert_arg_line_to_args
+from grounding_zones.utilities import convert_arg_line_to_args
 
 #-- PURPOSE: reading the number of file lines removing commented lines
 def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
@@ -569,9 +570,8 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     #-- change the permissions level to MODE
     os.chmod(os.path.join(DIRECTORY,FILENAME), MODE)
 
-#-- Main program that calls compute_geoid_icebridge_data()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Calculates geoid undulations for correcting Operation
             IceBridge elevation data
@@ -605,6 +605,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files created')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run for each input GLA12 file

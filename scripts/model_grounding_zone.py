@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 model_grounding_zone.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (05/2022)
 Creates a model of the tidal fluctuation of an ice shelf/sheet grounding zone
     using repeat period and error level of an input dataset (ATM/LVIS/ATL06)
 Delineates the grounding zone using both a piecewise fit and an elastic model
@@ -25,6 +25,7 @@ COMMAND LINE OPTIONS:
     -V, --verbose: Verbose output of processing run
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: use argparse to set command line options
     Updated 09/2017: use rcond=-1 in numpy least-squares algorithms
     Written 06/2017
@@ -410,9 +411,8 @@ def conf_interval(x,f,p):
     K = x[ii[-1]]
     return np.abs(K-J)
 
-#-- set the parameters for the model_grounding_zone() program
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Creates a model of the tidal fluctuation of an
             ice shelf/sheet grounding zone
@@ -439,6 +439,13 @@ def main():
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
         help='Verbose output of processing run')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run model with parameters

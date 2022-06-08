@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_ICESat_GLA12.py
-Written by Tyler Sutterley (02/2022)
+Written by Tyler Sutterley (06/2022)
 Creates tile index files of ICESat/GLAS L2 GLA12 Antarctic and
     Greenland Ice Sheet elevation data
 
@@ -29,6 +29,8 @@ PROGRAM DEPENDENCIES:
     spatial: utilities for reading, writing and operating on spatial data
 
 UPDATE HISTORY:
+    Updated 06/2022: add checks if variables and groups already exist
+    Updated 05/2022: use argparse descriptions within documentation
     Written 02/2022
 """
 import sys
@@ -170,7 +172,7 @@ def tile_ICESat_GLA12(input_file,
     ytile = (y-0.5*SPACING)//SPACING
 
     #-- open output index file
-    f2 = h5py.File(output_file,'w')
+    f2 = h5py.File(output_file, 'w')
     f2.attrs['featureType'] = 'trajectory'
     f2.attrs['GDAL_AREA_OR_POINT'] = 'Point'
     f2.attrs['time_type'] = 'UTC'
@@ -178,7 +180,7 @@ def tile_ICESat_GLA12(input_file,
     f2.attrs['date_created'] = today
     f2.attrs['campaign'] = campaign
     #-- create projection variable
-    h5 = f2.create_dataset('Polar_Stereographic',(),dtype=np.byte)
+    h5 = f2.create_dataset('Polar_Stereographic', (), dtype=np.byte)
     #-- add projection attributes
     h5.attrs['standard_name'] = 'Polar_Stereographic'
     h5.attrs['spatial_epsg'] = crs2.to_epsg()
@@ -193,24 +195,31 @@ def tile_ICESat_GLA12(input_file,
         xc = (xp+1)*SPACING
         yc = (yp+1)*SPACING
         #-- create group
-        tile_group = 'E{0:0.0f}_N{1:0.0f}'.format(xc/1e3,yc/1e3)
-        g2 = f2.create_group(tile_group)
+        tile_group = 'E{0:0.0f}_N{1:0.0f}'.format(xc/1e3, yc/1e3)
+        if tile_group not in f2:
+            g2 = f2.create_group(tile_group)
+        else:
+            g2 = f2[tile_group]
         #-- add group attributes
         g2.attrs['x_center'] = xc
         g2.attrs['y_center'] = yc
         g2.attrs['spacing'] = SPACING
 
         #-- create merged tile file if not existing
-        tile_file = os.path.join(DIRECTORY,index_directory,
+        tile_file = os.path.join(DIRECTORY, index_directory,
             '{0}.h5'.format(tile_group))
-        clobber = 'a' if os.access(tile_file,os.F_OK) else 'w'
+        clobber = 'a' if os.access(tile_file, os.F_OK) else 'w'
         #-- open output merged tile file
         f3 = multiprocess_h5py(tile_file,clobber)
-        g3 = f3.create_group(os.path.basename(input_file))
+        #-- create file group
+        if BASENAME not in f3:
+            g3 = f3.create_group(BASENAME)
+        else:
+            g3 = f3[BASENAME]
         #-- add file-level variables and attributes
         if (clobber == 'w'):
             #-- create projection variable
-            h5 = f3.create_dataset('Polar_Stereographic',(),
+            h5 = f3.create_dataset('Polar_Stereographic', (),
                 dtype=np.byte)
             #-- add projection attributes
             h5.attrs['standard_name'] = 'Polar_Stereographic'
@@ -241,11 +250,15 @@ def tile_ICESat_GLA12(input_file,
             #-- for each output variable
             h5 = {}
             for key,val in output.items():
-                #-- create HDF5 variables
-                h5[key] = g.create_dataset(key, val.shape,
-                    data=val,
-                    dtype=val.dtype,
-                    compression='gzip')
+                #-- check if HDF5 variable exists
+                if key not in g:
+                    #-- create HDF5 variable
+                    h5[key] = g.create_dataset(key, val.shape, data=val,
+                        dtype=val.dtype, compression='gzip')
+                else:
+                    #-- overwrite HDF5 variable
+                    h5[key] = g[key]
+                    h5[key][...] = val
                 #-- add variable attributes
                 for att_name,att_val in attributes[key].items():
                     h5[key].attrs[att_name] = att_val
@@ -265,9 +278,8 @@ def tile_ICESat_GLA12(input_file,
     #-- change the permissions mode of the output file
     os.chmod(output_file, mode=MODE)
 
-#-- Main program that calls tile_ICESat_GLA12()
-def main():
-   #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Creates tile index files of ICESat/GLAS L2 GLA12
             Antarctic and Greenland Ice Sheet elevation data
@@ -294,6 +306,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run program for each file

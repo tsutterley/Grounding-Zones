@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 filter_ICESat_GLA12.py
-Written by Tyler Sutterley (02/2022)
+Written by Tyler Sutterley (05/2022)
 Calculates quality summary flags for ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -15,7 +15,7 @@ COMMAND LINE OPTIONS:
     --reflctUC: criteria for reflectivity
     --numPk: criteria for number of peaks in waveform
     -V, --verbose: Output information about each created file
-    -M X, --mode=X: Permission mode of files created
+    -M X, --mode X: Permission mode of files created
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -33,7 +33,7 @@ I. M. Howat, B. E. Smith, I. R. Joughin, and T. A. Scambos,
 H. D. Pritchard, S. R. M. Ligtenberg, H. A. Fricker, D. G. Vaughan,
     M. R. van den Broeke, L. Padman, "Antarctic ice-sheet loss
     driven by basal melting of ice shelves", Nature, 484(7395),
-    502-505, (2002). https://doi.org/10.1038/nature10968
+    502-505, (2012). https://doi.org/10.1038/nature10968
 
 B. E. Smith, C. R. Bentley, and C. F. Raymond, "Recent elevation
     changes on the ice streams and ridges of the Ross Embayment
@@ -48,6 +48,7 @@ L. S. Sorensen, S. B. Simonsen, K. Nielsen, P. Lucas-Picher,
     https://doi.org/10.5194/tc-5-173-2011
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Forked 02/2022 from icesat_glas_correct.py
 """
 from __future__ import print_function
@@ -325,9 +326,8 @@ def HDF5_GLA12_mask_write(IS_gla12_tide, IS_gla12_attrs,
     #-- Closing the HDF5 file
     fileID.close()
 
-#-- Main program that calls filter_ICESat_GLA12()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Calculates quality summary flags for
             ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice
@@ -360,6 +360,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files created')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run for each input GLA12 file

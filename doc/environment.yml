@@ -1,0 +1,34 @@
+name: gz-docs
+channels:
+  - conda-forge
+dependencies:
+  - docutils<0.18
+  - fontconfig
+  - freetype
+  - gdal
+  - graphviz
+  - h5py
+  - lxml
+  - matplotlib
+  - mpi4py
+  - netCDF4
+  - notebook
+  - numpy
+  - numpydoc
+  - pip
+  - pyproj
+  - python>=3.6
+  - python-dateutil
+  - pyyaml
+  - scipy
+  - setuptools_scm
+  - sphinx
+  - sphinx-argparse
+  - sphinx_rtd_theme
+  - texlive-core
+  - pip:
+     - git+https://github.com/tsutterley/read-ATM1b-QFIT-binary.git
+     - git+https://github.com/tsutterley/read-ICESat-2.git
+     - git+https://github.com/tsutterley/geoid-toolkit.git
+     - git+https://github.com/tsutterley/pyTMD.git
+     - ..

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL06.py
-Written by Tyler Sutterley (03/2021)
+Written by Tyler Sutterley (05/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -11,8 +11,8 @@ Calculates ice sheet grounding zones with ICESat-2 data following:
         https://doi.org/10.1017/S095410200999023X
 
 COMMAND LINE OPTIONS:
-    -D X, --directory=X: Working data directory
-    -M X, --mode=X: Permission mode of directories and files created
+    -D X, --directory X: Working data directory
+    -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
 
 PYTHON DEPENDENCIES:
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 03/2021: use utilities to set default path to shapefiles
         replaced numpy bool/int to prevent deprecation warnings
     Updated 01/2021: using argparse to set command line options
@@ -455,9 +456,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
     fid2.close()
     # fid3.close()
 
-#-- Main program that calls calculate_GZ_ICESat2()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Calculates ice sheet grounding zones with ICESat-2
             ATL06 along-track land ice height data
@@ -481,6 +481,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files created')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run for each input ATL06 file

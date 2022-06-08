@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_ICESat2_ATL06.py
-Written by Tyler Sutterley (10/2021)
+Written by Tyler Sutterley (05/2022)
 Computes geoid undulations for correcting ICESat-2 land ice elevation data
 
 COMMAND LINE OPTIONS:
@@ -35,6 +35,7 @@ PROGRAM DEPENDENCIES:
     gauss_weights.py: Computes Gaussian weights as a function of degree
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
         additionally output conversion between tide free and mean tide values
     Updated 07/2021: can use prefix files to define command line arguments
@@ -60,7 +61,7 @@ import numpy as np
 import icesat2_toolkit.time
 from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
 from geoid_toolkit.geoid_undulation import geoid_undulation
-from geoid_toolkit.utilities import convert_arg_line_to_args
+from grounding_zones.utilities import convert_arg_line_to_args
 from icesat2_toolkit.read_ICESat2_ATL06 import read_HDF5_ATL06
 from icesat2_toolkit.convert_delta_time import convert_delta_time
 
@@ -435,9 +436,8 @@ def HDF5_ATL06_geoid_write(IS2_atl06_geoid, IS2_atl06_attrs, INPUT=None,
     #-- Closing the HDF5 file
     fileID.close()
 
-#-- Main program that calls compute_geoid_ICESat2()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Calculates tidal elevations for correcting ICESat-2 ATL06
             land ice elevation data
@@ -471,6 +471,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files created')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run for each input ATL06 file

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_ICESat2_ATL11.py
-Written by Tyler Sutterley (11/2021)
+Written by Tyler Sutterley (06/2022)
 Creates tile index files of ICESat-2 annual land ice elevation data
 
 COMMAND LINE OPTIONS:
@@ -25,6 +25,8 @@ PROGRAM DEPENDENCIES:
     read_ICESat2_ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 06/2022: add checks if variables and groups already exist
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 11/2021: adjust tiling to index by center coordinates
         wait if merged HDF5 tile file is unavailable
     Written 10/2021
@@ -128,7 +130,7 @@ def tile_ICESat2_ATL11(FILE,
     today = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     f2.attrs['date_created'] = today
     #-- create projection variable
-    h5 = f2.create_dataset('Polar_Stereographic',(),dtype=np.byte)
+    h5 = f2.create_dataset('Polar_Stereographic', (), dtype=np.byte)
     #-- add projection attributes
     h5.attrs['standard_name'] = 'Polar_Stereographic'
     h5.attrs['spatial_epsg'] = crs2.to_epsg()
@@ -138,7 +140,7 @@ def tile_ICESat2_ATL11(FILE,
     for att_name,att_val in crs2.to_cf().items():
         h5.attrs[att_name] = att_val
 
-    #-- for each input beam within the file
+    #-- for each input beam pair within the file
     for ptx in sorted(IS2_atl11_pairs):
         #-- along-track (AT) reference point, latitude and longitude
         ref_pt = IS2_atl11_mds[ptx]['ref_pt'].copy()
@@ -164,7 +166,7 @@ def tile_ICESat2_ATL11(FILE,
             xc = (xp+1)*SPACING
             yc = (yp+1)*SPACING
             #-- create group
-            tile_group = 'E{0:0.0f}_N{1:0.0f}'.format(xc/1e3,yc/1e3)
+            tile_group = 'E{0:0.0f}_N{1:0.0f}'.format(xc/1e3, yc/1e3)
             if tile_group not in f2:
                 g1 = f2.create_group(tile_group)
             else:
@@ -183,10 +185,12 @@ def tile_ICESat2_ATL11(FILE,
             #-- create group for file
             if BASENAME not in f3:
                 g3 = f3.create_group(BASENAME)
+            else:
+                g3 = f3[BASENAME]
             #-- add file-level variables and attributes
             if (clobber == 'w'):
                 #-- create projection variable
-                h5 = f3.create_dataset('Polar_Stereographic',(),
+                h5 = f3.create_dataset('Polar_Stereographic', (),
                     dtype=np.byte)
                 #-- add projection attributes
                 h5.attrs['standard_name'] = 'Polar_Stereographic'
@@ -211,9 +215,18 @@ def tile_ICESat2_ATL11(FILE,
             output['y'] = y[indices].copy()
             output['index'] = indices.copy()
 
-            #-- create group for beam
-            g2 = f2.create_group('{0}/{1}'.format(tile_group,ptx))
-            g4 = f3.create_group('{0}/{1}'.format(BASENAME,ptx))
+            #-- groups for beam pair
+            tile_pair_group = '{0}/{1}'.format(tile_group,ptx)
+            pair_group = '{0}/{1}'.format(BASENAME,ptx)
+            #-- try to create groups for each beam pair
+            if tile_pair_group not in f2:
+                g2 = f2.create_group(tile_pair_group)
+            else:
+                g2 = f2[tile_pair_group]
+            if pair_group not in f3:
+                g4 = f3.create_group(pair_group)
+            else:
+                g4 = f3[pair_group]
             #-- for each group
             for g in [g2,g4]:
                 #-- add attributes for ATL11 beam pair
@@ -222,9 +235,15 @@ def tile_ICESat2_ATL11(FILE,
                 #-- for each output variable
                 h5 = {}
                 for key,val in output.items():
-                    #-- create HDF5 variables
-                    h5[key] = g.create_dataset(key, val.shape, data=val,
-                        dtype=val.dtype, compression='gzip')
+                    #-- check if HDF5 variable exists
+                    if key not in g:
+                        #-- create HDF5 variable
+                        h5[key] = g.create_dataset(key, val.shape, data=val,
+                            dtype=val.dtype, compression='gzip')
+                    else:
+                        #-- overwrite HDF5 variable
+                        h5[key] = g[key]
+                        h5[key][...] = val
                     #-- add variable attributes
                     for att_name,att_val in attributes[key].items():
                         h5[key].attrs[att_name] = att_val
@@ -242,9 +261,8 @@ def tile_ICESat2_ATL11(FILE,
     #-- change the permissions mode of the output file
     os.chmod(output_file, mode=MODE)
 
-#-- Main program that calls tile_ICESat2_ATL11()
-def main():
-   #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Creates tile index files of ICESat-2 ATL11
             annual land ice elevation data
@@ -267,6 +285,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- run program for each file

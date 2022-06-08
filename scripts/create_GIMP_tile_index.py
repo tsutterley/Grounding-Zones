@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 create_GIMP_tile_index.py
-Written by Tyler Sutterley (04/2021)
+Written by Tyler Sutterley (05/2022)
 
 Reads GIMP 30m DEM tiles from the OSU Greenland Ice Mapping Project
     https://nsidc.org/data/nsidc-0645/versions/1
@@ -22,7 +22,7 @@ https://urs.earthdata.nasa.gov/oauth/authorize?client_id=_JLuwMHxb2xX6NwYTb4dRA
 COMMAND LINE OPTIONS:
     -D X, --directory X: working data directory for output GIMP files
     -U X, --user X: username for NASA Earthdata Login
-    -P X, --password X: password for NASA Earthdata Login
+    -W X, --password X: password for NASA Earthdata Login
     -N X, --netrc X: path to .netrc file for alternative authentication
     -v X, --version X: data release of the GIMP dataset
     -M X, --mode X: Local permissions mode of the directories and files synced
@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2022: use argparse descriptions within documentation
     Updated 04/2021: set a default netrc file and check access
         default credentials from environmental variables
     Updated 01/2021: using utilities modules to list and download from server
@@ -212,9 +213,8 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
     #-- change the permissions mode of the output zip file
     os.chmod(os.path.join(ddir,ff.format(VERSION,'zip')),MODE)
 
-#-- Main program that calls create_GIMP_tile_index()
-def main():
-    #-- Read the system arguments listed after the program
+#-- PURPOSE: create argument parser
+def arguments():
     parser = argparse.ArgumentParser(
         description="""Reads GIMP 30m DEM tiles from the OSU Greenland
             Ice Mapping Project (GIMP) and creates a single shapefile
@@ -226,7 +226,7 @@ def main():
     parser.add_argument('--user','-U',
         type=str, default=os.environ.get('EARTHDATA_USERNAME'),
         help='Username for NASA Earthdata Login')
-    parser.add_argument('--password','-P',
+    parser.add_argument('--password','-W',
         type=str, default=os.environ.get('EARTHDATA_PASSWORD'),
         help='Password for NASA Earthdata Login')
     parser.add_argument('--netrc','-N',
@@ -246,6 +246,13 @@ def main():
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='permissions mode of output files')
+    #-- return the parser
+    return parser
+
+#-- This is the main part of the program that calls the individual functions
+def main():
+    #-- Read the system arguments listed after the program
+    parser = arguments()
     args,_ = parser.parse_known_args()
 
     #-- NASA Earthdata hostname
