@@ -53,6 +53,10 @@ def multiprocess_h5py(filename, *args, **kwargs):
             time.sleep(1)
     return fileID
 
+# PURPOSE: reduce a matrix using a selected function
+def reduce(val, method=np.min, axis=1):
+    return method(val, axis=axis)
+
 def interpolate_tide_adjustment(tile_file,
     DIRECTORY=None,
     HEM='S',
@@ -146,6 +150,7 @@ def interpolate_tide_adjustment(tile_file,
     d['tide_adj'] = np.zeros((npts),dtype=np.float64)
     d['tide_adj_sigma'] = np.zeros((npts),dtype=np.float64)
     d['mask'] = np.zeros((npts),dtype=bool)
+    Reducer = dict(tide_adj=np.min, tide_adj_sigma=np.max)
     # indices for each pair track
     pair = dict(pt1=1, pt2=2, pt3=3)
     # counter for filling arrays
@@ -201,8 +206,9 @@ def interpolate_tide_adjustment(tile_file,
                     except Exception as e:
                         pass
                     else:
-                        # reduce to indices
-                        d[k][c:c+file_length] = np.max(temp[indices,:],axis=1)
+                        # reduce matrix to indices
+                        d[k][c:c+file_length] = reduce(temp[indices,:],
+                            method=Reducer[k], axis=1)
                 # try to extract subsetting variables
                 for k in ['mask']:
                     try:
