@@ -118,7 +118,7 @@ def interpolate_tide_adjustment(tile_file,
     for ii,jj in zip(d_i.ravel(), d_j.ravel()):
         # tile file for buffer
         tile = tile_file_format.format((xc+W*ii)/1e3, (yc+W*jj)/1e3)
-        if not os.access(os.path.join(tile_directory,tile),os.F_OK):
+        if not os.access(os.path.join(tile_directory,tile), os.F_OK):
             continue
         # read the HDF5 file
         logging.info('Reading Buffer File: {0}'.format(tile))
@@ -143,7 +143,8 @@ def interpolate_tide_adjustment(tile_file,
     d['pair'] = np.zeros((npts),dtype=np.int8)
     d['longitude'] = np.zeros((npts),dtype=np.float64)
     d['latitude'] = np.zeros((npts),dtype=np.float64)
-    d['tide_adj_scale'] = np.zeros((npts),dtype=np.float64)
+    d['tide_adj'] = np.zeros((npts),dtype=np.float64)
+    d['tide_adj_sigma'] = np.zeros((npts),dtype=np.float64)
     d['mask'] = np.zeros((npts),dtype=bool)
     # indices for each pair track
     pair = dict(pt1=1, pt2=2, pt3=3)
@@ -153,7 +154,7 @@ def interpolate_tide_adjustment(tile_file,
     for ii,jj in zip(d_i.ravel(), d_j.ravel()):
         # tile file for buffer
         tile = tile_file_format.format((xc+W*ii)/1e3, (yc+W*jj)/1e3)
-        if not os.access(os.path.join(tile_directory,tile),os.F_OK):
+        if not os.access(os.path.join(tile_directory,tile), os.F_OK):
             continue
         # read the HDF5 file
         logging.info('Reading Buffer File: {0}'.format(tile))
@@ -171,7 +172,7 @@ def interpolate_tide_adjustment(tile_file,
             FILE3 = file_format.format(PRD,'MASK','',
                 TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
             # skip file if not currently accessible
-            if not os.access(os.path.join(DIRECTORY,FILE2)):
+            if not os.access(os.path.join(DIRECTORY,FILE2), os.F_OK):
                 continue
             # open ATL11 flexure correction HDF5 file
             f2 = multiprocess_h5py(os.path.join(DIRECTORY,FILE2), 'r')
@@ -192,16 +193,16 @@ def interpolate_tide_adjustment(tile_file,
                     # reduce to indices
                     d[k][c:c+file_length] = temp[indices]
                 # verify reference points
-                assert set(ref_pt) == set(d['ref_pt'])
+                assert set(ref_pt) == set(d['ref_pt'][c:c+file_length])
                 # try to extract geophysical variables
-                for k in ['tide_adj_scale']:
+                for k in ['tide_adj','tide_adj_sigma']:
                     try:
                         temp = f2[ptx]['cycle_stats'][k][:].copy()
                     except Exception as e:
                         pass
                     else:
                         # reduce to indices
-                        d[k][c:c+file_length] = temp[indices]
+                        d[k][c:c+file_length] = np.max(temp[indices,:],axis=1)
                 # try to extract subsetting variables
                 for k in ['mask']:
                     try:
@@ -245,6 +246,7 @@ def interpolate_tide_adjustment(tile_file,
     fill_value = {}
     # projection attributes
     attributes['Polar_Stereographic'] = {}
+    fill_value['Polar_Stereographic'] = None
     # add projection attributes
     attributes['Polar_Stereographic']['standard_name'] = 'Polar_Stereographic'
     attributes['Polar_Stereographic']['spatial_epsg'] = crs2.to_epsg()
@@ -265,11 +267,13 @@ def interpolate_tide_adjustment(tile_file,
     attributes['tide_adj_scale']['units'] = '1'
     attributes['tide_adj_scale']['coordinates'] = 'y x'
     attributes['tide_adj_scale']['source'] = 'ATL11'
+    attributes['tide_adj_scale']['grid_mapping'] = 'Polar_Stereographic'
     fill_value['tide_adj_scale'] = 0
     # weight
     attributes['weight']['long_name'] = 'Tile weight'
     attributes['weight']['units'] = '1'
     attributes['weight']['coordinates'] = 'y x'
+    attributes['weight']['grid_mapping'] = 'Polar_Stereographic'
     fill_value['weight'] = 0
 
     # calculate mosaic over centers, edges and corners
@@ -295,7 +299,7 @@ def interpolate_tide_adjustment(tile_file,
                     u[key] = val[clipped]
                 # mask out grounded points
                 masked = np.nonzero(u['mask'])
-                u['tide_adj_scale'][masked] = np.nan
+                u['tide_adj'][masked] = np.nan
                 # output coordinates for grid subset
                 X = np.arange(xm,xm+SUBSET+dx,dx)
                 Y = np.arange(ym,ym+SUBSET+dy,dy)
@@ -306,20 +310,20 @@ def interpolate_tide_adjustment(tile_file,
                 iy = np.array((Y[:,None]-ymin)//dy,dtype='i')
                 ix = np.array((X[None,:]-xmin)//dx,dtype='i')
                 # check if adjustment exists or is uniform
-                if np.all(u['tide_adj_scale'] == 1):
+                if np.all(u['tide_adj'] == 1):
                     mosaic[iy,ix] += 1.0
                     weight[iy,ix] += 1.0
                     continue
-                elif np.all(u['tide_adj_scale'] == 0):
+                elif np.all(u['tide_adj'] == 0):
                     weight[iy,ix] += 1.0
                     continue
-                elif np.all(np.isnan(u['tide_adj_scale'])):
+                elif np.all(np.isnan(u['tide_adj'])):
                     weight[iy,ix] += 1.0
                     continue
-                elif np.any(np.isnan(u['tide_adj_scale'])):
+                elif np.any(np.isnan(u['tide_adj'])):
                     # replace invalid points
-                    isnan, = np.nonzero(np.isnan(u['tide_adj_scale']))
-                    u['tide_adj_scale'][isnan] = 0.0
+                    isnan, = np.nonzero(np.isnan(u['tide_adj']))
+                    u['tide_adj'][isnan] = 0.0
                 # normalize x and y coordinates
                 xnorm = (u['x'] - (xm - 0.1*SUBSET))/(1.2*SUBSET)
                 ynorm = (u['y'] - (ym - 0.1*SUBSET))/(1.2*SUBSET)
@@ -330,12 +334,12 @@ def interpolate_tide_adjustment(tile_file,
                 if METHOD in ('spline',):
                     # interpolate with biharmonic splines in tension
                     INTERP = spi.biharmonic_spline(xnorm, ynorm,
-                        u['tide_adj_scale'], XN.flatten(), YN.flatten(),
+                        u['tide_adj'], XN.flatten(), YN.flatten(),
                         metric='euclidean', tension=TENSION, eps=1e-7)
                 elif METHOD in ('radial',):
                     # interpolate with radial basis functions
                     INTERP = spi.radial_basis(xnorm, ynorm,
-                        u['tide_adj_scale'], XN.flatten(), YN.flatten(),
+                        u['tide_adj'], XN.flatten(), YN.flatten(),
                         metric='euclidean', smooth=SMOOTH,
                         epsilon=EPSILON, polynomial=POLYNOMIAL)
                 # clip to valid values and add to output mosaic
@@ -352,7 +356,7 @@ def interpolate_tide_adjustment(tile_file,
                         (gridy > ypad[1]))
                     interp[indy,indx] = 0.0
                     count[indy,indx] = 0.0
-                # # add to output mosaic
+                # add to output mosaic
                 mosaic[iy,ix] += interp.copy()
                 weight[iy,ix] += count.copy()
 
@@ -381,14 +385,14 @@ def interpolate_tide_adjustment(tile_file,
         if key not in fileID[group]:
             # create HDF5 variables
             if fill_value[key]:
-                h5[key] = fileID.create_dataset(key, val.shape, data=val,
+                h5[key] = g1.create_dataset(key, val.shape, data=val,
                     dtype=val.dtype, fillvalue=fill_value[key],
                     compression='gzip')
             elif val.shape:
-                h5[key] = fileID.create_dataset(key, val.shape, data=val,
+                h5[key] = g1.create_dataset(key, val.shape, data=val,
                     dtype=val.dtype, compression='gzip')
             else:
-                h5[key] = fileID.create_dataset(key, val.shape,
+                h5[key] = g1.create_dataset(key, val.shape,
                     dtype=val.dtype)
             # add variable attributes
             for att_name,att_val in attributes[key].items():
