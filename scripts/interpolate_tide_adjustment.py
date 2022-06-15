@@ -303,8 +303,8 @@ def interpolate_tide_adjustment(tile_file,
                 u = {}
                 for key,val in d.items():
                     u[key] = val[clipped]
-                # mask out grounded points
-                masked = np.nonzero(u['mask'])
+                # mask out grounded, rock and lake points
+                masked = np.nonzero(np.logical_not(u['mask']))
                 u['tide_adj'][masked] = np.nan
                 # output coordinates for grid subset
                 X = np.arange(xm,xm+SUBSET+dx,dx)
