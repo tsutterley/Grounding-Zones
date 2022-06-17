@@ -518,7 +518,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
             # read tide model HDF5 file
             a3 = (PRD,TIDE_MODEL,'TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
             f3 = os.path.join(DIRECTORY,file_format.format(*a3))
-            # check that sea level file exists
+            # check that tide model file exists
             try:
                 mds3,attr3 = read_HDF5_ATL11_pair(f3,ptx,
                     VERBOSE=False,CROSSOVERS=CROSSOVERS)
@@ -546,7 +546,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
             # read inverse barometer HDF5 file
             a4 = (PRD,REANALYSIS,'IB',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
             f4 = os.path.join(DIRECTORY,file_format.format(*a4))
-            # check that sea level file exists
+            # check that inverse barometer file exists
             try:
                 mds4,attr4 = read_HDF5_ATL11_pair(f4,ptx,
                     VERBOSE=False,CROSSOVERS=CROSSOVERS)
@@ -568,7 +568,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
         # mean dynamic topography
         a5 = (PRD,'AVISO','SEA_LEVEL',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         f5 = os.path.join(DIRECTORY,file_format.format(*a5))
-        # check that sea level file exists
+        # check that mean dynamic topography file exists
         try:
             mds5,attr5 = read_HDF5_ATL11_pair(f5,ptx,VERBOSE=False)
         except:

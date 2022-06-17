@@ -263,7 +263,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
             # read tide model HDF5 file
             a3 = (PRD,TIDE_MODEL,'TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
             f3 = os.path.join(DIRECTORY,file_format.format(*a3))
-            # check that sea level file exists
+            # check that tide model file exists
             try:
                 mds3,attr3 = read_HDF5_ATL11_pair(f3,ptx,
                     VERBOSE=False,CROSSOVERS=True)
@@ -292,7 +292,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
             # read inverse barometer HDF5 file
             a4 = (PRD,REANALYSIS,'IB',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
             f4 = os.path.join(DIRECTORY,file_format.format(*a4))
-            # check that sea level file exists
+            # check that inverse barometer file exists
             try:
                 mds4,attr4 = read_HDF5_ATL11_pair(f4,ptx,
                     VERBOSE=False,CROSSOVERS=True)
