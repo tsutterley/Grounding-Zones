@@ -392,7 +392,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
             try:
                 results = scipy.optimize.lsq_linear(DMAT, h, bounds=(lb,ub))
                 # Mean square error
-                MSE = np.sum(results['fun']**2)/np.float(nu)
+                MSE = np.sum(results['fun']**2)/np.float64(nu)
                 # Covariance Matrix
                 # Multiplying the design matrix by itself
                 Hinv = np.linalg.inv(np.dot(np.transpose(DMAT),DMAT))

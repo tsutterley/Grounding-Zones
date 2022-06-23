@@ -273,6 +273,7 @@ def interpolate_tide_adjustment(tile_file,
     attributes['tide_adj_scale']['units'] = '1'
     attributes['tide_adj_scale']['coordinates'] = 'y x'
     attributes['tide_adj_scale']['source'] = 'ATL11'
+    attributes['tide_adj_scale']['model'] = TIDE_MODEL
     attributes['tide_adj_scale']['grid_mapping'] = 'Polar_Stereographic'
     fill_value['tide_adj_scale'] = 0
     # weight
@@ -315,21 +316,6 @@ def interpolate_tide_adjustment(tile_file,
                 # grid indices
                 iy = np.array((Y[:,None]-ymin)//dy,dtype='i')
                 ix = np.array((X[None,:]-xmin)//dx,dtype='i')
-                # check if adjustment exists or is uniform
-                if np.all(u['tide_adj'] == 1):
-                    mosaic[iy,ix] += 1.0
-                    weight[iy,ix] += 1.0
-                    continue
-                elif np.all(u['tide_adj'] == 0):
-                    weight[iy,ix] += 1.0
-                    continue
-                elif np.all(np.isnan(u['tide_adj'])):
-                    weight[iy,ix] += 1.0
-                    continue
-                elif np.any(np.isnan(u['tide_adj'])):
-                    # replace invalid points
-                    isnan, = np.nonzero(np.isnan(u['tide_adj']))
-                    u['tide_adj'][isnan] = 0.0
                 # normalize x and y coordinates
                 xnorm = (u['x'] - (xm - 0.1*SUBSET))/(1.2*SUBSET)
                 ynorm = (u['y'] - (ym - 0.1*SUBSET))/(1.2*SUBSET)
@@ -337,6 +323,35 @@ def interpolate_tide_adjustment(tile_file,
                 gridx,gridy = np.meshgrid(X + 0.5*dx, Y + 0.5*dy)
                 XN = (gridx - (xm - 0.1*SUBSET))/(1.2*SUBSET)
                 YN = (gridy - (ym - 0.1*SUBSET))/(1.2*SUBSET)
+                # create output grids for interpolation and weights
+                interp = np.ones((len(Y),len(X)))
+                count = np.ones((len(Y),len(X)))
+                # pad the interpolated matrix to remove edges
+                if (PAD > 0):
+                    xpad = np.array([xm+PAD,xm+SUBSET-PAD])
+                    ypad = np.array([ym+PAD,ym+SUBSET-PAD])
+                    indy,indx = np.nonzero((gridx < xpad[0]) |
+                        (gridx > xpad[1]) |
+                        (gridy < ypad[0]) |
+                        (gridy > ypad[1]))
+                    interp[indy,indx] = 0.0
+                    count[indy,indx] = 0.0
+                # check if adjustment exists or is uniform
+                if np.all(u['tide_adj'] == 1):
+                    mosaic[iy,ix] += interp.copy()
+                    weight[iy,ix] += count.copy()
+                    continue
+                elif np.all(u['tide_adj'] == 0):
+                    weight[iy,ix] += count.copy()
+                    continue
+                elif np.all(np.isnan(u['tide_adj'])):
+                    weight[iy,ix] += count.copy()
+                    continue
+                elif np.any(np.isnan(u['tide_adj'])):
+                    # replace invalid points
+                    isnan, = np.nonzero(np.isnan(u['tide_adj']))
+                    u['tide_adj'][isnan] = 0.0
+                # interpolate sparse points to grid
                 if METHOD in ('spline',):
                     # interpolate with biharmonic splines in tension
                     INTERP = spi.biharmonic_spline(xnorm, ynorm,
@@ -350,16 +365,10 @@ def interpolate_tide_adjustment(tile_file,
                         epsilon=EPSILON, polynomial=POLYNOMIAL)
                 # clip to valid values and add to output mosaic
                 np.clip(INTERP, 0.0, 1.0, out=INTERP)
-                interp = INTERP.reshape(len(Y),len(X))
-                count = np.ones((len(Y),len(X)))
+                interp[:,:] = INTERP.reshape(len(Y),len(X))
                 # pad the interpolated matrix to remove edges
                 if (PAD > 0):
-                    xpad = np.array([xm+PAD,xm+SUBSET-PAD])
-                    ypad = np.array([ym+PAD,ym+SUBSET-PAD])
-                    indy,indx = np.nonzero((gridx < xpad[0]) |
-                        (gridx > xpad[1]) |
-                        (gridy < ypad[0]) |
-                        (gridy > ypad[1]))
+                    # reset interpolation grids for padded
                     interp[indy,indx] = 0.0
                     count[indy,indx] = 0.0
                 # add to output mosaic
