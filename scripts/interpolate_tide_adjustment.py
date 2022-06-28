@@ -458,7 +458,7 @@ def arguments():
     # tide model to use
     model_choices = pyTMD.model.ocean_elevation()
     parser.add_argument('--tide','-T',
-        metavar='TIDE', type=str, default='CATS2008',
+        metavar='TIDE', type=str, default='CATS2022',
         choices=model_choices,
         help='Tide model to use in correction')
     # interpolation method
