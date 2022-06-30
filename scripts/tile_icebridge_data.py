@@ -431,8 +431,8 @@ def tile_icebridge_data(arg,
     attributes['time']['long_name'] = 'time'
     attributes['time']['standard_name'] = 'time'
     attributes['time']['description'] = ('The transmit time of each shot in '
-		'the 1 second frame measured as UTC seconds elapsed since Jan 1 '
-		'2000 12:00:00 UTC.')
+        'the 1 second frame measured as UTC seconds elapsed since Jan 1 '
+        '2000 12:00:00 UTC.')
     attributes['time']['units'] = 'seconds since 2000-01-01 12:00:00 UTC'
     attributes['time']['calendar'] = 'standard'
     #-- x and y

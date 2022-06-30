@@ -6,13 +6,13 @@ scp_pgc_dem_strips.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/scp_pgc_dem_strips.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/DEM/scp_pgc_dem_strips.py
 
 Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../scripts/scp_pgc_dem_strips.py
+    :filename: ../../DEM/scp_pgc_dem_strips.py
     :func: arguments
     :prog: scp_pgc_dem_strips.py
     :nodescription:

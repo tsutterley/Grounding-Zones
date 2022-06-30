@@ -20,10 +20,10 @@ check_DEM_ICESat2_ATL06.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/check_DEM_ICESat2_ATL06.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/DEM/check_DEM_ICESat2_ATL06.py
 
 .. argparse::
-    :filename: ../scripts/check_DEM_ICESat2_ATL06.py
+    :filename: ../../DEM/check_DEM_ICESat2_ATL06.py
     :func: arguments
     :prog: check_DEM_ICESat2_ATL06.py
     :nodescription:

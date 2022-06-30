@@ -22,13 +22,13 @@ MPI_interpolate_DEM.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/MPI_interpolate_DEM.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/DEM/MPI_interpolate_DEM.py
 
 Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../scripts/MPI_interpolate_DEM.py
+    :filename: ../../DEM/MPI_interpolate_DEM.py
     :func: arguments
     :prog: MPI_interpolate_DEM.py
     :nodescription:

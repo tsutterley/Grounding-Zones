@@ -7,13 +7,13 @@ MPI_reduce_ICESat2_ATL11_grounding_zone.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/MPI_reduce_ICESat2_ATL11_grounding_zone.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/GZ/MPI_reduce_ICESat2_ATL11_grounding_zone.py
 
 Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../scripts/MPI_reduce_ICESat2_ATL11_grounding_zone.py
+    :filename: ../../GZ/MPI_reduce_ICESat2_ATL11_grounding_zone.py
     :func: arguments
     :prog: MPI_reduce_ICESat2_ATL11_grounding_zone.py
     :nodescription:

@@ -1,16 +1,16 @@
-====================
-cds_mslp_retrieve.py
-====================
+================
+cds_mslp_sync.py
+================
 
 - Retrieves ERA5 mean sea level pressure reanalysis netCDF4 datasets from the CDS Web API
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/model-harmonics/blob/main/reanalysis/cds_mslp_retrieve.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/DAC/cds_mslp_sync.py
 
 .. argparse::
-    :filename: ../../reanalysis/cds_mslp_retrieve.py
+    :filename: ../../DAC/cds_mslp_sync.py
     :func: arguments
-    :prog: cds_mslp_retrieve.py
+    :prog: cds_mslp_sync.py
     :nodescription:
     :nodefault:

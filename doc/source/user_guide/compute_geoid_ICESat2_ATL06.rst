@@ -6,13 +6,13 @@ compute_geoid_ICESat2_ATL06.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/compute_geoid_ICESat2_ATL06.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/geoid/compute_geoid_ICESat2_ATL06.py
 
 Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../scripts/compute_geoid_ICESat2_ATL06.py
+    :filename: ../../geoid/compute_geoid_ICESat2_ATL06.py
     :func: arguments
     :prog: compute_geoid_ICESat2_ATL06.py
     :nodescription:

@@ -6,13 +6,13 @@ compute_geoid_icebridge_data.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/compute_geoid_icebridge_data.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/geoid/compute_geoid_icebridge_data.py
 
 Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../scripts/compute_geoid_icebridge_data.py
+    :filename: ../../geoid/compute_geoid_icebridge_data.py
     :func: arguments
     :prog: compute_geoid_icebridge_data.py
     :nodescription:

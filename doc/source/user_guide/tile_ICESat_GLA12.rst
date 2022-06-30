@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../scripts/tile_ICESat_GLA12.py
+    :filename: ../../scripts/tile_ICESat_GLA12.py
     :func: arguments
     :prog: tile_ICESat_GLA12.py
     :nodescription:

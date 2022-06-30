@@ -6,13 +6,13 @@ pgc_rema_sync.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/pgc_rema_sync.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/DEM/pgc_rema_sync.py
 
 Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../scripts/pgc_rema_sync.py
+    :filename: ../../DEM/pgc_rema_sync.py
     :func: arguments
     :prog: pgc_rema_sync.py
     :nodescription:

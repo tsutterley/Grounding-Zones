@@ -6,13 +6,13 @@ aviso_dac_sync.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/aviso_dac_sync.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/DAC/aviso_dac_sync.py
 
 Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../scripts/aviso_dac_sync.py
+    :filename: ../../DAC/aviso_dac_sync.py
     :func: arguments
     :prog: aviso_dac_sync.py
     :nodescription:

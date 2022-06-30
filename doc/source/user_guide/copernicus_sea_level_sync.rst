@@ -6,10 +6,10 @@ copernicus_sea_level_sync.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/model-harmonics/blob/main/reanalysis/copernicus_sea_level_sync.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/SL/copernicus_sea_level_sync.py
 
 .. argparse::
-    :filename: ../../reanalysis/copernicus_sea_level_sync.py
+    :filename: ../../SL/copernicus_sea_level_sync.py
     :func: arguments
     :prog: copernicus_sea_level_sync.py
     :nodescription:

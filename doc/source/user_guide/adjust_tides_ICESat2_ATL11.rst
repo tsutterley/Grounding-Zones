@@ -6,13 +6,13 @@ adjust_tides_ICESat2_ATL11.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/adjust_tides_ICESat2_ATL11.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/tides/adjust_tides_ICESat2_ATL11.py
 
 Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../scripts/adjust_tides_ICESat2_ATL11.py
+    :filename: ../../tides/adjust_tides_ICESat2_ATL11.py
     :func: arguments
     :prog: adjust_tides_ICESat2_ATL11.py
     :nodescription:

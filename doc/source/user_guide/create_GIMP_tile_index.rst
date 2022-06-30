@@ -7,10 +7,10 @@ create_GIMP_tile_index.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/create_GIMP_tile_index.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/DEM/create_GIMP_tile_index.py
 
 .. argparse::
-    :filename: ../scripts/create_GIMP_tile_index.py
+    :filename: ../../DEM/create_GIMP_tile_index.py
     :func: arguments
     :prog: create_GIMP_tile_index.py
     :nodescription:

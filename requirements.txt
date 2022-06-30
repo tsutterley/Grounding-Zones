@@ -9,3 +9,9 @@ h5py
 gdal
 lxml
 pyyaml
+pyYAPC
+ATM1b-QFIT
+geoid-toolkit
+icesat2-toolkit
+pyTMD
+spatial-interpolators

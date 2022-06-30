@@ -7,13 +7,13 @@ nsidc_convert_GIMP_DEM.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/scripts/nsidc_convert_GIMP_DEM.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/DEM/nsidc_convert_GIMP_DEM.py
 
 Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../scripts/nsidc_convert_GIMP_DEM.py
+    :filename: ../../DEM/nsidc_convert_GIMP_DEM.py
     :func: arguments
     :prog: nsidc_convert_GIMP_DEM.py
     :nodescription:
