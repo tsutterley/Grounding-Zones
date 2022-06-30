@@ -50,6 +50,7 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     user_guide/pgc_arcticdem_sync.rst
     user_guide/pgc_rema_strip_sync.rst
     user_guide/pgc_rema_sync.rst
+    user_guide/scp_pgc_dem_strips.rst
     user_guide/symbolic_icebridge_files.rst
     user_guide/symbolic_ICESat_GLA12.rst
     user_guide/tile_icebridge_data.rst
