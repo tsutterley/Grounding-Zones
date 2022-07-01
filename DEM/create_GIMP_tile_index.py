@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 create_GIMP_tile_index.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (07/2022)
 
 Reads GIMP 30m DEM tiles from the OSU Greenland Ice Mapping Project
     https://nsidc.org/data/nsidc-0645/versions/1
@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2022: place GDAL import within try/except statement
     Updated 05/2022: use argparse descriptions within documentation
     Updated 04/2021: set a default netrc file and check access
         default credentials from environmental variables
@@ -63,10 +64,18 @@ import zipfile
 import getpass
 import builtins
 import argparse
+import warnings
 import posixpath
 import lxml.etree
-import osgeo.gdal, osgeo.osr, osgeo.ogr
 import grounding_zones.utilities
+#-- attempt imports
+try:
+    import osgeo.gdal, osgeo.osr, osgeo.ogr
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("GDAL not available")
+#-- ignore warnings
+warnings.filterwarnings("ignore")
 
 #-- PURPOSE: read GIMP image mosaic and create tile shapefile
 def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_grounding_zone.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (07/2022)
 Calculates ice sheet grounding zones following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
     Updated 01/2021: using argparse to set command line options
         use pyTMD spatial module for reading and writing data
@@ -64,18 +65,29 @@ from __future__ import print_function
 import sys
 import os
 import re
-import h5py
 import fiona
 import pyproj
 import argparse
 import operator
+import warnings
 import itertools
 import numpy as np
 import scipy.stats
 import scipy.optimize
-import shapely.geometry
 import matplotlib.pyplot as plt
-import pyTMD.spatial
+#-- attempt imports
+try:
+    import pyTMD.spatial
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
+try:
+    import shapely.geometry
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("shapely not available")
+#-- ignore warnings
+warnings.filterwarnings("ignore")
 
 #-- grounded ice shapefiles
 grounded_shapefile = {}

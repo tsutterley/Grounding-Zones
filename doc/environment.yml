@@ -5,12 +5,11 @@ dependencies:
   - docutils<0.18
   - fontconfig
   - freetype
-  - gdal
+  - geos
   - graphviz
-  - h5py
+  - h5py>=2.9=mpi*
   - lxml
   - matplotlib
-  - mpi4py
   - netCDF4
   - notebook
   - numpy
@@ -21,15 +20,10 @@ dependencies:
   - python-dateutil
   - pyyaml
   - scipy
-  - setuptools_scm
   - sphinx
   - sphinx-argparse
   - sphinx_rtd_theme
   - texlive-core
   - pip:
-     - ATM1b-QFIT
-     - geoid-toolkit
      - icesat2-toolkit
-     - pyTMD
-     - spatial-interpolators
      - ..

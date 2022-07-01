@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_icebridge_data.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (07/2022)
 Calculates geoid undulations for correcting Operation IceBridge elevation data
 
 INPUTS:
@@ -35,6 +35,8 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 07/2022: update imports of ATM1b QFIT functions to released version
+        place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
         using collections to store attributes in order of creation
@@ -59,13 +61,25 @@ import time
 import h5py
 import logging
 import argparse
+import warnings
 import collections
 import numpy as np
-import pyTMD.time
-import read_ATM1b_QFIT_binary.read_ATM1b_QFIT_binary as ATM1b
-from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
-from geoid_toolkit.geoid_undulation import geoid_undulation
+import icesat2_toolkit.time
 from grounding_zones.utilities import convert_arg_line_to_args
+#-- attempt imports
+try:
+    import ATM1b_QFIT.read_ATM1b_QFIT_binary
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("ATM1b_QFIT not available")
+try:
+    from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
+    from geoid_toolkit.geoid_undulation import geoid_undulation
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("geoid_toolkit not available")
+#-- ignore warnings
+warnings.filterwarnings("ignore")
 
 #-- PURPOSE: reading the number of file lines removing commented lines
 def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
@@ -78,7 +92,7 @@ def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
             file_lines, = fileID[HDF5].shape
     elif QFIT:
         #-- read the size of a QFIT binary file
-        file_lines = ATM1b.ATM1b_QFIT_shape(input_file)
+        file_lines = ATM1b_QFIT.ATM1b_QFIT_shape(input_file)
     else:
         #-- read the input file, split at lines and remove all commented lines
         with open(input_file,'r') as f:
@@ -135,7 +149,7 @@ def read_ATM_qfit_file(input_file, input_subsetter):
     #-- Version 1 of ATM QFIT files (binary)
     elif (SFX == 'qi'):
         #-- read input QFIT data file and subset if specified
-        fid,h = ATM1b.read_ATM1b_QFIT_binary(input_file)
+        fid,h = ATM1b_QFIT.read_ATM1b_QFIT_binary(input_file)
         #-- number of lines of data within file
         file_lines = file_length(input_file,input_subsetter,QFIT=True)
         ATM_L1b_input['lat'] = fid['latitude'][:]
@@ -179,14 +193,14 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         fileID.close()
     #-- calculate the number of leap seconds between GPS time (seconds
     #-- since Jan 6, 1980 00:00:00) and UTC
-    gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
-        hour=hour,minute=minute,second=second,
+    gps_seconds = icesat2_toolkit.time.convert_calendar_dates(
+        year,month,day,hour=hour,minute=minute,second=second,
         epoch=(1980,1,6,0,0,0),scale=86400.0)
-    leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
+    leap_seconds = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
     #-- calculation of Julian day taking into account leap seconds
     #-- converting to J2000 seconds
-    ATM_L1b_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
-        hour=hour,minute=minute,second=second-leap_seconds,
+    ATM_L1b_input['time'] = icesat2_toolkit.time.convert_calendar_dates(
+        year,month,day,hour=hour,minute=minute,second=second-leap_seconds,
         epoch=(2000,1,1,12,0,0,0),scale=86400.0)
     #-- subset the data to indices if specified
     if input_subsetter:
@@ -245,16 +259,16 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     if (MISSION == 'BLATM2') or (SFX != 'csv'):
         #-- calculate the number of leap seconds between GPS time (seconds
         #-- since Jan 6, 1980 00:00:00) and UTC
-        gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
-            hour=hour,minute=minute,second=second,
+        gps_seconds = icesat2_toolkit.time.convert_calendar_dates(
+            year,month,day,hour=hour,minute=minute,second=second,
             epoch=(1980,1,6,0,0,0),scale=86400.0)
-        leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
+        leap_seconds = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
     else:
         leap_seconds = 0.0
     #-- calculation of Julian day
     #-- converting to J2000 seconds
-    ATM_L2_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
-        hour=hour,minute=minute,second=second-leap_seconds,
+    ATM_L2_input['time'] = icesat2_toolkit.time.convert_calendar_dates(
+        year,month,day,hour=hour,minute=minute,second=second-leap_seconds,
         epoch=(2000,1,1,12,0,0,0),scale=86400.0)
     #-- convert RMS from centimeters to meters
     ATM_L2_input['error'] = ATM_L2_input['RMS']/100.0
@@ -550,10 +564,10 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     #-- convert start/end time from J2000 dates into Julian days
     #-- J2000: seconds since 2000-01-01 12:00:00 UTC
     time_range = np.array([np.min(dinput['time']),np.max(dinput['time'])])
-    time_julian = 2400000.5 + pyTMD.time.convert_delta_time(time_range,
+    time_julian = 2400000.5 + icesat2_toolkit.time.convert_delta_time(time_range,
         epoch1=(2000,1,1,12,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     #-- convert to calendar date
-    cal = pyTMD.time.convert_julian(time_julian,ASTYPE=int)
+    cal = icesat2_toolkit.time.convert_julian(time_julian,ASTYPE=int)
     #-- add attributes with measurement date start, end and duration
     args = (cal['hour'][0],cal['minute'][0],cal['second'][0])
     fid.attrs['RangeBeginningTime'] = '{0:02d}:{1:02d}:{2:02d}'.format(*args)

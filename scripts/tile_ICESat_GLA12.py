@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_ICESat_GLA12.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (07/2022)
 Creates tile index files of ICESat/GLAS L2 GLA12 Antarctic and
     Greenland Ice Sheet elevation data
 
@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
     spatial: utilities for reading, writing and operating on spatial data
 
 UPDATE HISTORY:
+    Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: add checks if variables and groups already exist
     Updated 05/2022: use argparse descriptions within documentation
     Written 02/2022
@@ -42,10 +43,18 @@ import time
 import pyproj
 import logging
 import argparse
+import warnings
 import collections
 import numpy as np
-import pyTMD.time
-import pyTMD.spatial
+#-- attempt imports
+try:
+    import pyTMD.time
+    import pyTMD.spatial
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
+#-- filter warnings
+warnings.filterwarnings("ignore")
 
 #-- PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):

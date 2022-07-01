@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 u"""
-cds_mslp_retrieve.py (10/2021)
+cds_mslp_retrieve.py (07/2022)
 Retrieves ERA5 mean sea level pressure reanalysis datasets from the CDS Web API
 https://cds.climate.copernicus.eu/user/register
 https://cds.climate.copernicus.eu/cdsapp/#!/terms/licence-to-use-copernicus-products
@@ -30,6 +30,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/cdsapi/
 
 UPDATE HISTORY:
+    Updated 07/2022: place cdsapi import within try/except statement
     Updated 05/2022: use argparse descriptions within sphinx documentation
     Updated 10/2021: added option to retrieve specific surface variables
     Updated 05/2021: added option for connection timeout (in seconds)
@@ -47,8 +48,16 @@ from __future__ import print_function
 
 import os
 import time
-import cdsapi
 import argparse
+import warnings
+#-- attempt imports
+try:
+    import cdsapi
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("cdsapi not available")
+#-- ignore warnings
+warnings.filterwarnings("ignore")
 
 #-- PURPOSE: retrieve ERA5 surface data for a set of years from CDS server
 def cds_mslp_retrieve(base_dir, server, YEAR,

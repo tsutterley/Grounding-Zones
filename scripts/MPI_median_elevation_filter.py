@@ -50,6 +50,7 @@ REFERENCE:
     pp. 451-467 (2017).  https://doi.org/10.5194/tc-11-451-2017
 
 UPDATE HISTORY:
+    Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: updated ATM1b read functions for distributed version
         use argparse descriptions within documentation
     Updated 01/2022: use argparse to set command line options
@@ -99,11 +100,23 @@ import h5py
 import pyproj
 import logging
 import argparse
+import warnings
 import numpy as np
-from mpi4py import MPI
 import icesat2_toolkit.time
 import icesat2_toolkit.spatial
-import ATM1b_QFIT.read_ATM1b_QFIT_binary
+#-- attempt imports
+try:
+    import ATM1b_QFIT.read_ATM1b_QFIT_binary
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("ATM1b_QFIT not available")
+try:
+    from mpi4py import MPI
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("mpi4py not available")
+#-- ignore warnings
+warnings.filterwarnings("ignore")
 
 #-- PURPOSE: keep track of MPI threads
 def info(rank, size):

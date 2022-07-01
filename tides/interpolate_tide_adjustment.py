@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interpolate_tide_adjustment.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (07/2022)
 Interpolates tidal adjustment scale factors to output grids
 
 COMMAND LINE OPTIONS:
@@ -24,8 +24,8 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
 
 UPDATE HISTORY:
+    Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: use argparse descriptions within documentation
-        use tide model class to get the list of available models
         read mask files to not interpolate over grounded ice
     Updated 01/2022: added options for using radial basis functions
         wait if HDF5 tile file is unavailable for read or write
@@ -36,12 +36,19 @@ import os
 import re
 import h5py
 import time
+import logging
 import pyproj
 import argparse
-import logging
+import warnings
 import numpy as np
-import pyTMD.model
-import spatial_interpolators as spi
+#-- attempt imports
+try:
+    import spatial_interpolators as spi
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("spatial_interpolators not available")
+#-- filter warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
@@ -456,10 +463,8 @@ def arguments():
         type=float, default=1e3,
         help='Tile pad for creating mosaics')
     # tide model to use
-    model_choices = pyTMD.model.ocean_elevation()
     parser.add_argument('--tide','-T',
         metavar='TIDE', type=str, default='CATS2022',
-        choices=model_choices,
         help='Tide model to use in correction')
     # interpolation method
     parser.add_argument('--interpolate','-I',

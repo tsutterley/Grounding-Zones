@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (07/2022)
 Computes geoid undulations for correcting ICESat-2 annual land ice height data
 
 COMMAND LINE OPTIONS:
@@ -35,6 +35,7 @@ PROGRAM DEPENDENCIES:
     gauss_weights.py: Computes Gaussian weights as a function of degree
 
 UPDATE HISTORY:
+    Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
         additionally output conversion between tide free and mean tide values
@@ -53,14 +54,22 @@ import h5py
 import logging
 import argparse
 import datetime
+import warnings
 import numpy as np
 import collections
 import icesat2_toolkit.time
-from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
-from geoid_toolkit.geoid_undulation import geoid_undulation
 from grounding_zones.utilities import convert_arg_line_to_args
 from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11
 from icesat2_toolkit.convert_delta_time import convert_delta_time
+#-- attempt imports
+try:
+    from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
+    from geoid_toolkit.geoid_undulation import geoid_undulation
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("geoid_toolkit not available")
+#-- ignore warnings
+warnings.filterwarnings("ignore")
 
 #-- PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
 #-- and computes geoid undulation at points

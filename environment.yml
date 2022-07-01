@@ -2,20 +2,24 @@ name: grounding_zones
 channels:
   - conda-forge
 dependencies:
-  - python>=3.6
+  - cartopy
+  - earthengine-api
+  - gdal
+  - h5py
+  - lxml
+  - matplotlib
+  - mpi4py
+  - netCDF4
   - notebook
   - numpy
-  - scipy
-  - pyproj
-  - python-dateutil
-  - matplotlib
-  - netCDF4
-  - h5py
-  - gdal
-  - lxml
-  - pyyaml
-  - cartopy
   - pip
+  - pyproj
+  - python>=3.6
+  - python-dateutil
+  - pyyaml
+  - scipy
+  - scikit-learn
+  - shapely
   - pip:
      - ATM1b-QFIT
      - geoid-toolkit

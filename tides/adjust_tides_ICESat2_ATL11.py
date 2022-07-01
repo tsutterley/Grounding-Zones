@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 adjust_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (07/2022)
 Applies interpolated tidal adjustment scale factors to
     ICESat-2 ATL11 annual land ice height data within
     ice sheet grounding zones
@@ -28,6 +28,7 @@ PROGRAM DEPENDENCIES:
     read_ICESat2_ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 07/2022: place some imports within try/except statements
     Written 06/2022
 """
 
@@ -38,13 +39,21 @@ import pyproj
 import logging
 import argparse
 import datetime
+import warnings
 import collections
 import numpy as np
-import pyTMD.model
-import pyTMD.spatial
 import scipy.interpolate
 from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11, \
     read_HDF5_ATL11_pair
+#-- attempt imports
+try:
+    import pyTMD.model
+    import pyTMD.spatial
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
+#-- filter warnings
+warnings.filterwarnings("ignore")
 
 def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     TIDE_MODEL=None,
@@ -685,10 +694,8 @@ def arguments():
         default=os.getcwd(),
         help='Ice flexure file to use')
     # tide model to use
-    choices = pyTMD.model.ocean_elevation()
     group.add_argument('--tide','-T',
         metavar='TIDE', type=str,
-        choices=choices,
         help='Tide model to use in correction')
     # verbosity settings
     # verbose will output information about each output file

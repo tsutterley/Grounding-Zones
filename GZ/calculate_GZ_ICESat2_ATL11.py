@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (07/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -64,8 +64,8 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
-        use tide model class to get available models and references
         output estimated elastic modulus in grounding zone data group
     Updated 03/2021: output HDF5 file of flexure scaled by a tide model
         estimate flexure for crossovers using along-track model outputs
@@ -84,23 +84,38 @@ import sys
 import os
 import re
 import h5py
-import fiona
 import pyproj
 import datetime
 import argparse
 import operator
+import warnings
 import itertools
 import numpy as np
 import collections
 import scipy.stats
 import scipy.optimize
-import shapely.geometry
-import matplotlib.pyplot as plt
-import pyTMD.model
 import icesat2_toolkit.time
 from grounding_zones.utilities import get_data_path
 from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11, \
     read_HDF5_ATL11_pair
+# attempt imports
+try:
+    import fiona
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("fiona not available")
+try:
+    import matplotlib.pyplot as plt
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("matplotlib not available")
+try:
+    import shapely.geometry
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("shapely not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # grounded ice shapefiles
 grounded_shapefile = {}
@@ -1410,14 +1425,11 @@ def arguments():
         default=get_data_path('data'),
         help='Working data directory')
     # tide model to use
-    model_choices = pyTMD.model.ocean_elevation()
     parser.add_argument('--tide','-T',
         metavar='TIDE', type=str, default='CATS2008',
-        choices=model_choices,
         help='Tide model to use in correction')
-    ib_choices = ['ERA-Interim','ERA5','MERRA-2']
     parser.add_argument('--reanalysis','-R',
-        metavar='REANALYSIS', type=str, choices=ib_choices,
+        metavar='REANALYSIS', type=str,
         help='Reanalysis model to use in inverse-barometer correction')
     #-- run with ATL11 crossovers
     parser.add_argument('--crossovers','-C',

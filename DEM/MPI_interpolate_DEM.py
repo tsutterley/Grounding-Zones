@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_interpolate_DEM.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (07/2022)
 Determines which digital elevation model tiles for an input file
 Reads 3x3 array of tiles for points within bounding box of central mosaic tile
 Interpolates digital elevation model to coordinates
@@ -85,6 +85,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
     Updated 02/2021: replaced numpy bool/int to prevent deprecation warnings
     Updated 01/2021: use argparse to set command line options
@@ -98,16 +99,40 @@ import sys
 import os
 import re
 import uuid
-import fiona
 import pyproj
 import tarfile
 import argparse
-import osgeo.gdal
+import warnings
 import numpy as np
-from mpi4py import MPI
 import scipy.interpolate
-import shapely.geometry
-import pyTMD.spatial
+#-- attempt imports
+try:
+    import fiona
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("mpi4py not available")
+try:
+    from mpi4py import MPI
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("mpi4py not available")
+try:
+    import osgeo.gdal
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("GDAL not available")
+try:
+    import pyTMD.spatial
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
+try:
+    import shapely.geometry
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("shapely not available")
+#-- ignore warnings
+warnings.filterwarnings("ignore")
 
 #-- digital elevation models
 elevation_dir = {}

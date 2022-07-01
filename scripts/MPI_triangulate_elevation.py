@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_triangulate_elevation.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (07/2022)
 
 Calculates interpolated elevations by triangulated irregular
     network meshing (TINs) to compare with an input file
@@ -44,6 +44,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: updated ATM1b read functions for distributed version
     	use argparse descriptions within documentation
     Updated 01/2022: use argparse to set command line options
@@ -89,12 +90,24 @@ import h5py
 import pyproj
 import logging
 import argparse
+import warnings
 import numpy as np
 import scipy.spatial
-from mpi4py import MPI
 import icesat2_toolkit.time
 import icesat2_toolkit.spatial
-import ATM1b_QFIT.read_ATM1b_QFIT_binary
+#-- attempt imports
+try:
+    import ATM1b_QFIT.read_ATM1b_QFIT_binary
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("ATM1b_QFIT not available")
+try:
+    from mpi4py import MPI
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("mpi4py not available")
+#-- ignore warnings
+warnings.filterwarnings("ignore")
 
 #-- PURPOSE: keep track of MPI threads
 def info(rank, size):

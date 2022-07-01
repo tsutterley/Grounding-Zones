@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL06.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (07/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2022: place shapely within try/except statement
     Updated 05/2022: use argparse descriptions within documentation
     Updated 03/2021: use utilities to set default path to shapefiles
         replaced numpy bool/int to prevent deprecation warnings
@@ -52,18 +53,30 @@ from __future__ import print_function
 import os
 import re
 import h5py
-import fiona
 import pyproj
 import argparse
 import operator
+import warnings
 import itertools
 import numpy as np
 import scipy.stats
 import scipy.optimize
-import shapely.geometry
 import icesat2_toolkit.time
 from icesat2_toolkit.read_ICESat2_ATL06 import read_HDF5_ATL06
 from grounding_zones.utilities import get_data_path
+#-- attempt imports
+try:
+    import fiona
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("fiona not available")
+try:
+    import shapely.geometry
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("shapely not available")
+#-- ignore warnings
+warnings.filterwarnings("ignore")
 
 #-- grounded ice shapefiles
 grounded_shapefile = {}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL03_grounding_zone.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (07/2022)
 
 Create masks for reducing ICESat-2 geolocated photon height data to within
     a buffer region near the ice sheet grounding zone
@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
     Updated 02/2021: replaced numpy bool/int to prevent deprecation warnings
     Updated 01/2021: time utilities for converting times from JD and to decimal
@@ -60,16 +61,32 @@ from __future__ import print_function
 import os
 import re
 import h5py
-import fiona
 import pyproj
 import argparse
 import datetime
+import warnings
 import numpy as np
-from mpi4py import MPI
-import shapely.geometry
 from grounding_zones.utilities import get_data_path
 from icesat2_toolkit.convert_delta_time import convert_delta_time
 import icesat2_toolkit.time
+#-- attempt imports
+try:
+    import fiona
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("fiona not available")
+try:
+    from mpi4py import MPI
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("mpi4py not available")
+try:
+    import shapely.geometry
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("shapely not available")
+#-- ignore warnings
+warnings.filterwarnings("ignore")
 
 #-- buffered shapefile
 buffer_shapefile = {}

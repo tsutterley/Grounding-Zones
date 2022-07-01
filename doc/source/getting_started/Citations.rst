@@ -38,19 +38,23 @@ Dependencies
 
 This software is also dependent on other commonly used Python packages:
 
-- `numpy: Scientific Computing Tools For Python <https://www.numpy.org>`_
-- `scipy: Scientific Tools for Python <https://www.scipy.org/>`_
-- `mpi4py: Python bindings of the Message Passing Interface (MPI) <https://mpi4py.readthedocs.io/en/stable/>`_
-- `scikit-learn: Machine Learning in Python <https://scikit-learn.org/stable/index.html>`_
-- `pyproj: Python interface to PROJ library <https://pypi.org/project/pyproj/>`_
+- `cdsapi: Python client libraries for the CDS Web API <https://pypi.org/project/cdsapi/>`_
+- `cartopy: Python package designed for geospatial data processing <https://scitools.org.uk/cartopy/docs/latest/>`_
 - `dateutil: powerful extensions to datetime <https://dateutil.readthedocs.io/en/stable/>`_
-- `lxml: processing XML and HTML in Python <https://pypi.python.org/pypi/lxml>`_
-- `PyYAML: YAML parser and emitter for Python <https://github.com/yaml/pyyaml>`_
+- `earthengine-api: Python bindings for calling the Earth Engine API <https://pypi.org/project/earthengine-api/>`_
+- `fiona: Python wrapper for vector data access functions from the OGR library <https://fiona.readthedocs.io/en/latest/manual.html>`_
 - `gdal: Pythonic interface to the Geospatial Data Abstraction Library (GDAL) <https://pypi.python.org/pypi/GDAL>`_
 - `h5py: Python interface for Hierarchal Data Format 5 (HDF5) <https://www.h5py.org/>`_
-- `netCDF4: Python interface to the netCDF C library <https://unidata.github.io/netcdf4-python/>`_
+- `lxml: processing XML and HTML in Python <https://pypi.python.org/pypi/lxml>`_
 - `matplotlib: Python 2D plotting library <https://matplotlib.org/>`_
-- `cartopy: Python package designed for geospatial data processing <https://scitools.org.uk/cartopy/docs/latest/>`_
+- `mpi4py: Python bindings of the Message Passing Interface (MPI) <https://mpi4py.readthedocs.io/en/stable/>`_
+- `netCDF4: Python interface to the netCDF C library <https://unidata.github.io/netcdf4-python/>`_
+- `numpy: Scientific Computing Tools For Python <https://www.numpy.org>`_
+- `pyproj: Python interface to PROJ library <https://pypi.org/project/pyproj/>`_
+- `PyYAML: YAML parser and emitter for Python <https://github.com/yaml/pyyaml>`_
+- `scikit-learn: Machine Learning in Python <https://scikit-learn.org/stable/index.html>`_
+- `scipy: Scientific Tools for Python <https://www.scipy.org/>`_
+- `shapely: PostGIS-ish operations outside a database context for Python <http://toblerity.org/shapely/index.html>`_
 
 Disclaimer
 ##########

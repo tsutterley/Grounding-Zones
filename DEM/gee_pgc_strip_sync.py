@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 u"""
 gee_pgc_strip_sync.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (07/2022)
 
 Processes and syncs Reference Elevation Map of Antarctica (REMA) DEM
     or ArcticDEM strip tar files from Google Earth Engine
+Can resample the DEM to a specified spatial scale and calculate the
+    standard deviation of the image at the resampled pixel size
 
 CALLING SEQUENCE:
     python gee_pgc_strip_sync.py --model REMA --scale 32
@@ -27,6 +29,7 @@ COMMAND LINE OPTIONS:
     -A X, --active X: Number of currently active tasks allowed
     -M, --matchtag: Output matchtag raster files
     -I, --index: Output index shapefiles
+    -c, --cloud-optimized: Output as cloud-optimized geotiffs (COGs)
 
 PYTHON DEPENDENCIES:
     ee: Python bindings for calling the Earth Engine API
@@ -35,6 +38,8 @@ PYTHON DEPENDENCIES:
         https://dateutil.readthedocs.io/en/stable/
 
 UPDATE HISTORY:
+    Updated 07/2022: made COG output optional and not the default
+        place some imports within try/except statements
     Updated 06/2022: added restart and bbox command line options
         add task limiter to prevent maximum active worker stoppages
         changed temporal filter to start time and end time
@@ -44,8 +49,16 @@ from __future__ import print_function
 import argparse
 import time
 import logging
+import warnings
 import dateutil.parser
-import ee
+# attempt imports
+try:
+    import ee
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("ee not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: get number of currently pending or running tasks
 def current_tasks():
@@ -96,7 +109,8 @@ def gee_pgc_strip_sync(model, version, resolution,
     LIMIT=3000,
     SCALE=None,
     MATCHTAG=False,
-    INDEX=False):
+    INDEX=False,
+    COG=False):
 
     # initialize Google Earth Engine API
     ee.Initialize()
@@ -131,14 +145,19 @@ def gee_pgc_strip_sync(model, version, resolution,
         properties = img.getInfo()['properties']
         # create task list for granule
         tasks = []
-        # get elevation geotiff
-        elev = img.select('elevation')
-        # calculate DEM standard deviation
-        maxPixels = (SCALE//int(resolution[:-1]))**2
-        stdev = elev.reduceResolution(ee.Reducer.sampleStdDev(),
-            maxPixels=maxPixels)
-        # combine elevation and standard deviation
-        image = ee.Image.cat([elev, stdev.float()])
+        # if reducing resolution: output standard deviation band
+        if (SCALE > int(resolution[:-1])):
+            # get elevation geotiff
+            elev = img.select('elevation')
+            # calculate DEM standard deviation
+            maxPixels = (SCALE//int(resolution[:-1]))**2
+            stdev = elev.reduceResolution(ee.Reducer.sampleStdDev(),
+                maxPixels=maxPixels)
+            # combine elevation and standard deviation
+            image = ee.Image.cat([elev, stdev.float()])
+        else:
+            # get elevation geotiff
+            image = img.select('elevation')
         # scale and reduce resolution
         # export to google drive
         task = ee.batch.Export.image.toDrive(**{
@@ -147,7 +166,7 @@ def gee_pgc_strip_sync(model, version, resolution,
             'scale': SCALE,
             'fileFormat': 'GeoTIFF',
             'folder': f'{model}_{SCALE}m',
-            'formatOptions': {'cloudOptimized': True}
+            'formatOptions': {'cloudOptimized': COG}
         })
         # add to task list
         tasks.append(task)
@@ -162,7 +181,7 @@ def gee_pgc_strip_sync(model, version, resolution,
                 'scale': SCALE,
                 'fileFormat': 'GeoTIFF',
                 'folder': f'{model}_{SCALE}m',
-                'formatOptions': {'cloudOptimized': True}
+                'formatOptions': {'cloudOptimized': COG}
             })
             # add to task list
             tasks.append(task)
@@ -235,6 +254,10 @@ def arguments():
     parser.add_argument('--index','-I',
         default=False, action='store_true',
         help='Output PGC DEM index shapefiles')
+    # output as cloud-optimized geotiffs (COGs)
+    parser.add_argument('--cloud-optimized','-c',
+        default=False, action='store_true',
+        help='Output as cloud-optimized geotiffs (COGs)')
     # return the parser
     return parser
 
@@ -251,7 +274,8 @@ def main():
         LIMIT=args.limit,
         SCALE=args.scale,
         MATCHTAG=args.matchtag,
-        INDEX=args.index)
+        INDEX=args.index,
+        COG=args.cloud_optimized)
 
 # run main program
 if __name__ == '__main__':

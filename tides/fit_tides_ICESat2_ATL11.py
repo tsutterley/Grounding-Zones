@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (07/2022)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -50,9 +50,9 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: include grounding zone adjusted DAC in HDF5 outputs
     Updated 05/2022: use argparse descriptions within documentation
-        use tide model class to get available models and references
     Updated 07/2021: add checks for data and fit quality
     Written 04/2021
 """
@@ -62,16 +62,24 @@ import sys
 import os
 import re
 import h5py
-import datetime
 import argparse
+import datetime
+import warnings
 import numpy as np
 import collections
 import scipy.stats
 import scipy.optimize
-import pyTMD.model
 import icesat2_toolkit.time
 from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11, \
     read_HDF5_ATL11_pair
+#-- attempt imports
+try:
+    import pyTMD.model
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
+#-- filter warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: Find indices of common reference points between two lists
 # Determines which across-track points correspond with the along-track
@@ -942,14 +950,11 @@ def arguments():
         default=os.getcwd(),
         help='Working data directory')
     # tide model to use
-    model_choices = pyTMD.model.ocean_elevation()
     parser.add_argument('--tide','-T',
         metavar='TIDE', type=str, default='CATS2008',
-        choices=model_choices,
         help='Tide model to use in correction')
-    ib_choices = ['ERA-Interim','ERA5','MERRA-2']
     parser.add_argument('--reanalysis','-R',
-        metavar='REANALYSIS', type=str, choices=ib_choices,
+        metavar='REANALYSIS', type=str,
         help='Reanalysis model to use in inverse-barometer correction')
     # verbosity settings
     # verbose will output information about each output file
