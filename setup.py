@@ -15,6 +15,15 @@ with open('README.rst', 'r', encoding='utf8') as fh:
     long_description = fh.read()
 long_description_content_type = "text/x-rst"
 
+# install requirements and dependencies
+on_rtd = os.environ.get('READTHEDOCS') == 'True'
+if on_rtd:
+    install_requires = []
+else:
+    # get install requirements
+    with open('requirements.txt', 'r', encoding='utf8') as fh:
+        install_requires = [line.split().pop(0) for line in fh.read().splitlines()]
+
 # get version
 with open('version.txt', 'r', encoding='utf8') as fh:
     version = fh.read()
@@ -27,15 +36,6 @@ for s in ['scripts','DAC','DEM','geoid','GZ','tides']:
 # run cmd from the command line
 def check_output(cmd):
     return subprocess.check_output(cmd).decode('utf')
-
-# install requirements and dependencies
-on_rtd = os.environ.get('READTHEDOCS') == 'True'
-if on_rtd:
-    install_requires = []
-else:
-    # get install requirements
-    with open('requirements.txt', 'r', encoding='utf8') as fh:
-        install_requires = fh.read().splitlines()
 
 # check if GDAL is installed
 gdal_output = [None] * 4

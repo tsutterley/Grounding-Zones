@@ -4,12 +4,16 @@ Grounding-Zones
 
 |Language|
 |License|
+|Documentation Status|
 
 .. |Language| image:: https://img.shields.io/badge/python-v3.8-green.svg
    :target: https://www.python.org/
 
 .. |License| image:: https://img.shields.io/badge/license-MIT-green.svg
    :target: https://github.com/tsutterley/read-ICESat-2/blob/main/LICENSE
+
+.. |Documentation Status| image:: https://readthedocs.org/projects/grounding-zones/badge/?version=latest
+   :target: https://grounding-zones.readthedocs.io/en/latest/?badge=latest
 
 Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NASA polar altimetry missions
 
