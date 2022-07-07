@@ -10,7 +10,7 @@ Grounding-Zones
    :target: https://www.python.org/
 
 .. |License| image:: https://img.shields.io/badge/license-MIT-green.svg
-   :target: https://github.com/tsutterley/read-ICESat-2/blob/main/LICENSE
+   :target: https://github.com/tsutterley/Grounding-Zones/blob/main/LICENSE
 
 .. |Documentation Status| image:: https://readthedocs.org/projects/grounding-zones/badge/?version=latest
    :target: https://grounding-zones.readthedocs.io/en/latest/?badge=latest

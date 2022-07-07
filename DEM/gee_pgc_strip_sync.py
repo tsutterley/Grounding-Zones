@@ -147,13 +147,17 @@ def gee_pgc_strip_sync(model, version, resolution,
         #-- verify that start and end time are in ISO format
         start_time = dateutil.parser.parse(TIME[0]).isoformat()
         end_time = dateutil.parser.parse(TIME[1]).isoformat()
+        logging.info('Start Time: {0}'.format(start_time))
+        logging.info('End Time: {0}'.format(end_time))
         collection = collection.filterDate(start_time, end_time)
     # reduce image collection to spatial bounding box
     if BOUNDS is not None:
+        logging.info('Bounding Box: {0}'.format(','.join(map(str,BOUNDS))))
         collection = collection.filterBounds(ee.Geometry.BBox(*BOUNDS))
     # reduce image collection to spatial geometry
     if POLYGON is not None:
         # read georeferenced file
+        logging.info('Georeferenced File: {0}'.format(POLYGON))
         shape = fiona.open(os.path.expanduser(POLYGON))
         # convert input polygons into a list of geometries
         polys = [ee.Geometry(rec['geometry'], shape.crs['init'])
@@ -165,6 +169,8 @@ def gee_pgc_strip_sync(model, version, resolution,
     n_images = collection.size().getInfo()
     # create list from filtered image collection
     collection_list = collection.toList(n_images)
+    # track the number of images to process
+    logging.info('Number of Images: {0:d}'.format(n_images))
 
     # for each image in the list
     for i in range(START,n_images):
@@ -316,6 +322,7 @@ def main():
     gee_pgc_strip_sync(args.model, args.version, args.resolution,
         TIME=args.time,
         BOUNDS=args.bbox,
+        POLYGON=args.polygon,
         START=args.restart,
         LIMIT=args.limit,
         SCALE=args.scale,
