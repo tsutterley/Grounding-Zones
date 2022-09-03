@@ -8,7 +8,7 @@ References
 This work was initially supported by an appointment to the NASA Postdoctoral
 Program (NPP) at NASA Goddard Space Flight Center (GSFC), administered by
 Universities Space Research Association (USRA) under contract with NASA.
-It is currently supported under the NASA Cryospheric Sciences Program.
+It is currently supported under the NASA Cryospheric Sciences Program (Grant Number 80NSSC22K0379).
 `Grounding-Zones <https://github.com/tsutterley/Grounding-Zones>`__ consists of
 extension routines for the sets of
 `read-ICESat-2 <https://github.com/tsutterley/read-ICESat-2>`__ and
@@ -51,7 +51,10 @@ This software is also dependent on other commonly used Python packages:
 - `netCDF4: Python interface to the netCDF C library <https://unidata.github.io/netcdf4-python/>`_
 - `numpy: Scientific Computing Tools For Python <https://www.numpy.org>`_
 - `pyproj: Python interface to PROJ library <https://pypi.org/project/pyproj/>`_
+- `pyTMD: Python-based tidal prediction software <https://github.com/tsutterley/pyTMD>`_
 - `PyYAML: YAML parser and emitter for Python <https://github.com/yaml/pyyaml>`_
+- `read-ICESat-2: Python tools to read data from the NASA ICESat-2 mission <https://github.com/tsutterley/read-ICESat-2/>`_
+- `read-ATM1b-QFIT-binary: Python reader for Airborne Topographic Mapper (ATM) QFIT data products <https://github.com/tsutterley/read-ATM1b-QFIT-binary>`_
 - `scikit-learn: Machine Learning in Python <https://scikit-learn.org/stable/index.html>`_
 - `scipy: Scientific Tools for Python <https://www.scipy.org/>`_
 - `shapely: PostGIS-ish operations outside a database context for Python <http://toblerity.org/shapely/index.html>`_

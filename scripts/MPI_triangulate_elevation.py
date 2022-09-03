@@ -976,7 +976,21 @@ def find_valid_indices(indices, X, Y):
 #-- Attempt 2: rescale and center the inputs with option QbB
 #-- Attempt 3: joggle the inputs to find a triangulation with option QJ
 #-- if no passing triangulations: exit with empty list
-def find_valid_triangulation(x0,y0):
+def find_valid_triangulation(x0, y0):
+    """
+    Attempt to find a valid Delaunay triangulation for coordinates
+
+    - Attempt 1: ``Qt Qbb Qc Qz``
+    - Attempt 2: ``Qt Qc QbB``
+    - Attempt 3: ``QJ QbB``
+
+    Parameters
+    ----------
+    x0: float
+        x-coordinates
+    y0: float
+        y-coordinates
+    """
     #-- Attempt 1: try with standard options Qt Qbb Qc Qz
     #-- Qt: triangulated output, all facets will be simplicial
     #-- Qbb: scale last coordinate to [0,m] for Delaunay triangulations
@@ -1009,6 +1023,25 @@ def find_valid_triangulation(x0,y0):
 #-- PURPOSE: calculates the maximum angle within a triangle given the
 #-- coordinates of the triangles vertices A(x,y), B(x,y), C(x,y)
 def triangle_maximum_angle(Ax, Ay, Bx, By, Cx, Cy):
+    """
+    Calculates the maximum angle within a triangle with
+    vertices A, B and C
+
+    Parameters
+    ----------
+    Ax: float
+        x-coordinate of A vertice
+    Ay: float
+        y-coordinate of A vertice
+    Bx: float
+        x-coordinate of B vertice
+    By: float
+        y-coordinate of B vertice
+    Cx: float
+        x-coordinate of C vertice
+    Cy: float
+        y-coordinate of C vertice
+    """
     #-- calculate sides of triangle (opposite interior angle at vertex)
     a = np.sqrt((Cx - Bx)**2 + (Cy - By)**2)
     b = np.sqrt((Cx - Ax)**2 + (Cy - Ay)**2)
@@ -1018,7 +1051,7 @@ def triangle_maximum_angle(Ax, Ay, Bx, By, Cx, Cy):
     beta = np.arccos((a**2 + c**2 - b**2)/(2.0*a*c))*180.0/np.pi
     gamma = np.arccos((a**2 + b**2 - c**2)/(2.0*a*b))*180.0/np.pi
     #-- return the largest angle within the triangle
-    return np.max([alpha,beta,gamma])
+    return np.max([alpha, beta, gamma])
 
 #-- PURPOSE: outputting the interpolated data to HDF5
 def HDF5_triangulated_data(output_data, MISSION=None, INPUT=None, FILENAME='',

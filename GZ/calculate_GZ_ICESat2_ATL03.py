@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL03.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (08/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place shapely within try/except statement
     Updated 05/2022: use argparse descriptions within documentation
     Updated 03/2021: use utilities to set default path to shapefiles
@@ -53,6 +54,7 @@ import os
 import re
 import h5py
 import pyproj
+import logging
 import argparse
 import operator
 import warnings
@@ -164,11 +166,11 @@ def piecewise_fit(x, y, STEP=1, CONF=0.95):
             P_x1c[nn:nmax] = XI[nn:nmax] - XI[nn]
             DMAT = np.transpose([P_x0, P_x1a, P_x1b, P_x1c])
             #-- Calculating Least-Squares Coefficients
-            #--- Least-Squares fitting (the [0] denotes coefficients output)
+            #-- Least-Squares fitting (the [0] denotes coefficients output)
             beta_mat = np.linalg.lstsq(DMAT,YI,rcond=-1)[0]
-            #--- number of terms in least-squares solution
+            #-- number of terms in least-squares solution
             n_terms = len(beta_mat)
-            #--- nu = Degrees of Freedom
+            #-- nu = Degrees of Freedom
             #-- number of measurements-number of parameters
             nu = nmax - n_terms
             #-- residual of data-model
@@ -310,15 +312,15 @@ def elasticmodel(x, GZ, A, E, T, dH):
     #-- model = large scale height change + tidal deflection
     return (dH + eta)
 
-# PURPOSE: calculate the confidence interval in the retrieval
+#-- PURPOSE: calculate the confidence interval in the retrieval
 def conf_interval(x,f,p):
-    # sorting probability distribution from smallest probability to largest
+    #-- sorting probability distribution from smallest probability to largest
     ii = np.argsort(f)
-    # compute the sorted cumulative probability distribution
+    #-- compute the sorted cumulative probability distribution
     cdf = np.cumsum(f[ii])
-    # linearly interpolate to confidence interval
+    #-- linearly interpolate to confidence interval
     J = np.interp(p, cdf, x[ii])
-    # position with maximum probability
+    #-- position with maximum probability
     K = x[ii[-1]]
     return np.abs(K-J)
 
@@ -327,14 +329,13 @@ def conf_interval(x,f,p):
 #-- calculate inflexion point using elevation surface slopes
 #-- use mean elevation to calculate elevation anomalies
 #-- use anomalies to calculate inward and seaward limits of tidal flexure
-def calculate_GZ_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
+def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
     #-- print file information
-    print(os.path.basename(FILE)) if VERBOSE else None
+    logging.info(os.path.basename(FILE))
 
     #-- read data from input_file
-    print('{0} -->'.format(os.path.basename(FILE))) if VERBOSE else None
     IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = read_HDF5_ATL03_main(FILE,
-        ATTRIBUTES=True, VERBOSE=VERBOSE)
+        ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     #-- extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_'
@@ -514,7 +515,7 @@ def arguments():
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='ICESat-2 ATL03 file to run')
-    # directory with mask data
+    #-- directory with mask data
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         default=get_data_path('data'),
@@ -537,10 +538,13 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
+    #-- create logger
+    loglevel = logging.INFO if args.verbose else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
+
     #-- run for each input ATL03 file
     for FILE in args.infile:
-        calculate_GZ_ICESat2(args.directory, FILE,
-            VERBOSE=args.verbose, MODE=args.mode)
+        calculate_GZ_ICESat2(args.directory, FILE, MODE=args.mode)
 
 #-- run main program
 if __name__ == '__main__':

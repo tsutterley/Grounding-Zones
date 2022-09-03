@@ -33,7 +33,10 @@ Dependencies
 - `netCDF4: Python interface to the netCDF C library <https://unidata.github.io/netcdf4-python/>`_
 - `numpy: Scientific Computing Tools For Python <https://www.numpy.org>`_
 - `pyproj: Python interface to PROJ library <https://pypi.org/project/pyproj/>`_
+- `pyTMD: Python-based tidal prediction software <https://github.com/tsutterley/pyTMD>`_
 - `PyYAML: YAML parser and emitter for Python <https://github.com/yaml/pyyaml>`_
+- `read-ICESat-2: Python tools to read data from the NASA ICESat-2 mission <https://github.com/tsutterley/read-ICESat-2/>`_
+- `read-ATM1b-QFIT-binary: Python reader for Airborne Topographic Mapper (ATM) QFIT data products <https://github.com/tsutterley/read-ATM1b-QFIT-binary>`_
 - `scikit-learn: Machine Learning in Python <https://scikit-learn.org/stable/index.html>`_
 - `scipy: Scientific Tools for Python <https://www.scipy.org/>`_
 - `shapely: PostGIS-ish operations outside a database context for Python <http://toblerity.org/shapely/index.html>`_
