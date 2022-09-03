@@ -26,4 +26,5 @@ dependencies:
   - texlive-core
   - pip:
      - icesat2-toolkit
+     - pyTMD
      - ..
