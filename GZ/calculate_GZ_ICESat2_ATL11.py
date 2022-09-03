@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (08/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -64,6 +64,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
         output estimated elastic modulus in grounding zone data group
@@ -85,6 +86,7 @@ import os
 import re
 import h5py
 import pyproj
+import logging
 import datetime
 import argparse
 import operator
@@ -374,12 +376,12 @@ def conf_interval(x,f,p):
 # use mean elevation to calculate elevation anomalies
 # use anomalies to calculate inward and seaward limits of tidal flexure
 def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
-    REANALYSIS=None, PLOT=False, VERBOSE=False, MODE=0o775):
+    REANALYSIS=None, PLOT=False, MODE=0o775):
     # print file information
-    print(os.path.basename(FILE)) if VERBOSE else None
+    logging.info(os.path.basename(FILE))
     # read data from FILE
     mds1,attr1,pairs1 = read_HDF5_ATL11(FILE, REFERENCE=True,
-        CROSSOVERS=CROSSOVERS, ATTRIBUTES=True, VERBOSE=VERBOSE)
+        CROSSOVERS=CROSSOVERS, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
@@ -680,7 +682,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                     # deflection from mean land ice height in grounding zone
                     dh_gz = h_gz - h_mean
                     # quasi-freeboard: WGS84 elevation - geoid height
-                    QFB = h_gz #- geoid_h
+                    QFB = h_gz # - geoid_h
                     # ice thickness from quasi-freeboard and densities
                     w_thick = QFB*rho_w/(rho_w-rho_ice)
                     # fit with a hard piecewise model to get rough estimate of GZ
@@ -1223,7 +1225,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
     args = (PRD,TIDE_MODEL,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
     file_format = '{0}_{1}_GZ_TIDES_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
     # print file information
-    print('\t{0}'.format(file_format.format(*args))) if VERBOSE else None
+    logging.info('\t{0}'.format(file_format.format(*args)))
     HDF5_ATL11_corr_write(IS2_atl11_gz, IS2_atl11_gz_attrs,
         CLOBBER=True, INPUT=os.path.basename(FILE),
         GROUNDING_ZONE=GROUNDING_ZONE, CROSSOVERS=CROSSOVERS,
@@ -1431,7 +1433,7 @@ def arguments():
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,
         help='Reanalysis model to use in inverse-barometer correction')
-    #-- run with ATL11 crossovers
+    # run with ATL11 crossovers
     parser.add_argument('--crossovers','-C',
         default=False, action='store_true',
         help='Run ATL11 Crossovers')
@@ -1457,11 +1459,15 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
+    # create logger
+    loglevel = logging.INFO if args.verbose else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
+
     # run for each input ATL11 file
     for FILE in args.infile:
         calculate_GZ_ICESat2(args.directory, FILE, TIDE_MODEL=args.tide,
             REANALYSIS=args.reanalysis, CROSSOVERS=args.crossovers,
-            PLOT=args.plot, VERBOSE=args.verbose, MODE=args.mode)
+            PLOT=args.plot, MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':
