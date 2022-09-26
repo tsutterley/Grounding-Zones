@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_interpolate_DEM.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (09/2022)
 Determines which digital elevation model tiles for an input file
 Reads 3x3 array of tiles for points within bounding box of central mosaic tile
 Interpolates digital elevation model to coordinates
@@ -85,6 +85,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 09/2022: use tar virtual file system to extract images
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
     Updated 02/2021: replaced numpy bool/int to prevent deprecation warnings
@@ -318,9 +319,8 @@ def read_DEM_file(elevation_file):
     tar = tarfile.open(name=elevation_file, mode='r:gz')
     #-- find dem geotiff file within tar file
     member, = [m for m in tar.getmembers() if re.search(r'dem\.tif',m.name)]
-    #-- use GDAL memory-mapped file to read dem
-    mmap_name = "/vsimem/{0}".format(uuid.uuid4().hex)
-    osgeo.gdal.FileFromMemBuffer(mmap_name, tar.extractfile(member).read())
+    #-- use GDAL virtual file systems to read dem
+    mmap_name = "/vsitar/{0}/{1}".format(elevation_file,member.name)
     ds = osgeo.gdal.Open(mmap_name)
     #-- read data matrix
     im = ds.GetRasterBand(1).ReadAsArray()
@@ -359,9 +359,8 @@ def read_DEM_buffer(elevation_file, xlimits, ylimits):
     tar = tarfile.open(name=elevation_file, mode='r:gz')
     #-- find dem geotiff file within tar file
     member, = [m for m in tar.getmembers() if re.search(r'dem\.tif',m.name)]
-    #-- use GDAL memory-mapped file to read dem
-    mmap_name = "/vsimem/{0}".format(uuid.uuid4().hex)
-    osgeo.gdal.FileFromMemBuffer(mmap_name, tar.extractfile(member).read())
+    #-- use GDAL virtual file systems to read dem
+    mmap_name = "/vsitar/{0}/{1}".format(elevation_file,member.name)
     ds = osgeo.gdal.Open(mmap_name)
     #-- get geotiff info
     info_geotiff = ds.GetGeoTransform()
