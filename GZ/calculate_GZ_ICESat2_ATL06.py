@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL06.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (10/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -12,8 +12,32 @@ Calculates ice sheet grounding zones with ICESat-2 data following:
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
-    -M X, --mode X: Permission mode of directories and files created
+    -T X, --tide X: Tide model to use in correction
+        CATS0201
+        CATS2008
+        TPXO9-atlas
+        TPXO9-atlas-v2
+        TPXO9-atlas-v3
+        TPXO9-atlas-v4
+        TPXO9-atlas-v5
+        TPXO9.1
+        TPXO8-atlas
+        TPXO7.2
+        AODTM-5
+        AOTIM-5
+        AOTIM-5-2018
+        GOT4.7
+        GOT4.8
+        GOT4.10
+        FES2014
+    -R X, --reanalysis X: Reanalysis model to run
+        ERA-Interim: http://apps.ecmwf.int/datasets/data/interim-full-moda
+        ERA5: http://apps.ecmwf.int/data-catalogues/era5/?class=ea
+        MERRA-2: https://gmao.gsfc.nasa.gov/reanalysis/MERRA-2/
+    -S, --sea-level: Remove mean dynamic topography from heights
+    -P, --plot: Create plots of flexural zone
     -V, --verbose: Output information about each created file
+    -M X, --mode X: Permission mode of directories and files created
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -22,6 +46,9 @@ PYTHON DEPENDENCIES:
     scipy: Scientific Tools for Python (Spatial algorithms and data structures)
         https://docs.scipy.org/doc/
         https://docs.scipy.org/doc/scipy/reference/spatial.html
+    matplotlib: Python 2D plotting library
+        http://matplotlib.org/
+        https://github.com/matplotlib/matplotlib
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
     fiona: Python wrapper for vector data access functions from the OGR library
@@ -37,6 +64,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 10/2022: use a defined mean height file for the baseline
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place shapely within try/except statement
     Updated 05/2022: use argparse descriptions within documentation
@@ -66,25 +94,30 @@ import scipy.optimize
 import icesat2_toolkit.time
 from icesat2_toolkit.read_ICESat2_ATL06 import read_HDF5_ATL06
 from grounding_zones.utilities import get_data_path
-#-- attempt imports
+# attempt imports
 try:
     import fiona
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("fiona not available")
 try:
+    import matplotlib.pyplot as plt
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("matplotlib not available")
+try:
     import shapely.geometry
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("shapely not available")
-#-- ignore warnings
+# ignore warnings
 warnings.filterwarnings("ignore")
 
-#-- grounded ice shapefiles
+# grounded ice shapefiles
 grounded_shapefile = {}
 grounded_shapefile['N'] = 'grn_ice_sheet_peripheral_glaciers.shp'
 grounded_shapefile['S'] = 'ant_ice_sheet_islands_v2.shp'
-#-- description and reference for each grounded ice file
+# description and reference for each grounded ice file
 grounded_description = {}
 grounded_description['N'] = 'Greenland Mapping Project (GIMP) Ice & Ocean Mask'
 grounded_description['S'] = ('MEaSUREs Antarctic Boundaries for IPY 2007-2009 '
@@ -93,7 +126,7 @@ grounded_reference = {}
 grounded_reference['N'] = 'https://doi.org/10.5194/tc-8-1509-2014'
 grounded_reference['S'] = 'https://doi.org/10.5067/IKBWW4RYHF1Q'
 
-#-- PURPOSE: set the hemisphere of interest based on the granule
+# PURPOSE: set the hemisphere of interest based on the granule
 def set_hemisphere(GRANULE):
     if GRANULE in ('10','11','12'):
         projection_flag = 'S'
@@ -101,111 +134,108 @@ def set_hemisphere(GRANULE):
         projection_flag = 'N'
     return projection_flag
 
-#-- PURPOSE: find if segment crosses previously-known grounding line position
+# PURPOSE: find if segment crosses previously-known grounding line position
 def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
-    #-- reading grounded ice shapefile
+    # reading grounded ice shapefile
     shape = fiona.open(os.path.join(base_dir,grounded_shapefile[HEM]))
-    epsg = shape.crs['init']
-    #-- reduce to variables of interest if specified
+    epsg = pyproj.CRS(shape.crs).to_epsg()
+    # reduce to variables of interest if specified
     shape_entities = [f for f in shape.values() if int(f['id']) in VARIABLES]
-    #-- create list of polygons
-    polygons = []
-    #-- extract the entities and assign by tile name
+    # create list of polygons
+    lines = []
+    # extract the entities and assign by tile name
     for i,ent in enumerate(shape_entities):
-        #-- extract coordinates for entity
-        poly_obj = shapely.geometry.Polygon(ent['geometry']['coordinates'])
-        #-- Valid Polygon cannot have overlapping exterior or interior rings
-        if (not poly_obj.is_valid):
-            poly_obj = poly_obj.buffer(0)
-        polygons.append(poly_obj)
-    #-- create shapely multipolygon object
-    mpoly_obj = shapely.geometry.MultiPolygon(polygons)
-    #-- close the shapefile
+        # extract coordinates for entity
+        line_obj = shapely.geometry.LineString(ent['geometry']['coordinates'])
+        lines.append(line_obj)
+    # create shapely multilinestring object
+    mline_obj = shapely.geometry.MultiLineString(lines)
+    # close the shapefile
     shape.close()
-    #-- return the polygon object for the ice sheet
-    return (mpoly_obj,grounded_shapefile[HEM],epsg)
+    # return the line string object for the ice sheet
+    return (mline_obj,epsg)
 
-#-- PURPOSE: compress complete list of valid indices into a set of ranges
+# PURPOSE: compress complete list of valid indices into a set of ranges
 def compress_list(i,n):
     for a,b in itertools.groupby(enumerate(i), lambda v: ((v[1]-v[0])//n)*n):
         group = list(map(operator.itemgetter(1),b))
         yield (group[0], group[-1])
 
-#-- Derivation of Sharp Breakpoint Piecewise Regression:
-#-- http://www.esajournals.org/doi/abs/10.1890/02-0472
-#-- y = beta_0 + beta_1*t + e (for x <= alpha)
-#-- y = beta_0 + beta_1*t + beta_2*(t-alpha) + e (for x > alpha)
+# Derivation of Sharp Breakpoint Piecewise Regression:
+# http://www.esajournals.org/doi/abs/10.1890/02-0472
+# y = beta_0 + beta_1*t + e (for x <= alpha)
+# y = beta_0 + beta_1*t + beta_2*(t-alpha) + e (for x > alpha)
 def piecewise_fit(x, y, STEP=1, CONF=0.95):
-    #-- regrid x and y to STEP
+    # regrid x and y to STEP
     XI = x[::STEP]
     YI = y[::STEP]
-    #-- Creating Design matrix based on chosen input fit_type parameters:
+    # Creating Design matrix based on chosen input fit_type parameters:
     nmax = len(XI)
-    P_x0 = np.ones((nmax))#-- Constant Term
-    P_x1a = XI[0:nmax]#-- Linear Term 1
-    #-- Calculating the number parameters to search
+    P_x0 = np.ones((nmax))# Constant Term
+    P_x1a = XI[0:nmax]# Linear Term 1
+    # Calculating the number parameters to search
     n_param = (nmax**2 - nmax)//2
-    #-- R^2 and Log-Likelihood
+    # R^2 and Log-Likelihood
     rsquare_array = np.zeros((n_param))
     loglik_array = np.zeros((n_param))
-    #-- output cutoff and fit parameters
+    # output cutoff and fit parameters
     cutoff_array = np.zeros((n_param,2),dtype=int)
     beta_matrix = np.zeros((n_param,4))
-    #-- counter variable
+    # counter variable
     c = 0
-    #-- SStotal = sum((Y-mean(Y))^2)
+    # SStotal = sum((Y-mean(Y))^2)
     SStotal = np.dot(np.transpose(YI - np.mean(YI)),(YI - np.mean(YI)))
-    #-- uniform distribution over entire range
+    # uniform distribution over entire range
     for n in range(0,nmax):
-        #-- Linear Term 2 (= change from linear term1: trend2 = beta1+beta2)
+        # Linear Term 2 (= change from linear term1: trend2 = beta1+beta2)
         P_x1b = np.zeros((nmax))
         P_x1b[n:nmax] = XI[n:nmax] - XI[n]
         for nn in range(n+1,nmax):
-            #-- Linear Term 3 (= change from linear term2)
+            # Linear Term 3 (= change from linear term2)
             P_x1c = np.zeros((nmax))
             P_x1c[nn:nmax] = XI[nn:nmax] - XI[nn]
             DMAT = np.transpose([P_x0, P_x1a, P_x1b, P_x1c])
-            #-- Calculating Least-Squares Coefficients
-            #-- Least-Squares fitting (the [0] denotes coefficients output)
+            # Calculating Least-Squares Coefficients
+            # Least-Squares fitting (the [0] denotes coefficients output)
             beta_mat = np.linalg.lstsq(DMAT,YI,rcond=-1)[0]
-            #-- number of terms in least-squares solution
+            # number of terms in least-squares solution
             n_terms = len(beta_mat)
-            #-- nu = Degrees of Freedom
-            #-- number of measurements-number of parameters
+            # nu = Degrees of Freedom
+            # number of measurements-number of parameters
             nu = nmax - n_terms
-            #-- residual of data-model
+            # residual of data-model
             residual = YI - np.dot(DMAT,beta_mat)
-            #-- CALCULATING R_SQUARE VALUES
-            #-- SSerror = sum((Y-X*B)^2)
+            # CALCULATING R_SQUARE VALUES
+            # SSerror = sum((Y-X*B)^2)
             SSerror = np.dot(np.transpose(residual),residual)
-            #-- R^2 term = 1- SSerror/SStotal
+            # R^2 term = 1- SSerror/SStotal
             rsquare_array[c] = 1 - (SSerror/SStotal)
-            #-- Log-Likelihood
+            # Log-Likelihood
             loglik_array[c] = 0.5*(-nmax*(np.log(2.0 * np.pi) + 1.0 - \
                 np.log(nmax) + np.log(np.sum(residual**2))))
-            #-- save cutoffs and beta matrix
+            # save cutoffs and beta matrix
             cutoff_array[c,:] = [n,nn]
             beta_matrix[c,:] = beta_mat
-            #-- add 1 to counter
+            # add 1 to counter
             c += 1
 
-    #-- find where Log-Likelihood is maximum
+    # find where Log-Likelihood is maximum
     ind, = np.nonzero(loglik_array == loglik_array.max())
     n,nn = cutoff_array[ind,:][0]
-    #-- create matrix of likelihoods
+    # create matrix of likelihoods
     likelihood = np.zeros((nmax,nmax))
     likelihood[:,:] = np.nan
     likelihood[cutoff_array[:,0],cutoff_array[:,1]] = np.exp(loglik_array) / \
         np.sum(np.exp(loglik_array))
-    #-- probability distribution functions of each cutoff
+    # probability distribution functions of each cutoff
     PDF1 = np.zeros((nmax))
     PDF2 = np.zeros((nmax))
     for i in range(nmax):
-        #-- PDF for cutoff 1 for all cutoff 2
+        # PDF for cutoff 1 for all cutoff 2
         PDF1[i] = np.nansum(likelihood[i,:])
-        #-- PDF for cutoff 2 for all cutoff 1
+        # PDF for cutoff 2 for all cutoff 1
         PDF2[i] = np.nansum(likelihood[:,i])
-    #-- calculate confidence intervals
+    # calculate confidence intervals
     # CI1 = conf_interval(XI, PDF1/np.sum(PDF1), CONF)
     CI1 = 5e3
     CMN1,CMX1 = (XI[n]-CI1,XI[nn]+CI1)
@@ -213,7 +243,7 @@ def piecewise_fit(x, y, STEP=1, CONF=0.95):
     CI2 = 5e3
     CMN2,CMX2 = (XI[nn]-CI2,XI[nn]+CI2)
 
-    #-- calculate model using best fit coefficients
+    # calculate model using best fit coefficients
     P_x0 = np.ones_like(x)
     P_x1a = np.copy(x)
     P_x1b = np.zeros_like(x)
@@ -223,25 +253,28 @@ def piecewise_fit(x, y, STEP=1, CONF=0.95):
     DMAT = np.transpose([P_x0, P_x1a, P_x1b, P_x1c])
     beta_mat, = beta_matrix[ind,:]
     MODEL = np.dot(DMAT,beta_mat)
-    #-- return the cutoff parameters, their confidence interval and the model
+    # return the cutoff parameters, their confidence interval and the model
     return ([XI[n],CMN1,CMX1], [XI[nn],CMN2,CMX2], MODEL)
 
-#-- PURPOSE: run a physical elastic bending model with Levenberg-Marquardt
-#-- D. G. Vaughan, Journal of Geophysical Research Solid Earth, 1995
-#-- A. M. Smith, Journal of Glaciology, 1991
-def physical_elastic_model(XI,YI,GZ=[0,0,0],METHOD='trf',ORIENTATION=False,
-    THICKNESS=None,CONF=0.95):
-    #-- reorient input parameters to go from land ice to floating
+# PURPOSE: run a physical elastic bending model with Levenberg-Marquardt
+# D. G. Vaughan, Journal of Geophysical Research Solid Earth, 1995
+# A. M. Smith, Journal of Glaciology, 1991
+def physical_elastic_model(XI,YI,METHOD='trf',GRZ=[0,0,0],TIDE=[0,0,0],
+    ORIENTATION=False,THICKNESS=None,CONF=0.95,XOUT=None):
+    # reorient input parameters to go from land ice to floating
+    if XOUT is None:
+        XOUT = np.copy(XI)
     if ORIENTATION:
         Xm1 = XI[-1]
-        GZ = Xm1 - GZ
-        GZ[1:] = GZ[:0:-1]
+        GRZ = Xm1 - GRZ
+        GRZ[1:] = GRZ[:0:-1]
         XI = Xm1 - XI[::-1]
         YI = YI[::-1]
-    #-- calculate thickness mean, min and max
+        XOUT = Xm1 - XOUT[::-1]
+    # calculate thickness mean, min and max
     if THICKNESS is not None:
-        #-- only use positive thickness values
-        #-- ocean points could be negative with tides
+        # only use positive thickness values
+        # ocean points could be negative with tides
         ii, = np.nonzero(THICKNESS > 0.0)
         MTH = np.mean(THICKNESS[ii])
         MNTH = np.min(THICKNESS[ii])
@@ -250,269 +283,459 @@ def physical_elastic_model(XI,YI,GZ=[0,0,0],METHOD='trf',ORIENTATION=False,
         MTH = 1000.0
         MNTH = 100.0
         MXTH = 1900.0
-    #-- elastic model parameters
-    #-- G0: location of grounding line
-    #-- A0: tidal amplitude (values from Padman 2002)
-    #-- E0: Effective Elastic modulus of ice [Pa]
-    #-- T0: ice thickness of ice shelf [m]
-    #-- dH0: mean height change (thinning/thickening)
-    p0 = [GZ[0], 1.2, 1e9, MTH, 0.0]
-    #-- tuple for parameter bounds (lower and upper)
-    #-- G0: 95% confidence interval of initial fit
-    #-- A0: greater than +/- 2.4m value from Padman (2002)
-    #-- E0: Range from Table 1 of Vaughan (1995)
-    #-- T0: Range of ice thicknesses from Chuter (2015)
-    #-- dH0: mean height change +/- 10 m/yr
-    bounds = ([GZ[1], -3.0, 8.3e8, MNTH, -10],[GZ[2], 3.0, 1e10, MXTH, 10])
-    #-- optimized curve fit with Levenberg-Marquardt algorithm
+    # elastic model parameters
+    # G0: location of grounding line
+    # A0: tidal amplitude (values from Padman 2002)
+    # E0: Effective Elastic modulus of ice [Pa]
+    # T0: ice thickness of ice shelf [m]
+    # dH0: mean height change (thinning/thickening)
+    p0 = [GRZ[0], TIDE[0], 1e9, MTH, 0.0]
+    # tuple for parameter bounds (lower and upper)
+    # G0: 95% confidence interval of initial fit
+    # A0: greater than +/- 2.4m value from Padman (2002)
+    # E0: Range from Table 1 of Vaughan (1995)
+    # T0: Range of ice thicknesses from Chuter (2015)
+    # dH0: mean height change +/- 10 m/yr
+    bounds = ([GRZ[1], TIDE[1], 8.3e8, MNTH, -10],
+        [GRZ[2], TIDE[2], 1e10, MXTH, 10])
+    # optimized curve fit with Levenberg-Marquardt algorithm
     popt,pcov = scipy.optimize.curve_fit(elasticmodel, XI, YI,
         p0=p0, bounds=bounds, method=METHOD)
-    MODEL = elasticmodel(XI, *popt)
-    #-- elasticmodel function outputs and 1 standard devation uncertainties
+    MODEL = elasticmodel(XOUT, *popt)
+    # elasticmodel function outputs and 1 standard devation uncertainties
     GZ = np.zeros((2))
     A = np.zeros((2))
     E = np.zeros((2))
     T = np.zeros((2))
     dH = np.zeros((2))
     GZ[0],A[0],E[0],T[0],dH[0] = popt[:]
-    #-- Error analysis
-    #-- nu = Degrees of Freedom = number of measurements-number of parameters
+    # Error analysis
+    # nu = Degrees of Freedom = number of measurements-number of parameters
     nu = len(XI) - len(p0)
-    #-- Setting the confidence interval of the output error
+    # Setting the confidence interval of the output error
     alpha = 1.0 - CONF
-    #-- Student T-Distribution with D.O.F. nu
-    #-- t.ppf parallels tinv in matlab
+    # Student T-Distribution with D.O.F. nu
+    # t.ppf parallels tinv in matlab
     tstar = scipy.stats.t.ppf(1.0-(alpha/2.0),nu)
-    #-- error for each coefficient = t(nu,1-alpha/2)*standard error
+    # error for each coefficient = t(nu,1-alpha/2)*standard error
     perr = np.sqrt(np.diag(pcov))
     GZ[1],A[1],E[1],T[1],dH[1] = tstar*perr[:]
-    #-- reverse the reorientation
+    # reverse the reorientation
     if ORIENTATION:
         GZ[0] = Xm1 - GZ[0]
         MODEL = MODEL[::-1]
     return (GZ,A,E,T,dH,MODEL)
 
-#-- PURPOSE: create physical elastic bending model with a mean height change
+# PURPOSE: create physical elastic bending model with a mean height change
 def elasticmodel(x, GZ, A, E, T, dH):
-    #-- density of water [kg/m^3]
+    # density of water [kg/m^3]
     rho_w = 1030.0
-    #-- gravitational constant [m/s^2]
+    # gravitational constant [m/s^2]
     g = 9.806
-    #-- Poisson's ratio of ice
+    # Poisson's ratio of ice
     nu = 0.3
-    #-- structural rigidity of ice
+    # structural rigidity of ice
     D = (E*T**3)/(12.0*(1.0-nu**2))
-    #-- beta elastic damping parameter
+    # beta elastic damping parameter
     b = (0.25*rho_w*g/D)**0.25
-    #-- distance of points from grounding line (R0 = 0 at grounding line)
+    # distance of points from grounding line (R0 = 0 at grounding line)
     R0 = (x[x >= GZ] - GZ)
-    #-- deflection of ice beyond the grounding line (elastic)
+    # deflection of ice beyond the grounding line (elastic)
     eta = np.zeros_like(x)
     eta[x >= GZ] = A*(1.0-np.exp(-b*R0)*(np.cos(b*R0) + np.sin(b*R0)))
-    #-- model = large scale height change + tidal deflection
+    # model = large scale height change + tidal deflection
     return (dH + eta)
 
-#-- PURPOSE: calculate the confidence interval in the retrieval
+# PURPOSE: calculate the confidence interval in the retrieval
 def conf_interval(x,f,p):
-    #-- sorting probability distribution from smallest probability to largest
+    # sorting probability distribution from smallest probability to largest
     ii = np.argsort(f)
-    #-- compute the sorted cumulative probability distribution
+    # compute the sorted cumulative probability distribution
     cdf = np.cumsum(f[ii])
-    #-- linearly interpolate to confidence interval
+    # linearly interpolate to confidence interval
     J = np.interp(p, cdf, x[ii])
-    #-- position with maximum probability
+    # position with maximum probability
     K = x[ii[-1]]
     return np.abs(K-J)
 
-#-- PURPOSE: read ICESat-2 data from NSIDC or MPI_ICESat2_ATL03.py
-#-- calculate mean elevation between all dates in file
-#-- calculate inflexion point using elevation surface slopes
-#-- use mean elevation to calculate elevation anomalies
-#-- use anomalies to calculate inward and seaward limits of tidal flexure
-def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
-    #-- print file information
+# PURPOSE: read ICESat-2 data from NSIDC or MPI_ICESat2_ATL03.py
+# calculate mean elevation between all dates in file
+# calculate inflexion point using elevation surface slopes
+# use mean elevation to calculate elevation anomalies
+# use anomalies to calculate inward and seaward limits of tidal flexure
+def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
+    REANALYSIS=None, SEA_LEVEL=False, PLOT=False, MODE=0o775):
+    # print file information
     logging.info(os.path.basename(FILE))
 
-    #-- read data from input_file
+    # read data from input_file
     IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = read_HDF5_ATL06(FILE,
         HISTOGRAM=False, QUALITY=False, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
-    #-- extract parameters from ICESat-2 ATLAS HDF5 file name
+    # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_'
         r'(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$', re.VERBOSE)
     PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = rx.findall(FILE).pop()
-    #-- set the hemisphere flag based on ICESat-2 granule
+    # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRAN)
-    #-- digital elevation model for each region
-    DEM_MODEL = dict(N='ArcticDEM', S='REMA')
 
-    #-- file format for auxiliary files
+    # file format for auxiliary files
     file_format='{0}_{1}_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
-    #-- grounding zone mask file
-    args = (PRD,'GROUNDING_ZONE_MASK',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
-    #-- extract mask values for mask flags to create grounding zone mask
-    fid1 = h5py.File(os.path.join(DIRECTORY,file_format.format(*args)), 'r')
-    #-- input digital elevation model file (ArcticDEM or REMA)
-    args = (PRD,DEM_MODEL[HEM],YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
-    fid2 = h5py.File(os.path.join(DIRECTORY,file_format.format(*args)), 'r')
-    # #-- input sea level for mean dynamic topography
-    # args = (PRD,'AVISO_SEA_LEVEL',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
-    # fid3 = h5py.File(os.path.join(DIRECTORY,file_format.format(*args)), 'r')
 
-    #-- grounded ice line string to determine if segment crosses coastline
-    mpoly_obj,input_file,epsg = read_grounded_ice(base_dir, HEM)
-    #-- projections for converting lat/lon to polar stereographic
+    # grounded ice line string to determine if segment crosses coastline
+    mline_obj,epsg = read_grounded_ice(base_dir, HEM)
+    # projections for converting lat/lon to polar stereographic
     crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string(epsg)
-    #-- transformer object for converting projections
+    crs2 = pyproj.CRS.from_epsg(epsg)
+    # transformer object for converting projections
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
-    #-- densities of seawater and ice
+    # densities of seawater and ice
     rho_w = 1030.0
     rho_ice = 917.0
 
-    #-- number of GPS seconds between the GPS epoch
-    #-- and ATLAS Standard Data Product (SDP) epoch
+    # number of GPS seconds between the GPS epoch
+    # and ATLAS Standard Data Product (SDP) epoch
     atlas_sdp_gps_epoch = IS2_atl06_mds['ancillary_data']['atlas_sdp_gps_epoch']
 
-    #-- copy variables for outputting to HDF5 file
+    # copy variables for outputting to HDF5 file
     IS2_atl06_gz = {}
     IS2_atl06_fill = {}
     IS2_atl06_dims = {}
     IS2_atl06_gz_attrs = {}
-    #-- number of GPS seconds between the GPS epoch (1980-01-06T00:00:00Z UTC)
-    #-- and ATLAS Standard Data Product (SDP) epoch (2018-01-01T00:00:00Z UTC)
-    #-- Add this value to delta time parameters to compute full gps_seconds
+    # number of GPS seconds between the GPS epoch (1980-01-06T00:00:00Z UTC)
+    # and ATLAS Standard Data Product (SDP) epoch (2018-01-01T00:00:00Z UTC)
+    # Add this value to delta time parameters to compute full gps_seconds
     IS2_atl06_gz['ancillary_data'] = {}
     IS2_atl06_gz_attrs['ancillary_data'] = {}
     for key in ['atlas_sdp_gps_epoch']:
-        #-- get each HDF5 variable
+        # get each HDF5 variable
         IS2_atl06_gz['ancillary_data'][key] = IS2_atl06_mds['ancillary_data'][key]
-        #-- Getting attributes of group and included variables
+        # Getting attributes of group and included variables
         IS2_atl06_gz_attrs['ancillary_data'][key] = {}
         for att_name,att_val in IS2_atl06_attrs['ancillary_data'][key].items():
             IS2_atl06_gz_attrs['ancillary_data'][key][att_name] = att_val
 
-    #-- for each input beam within the file
-    for gtx in sorted(IS2_atl06_beams):
-        #-- read buffered grounding zone mask
-        ice_gz = fid1[gtx]['land_ice_segments']['subsetting']['ice_gz'][:]
-        B=fid1[gtx]['land_ice_segments']['subsetting']['ice_gz'].attrs['source']
+    # outputs of grounding zone fit
+    grounding_zone_data = {}
+    grounding_zone_data['segment_id'] = []
+    grounding_zone_data['latitude'] = []
+    grounding_zone_data['longitude'] = []
+    grounding_zone_data['delta_time'] = []
+    # grounding_zone_data['tide_ocean'] = []
+    grounding_zone_data['gz_sigma'] = []
+    grounding_zone_data['e_mod'] = []
+    grounding_zone_data['e_mod_sigma'] = []
+    # grounding_zone_data['H_ice'] = []
+    # grounding_zone_data['delta_h'] = []
 
-        #-- number of segments
+    # for each input beam within the file
+    for gtx in sorted(IS2_atl06_beams):
+        # number of segments
         v = IS2_atl06_mds[gtx]['land_ice_segments']
+        attrs = IS2_atl06_attrs[gtx]['land_ice_segments']
         n_seg = len(v['segment_id'])
-        #-- find valid segments for beam within grounding zone
-        fv = IS2_atl06_attrs[gtx]['land_ice_segments']['h_li']['_FillValue']
-        #-- land ice height
+        # find valid segments for beam within grounding zone
+        fv = attrs['h_li']['_FillValue']
+        # land ice height
         h_li = np.ma.array(v['h_li'], fill_value=fv, mask=(v['h_li']==fv))
-        #-- digital elevation model elevation
-        dem_h = np.ma.array(fid2[gtx]['land_ice_segments']['dem']['dem_h'][:],
-            mask=(fid2[gtx]['land_ice_segments']['dem']['dem_h'][:]==fv),
-            fill_value=fv)
-        # #-- mean dynamic topography with invalid values set to 0
-        # h_mdt = fid3[gtx]['land_ice_segments']['geophysical']['h_mdt'][:]
-        # h_mdt[h_mdt == fv] = 0.0
-        #-- find valid points with GZ for both ATL06 and the interpolated DEM
+
+        # grounding zone mask file
+        a1 = (PRD,'GROUNDING_ZONE_MASK',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
+        f1 = os.path.join(DIRECTORY,file_format.format(*a1))
+        ice_gz = np.zeros((n_seg),dtype=bool)
+        # check that mask file exists
+        try:
+            # extract mask values for mask flags to create grounding zone mask
+            fid1 = h5py.File(f1,'r')
+            v1 = [gtx,'land_ice_segments','subsetting','ice_gz']
+            # read buffered grounding zone mask
+            ice_gz[:] = fid1['/'.join(v1)][:].copy()
+            B = fid1['/'.join(v1)].attrs['source']
+        except Exception as e:
+            continue
+        else:
+            fid1.close()
+
+        # read mean elevation file (e.g. digital elevation model)
+        dem_h = np.ma.zeros((n_seg), fill_value=fv)
+        if MEAN_FILE:
+            # read DEM HDF5 file
+            try:
+                fid2 = h5py.File(MEAN_FILE, 'r')
+                v2 = [gtx,'land_ice_segments','dem','dem_h']
+                dem_h.data[:] = fid2['/'.join(v2)][:].copy()
+                fv2 = fid2['/'.join(v2)].attrs['_FillValue']
+            except Exception as e:
+                dem_h.mask = np.ones((n_seg),dtype=bool)
+            else:
+                dem_h.mask = (dem_h.data[:] == fv2)
+                fid2.close()
+        else:
+            # use default DEM within ATL06
+            dem_h.data[:] = v['dem']['dem_h'][:].copy()
+            fv2 = attrs['dem']['dem_h']['_FillValue']
+            dem_h.mask = (v['dem']['dem_h'][:] == fv2)
+
+        # read tide model
+        if TIDE_MODEL:
+            # read tide model HDF5 file
+            a3 = (PRD,TIDE_MODEL,'TIDES',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
+            f3 = os.path.join(DIRECTORY,file_format.format(*a3))
+            tide_ocean = np.ma.zeros((n_seg),fill_value=fv)
+            # check that tide file exists
+            try:
+                fid3 = h5py.File(f3,'r')
+                v3 = [gtx,'land_ice_segments','geophysical','tide_ocean']
+                tide_ocean.data[:] = fid3['/'.join(v3)][:].copy()
+                fv3 = fid3['/'.join(v3)].attrs['_FillValue']
+            except Exception as e:
+                tide_ocean.mask = np.ones((n_seg),dtype=bool)
+            else:
+                tide_ocean.mask = (tide_ocean.data[:] == fv3)
+                fid3.close()
+        else:
+            # use default tide model
+            tide_ocean = np.ma.array(v['geophysical']['tide_ocean'])
+            fv3 = attrs['geophysical']['tide_ocean']['_FillValue']
+            tide_ocean.mask = (tide_ocean.data[:] == fv3)
+
+        # read inverse barometer correction
+        if REANALYSIS:
+            # read inverse barometer HDF5 file
+            a4 = (PRD,REANALYSIS,'IB',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
+            f4 = os.path.join(DIRECTORY,file_format.format(*a4))
+            IB = np.ma.zeros((n_seg),fill_value=fv)
+            # check that inverse barometer exists
+            try:
+                fid4 = h5py.File(f4,'r')
+                v4 = [gtx,'land_ice_segments','geophysical','ib']
+                IB.data[:] = fid4['/'.join(v4)][:].copy()
+                fv4 = fid4['/'.join(v4)].attrs['_FillValue']
+            except Exception as e:
+                IB.mask = np.ones((n_seg),dtype=bool)
+            else:
+                IB.mask = (IB.data[:] == fv4)
+                fid4.close()
+        else:
+            # use default dynamic atmospheric correction
+            IB = np.ma.array(v['geophysical']['dac'])
+            fv4 = attrs['geophysical']['dac']['_FillValue']
+            IB.mask = (IB.data[:] == fv4)
+
+        # mean dynamic topography
+        mdt = np.ma.zeros((n_seg),fill_value=fv)
+        if SEA_LEVEL:
+            a5 = (PRD,'AVISO','SEA_LEVEL',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
+            f5 = os.path.join(DIRECTORY,file_format.format(*a5))
+            # check that mean dynamic topography file exists
+            try:
+                fid5 = h5py.File(f5,'r')
+                v5 = [gtx,'land_ice_segments','geophysical','h_mdt']
+                mdt.data[:] = fid5['/'.join(v5)][:].copy()
+                fv5 = fid5['/'.join(v5)].attrs['_FillValue']
+            except Exception as e:
+                mdt.mask = np.ones((n_seg),dtype=bool)
+                pass
+            else:
+                IB.mask = (IB.data[:] == fv5)
+                fid5.close()
+        else:
+            # use no mean dynamic topography
+            mdt.mask = np.ones((n_seg),dtype=bool)
+
+        # find valid points with GZ for both ATL06 and the interpolated DEM
         valid, = np.nonzero((~h_li.mask) & (~dem_h.mask) & ice_gz)
 
-        #-- compress list (separate geosegs into sets of ranges)
+        # compress list (separate geosegs into sets of ranges)
         ice_gz_indices = compress_list(valid,10)
         for imin,imax in ice_gz_indices:
-            #-- find valid indices within range
+            # find valid indices within range
             i = sorted(set(np.arange(imin,imax+1)) & set(valid))
-            #-- convert time from ATLAS SDP to days relative into Julian days
+            # convert time from ATLAS SDP to days relative into Julian days
             gps_seconds = atlas_sdp_gps_epoch + v['delta_time'][i]
             time_leaps = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
-            #-- convert from seconds since 1980-01-06T00:00:00 to Julian days
+            # convert from seconds since 1980-01-06T00:00:00 to Julian days
             time_julian = 2400000.5 + icesat2_toolkit.time.convert_delta_time(
                 gps_seconds - time_leaps, epoch1=(1980,1,6,0,0,0),
                 epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
-            #-- convert to calendar date with convert_julian.py
-            cal_date = icesat2_toolkit.time.convert_julian(time_julian)
-            #-- extract lat/lon and convert to polar stereographic
+            # convert to calendar date
+            YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(time_julian,
+                format='tuple')
+            # extract lat/lon and convert to polar stereographic
             X,Y = transformer.transform(v['longitude'][i],v['latitude'][i])
-            #-- shapely LineString object for altimetry segment
-            segment_line = shapely.geometry.LineString(list(zip(X, Y)))
-            #-- determine if line segment intersects previously known GZ
-            if segment_line.intersects(mpoly_obj):
-                #-- horizontal eulerian distance from start of segment
+            # shapely LineString object for altimetry segment
+            segment_line = shapely.geometry.LineString(np.c_[X, Y])
+            # determine if line segment intersects previously known GZ
+            if segment_line.intersects(mline_obj):
+                # extract intersected point (find minimum distance)
+                try:
+                    xi,yi = mline_obj.intersection(segment_line).xy
+                except:
+                    continue
+                else:
+                    iint = np.argmin((Y-yi)**2 + (X-xi)**2)
+                # horizontal eulerian distance from start of segment
                 dist = np.sqrt((X-X[0])**2 + (Y-Y[0])**2)
-                #-- land ice height for grounding zone
+                # land ice height for grounding zone
                 h_gz = h_li.data[i]
-                #-- mean land ice height from digital elevation model
-                h_mean = dem_h[i]
-                #-- dynamic atmospheric correction
-                dac = v['geophysical']['dac'][i]
-                #-- geoid height
+                # mean land ice height from digital elevation model
+                h_mean = dem_h.data[i]
+                # geoid height
                 geoid_h = v['dem']['geoid_h'][i]
-                #-- deflection from mean land ice height in grounding zone
-                dh_gz = h_gz - h_mean #+ dac
-                #-- quasi-freeboard: WGS84 elevation - geoid height
-                QFB = h_gz - geoid_h
-                #-- ice thickness from quasi-freeboard and densities
+
+                # ocean tide height for scaling model
+                tide_mean = np.mean(tide_ocean[i])
+                h_tide = np.ma.array(tide_ocean.data[i] - tide_mean,
+                    fill_value=fv)
+                h_tide.mask = tide_ocean.mask[i]
+                # inverse-barometer response
+                ib_mean = np.mean(IB[i])
+                h_ib = np.ma.array(IB.data[i] - ib_mean, fill_value=fv)
+                h_ib.mask = IB.mask[i]
+
+                # deflection from mean land ice height in grounding zone
+                dh_gz = h_gz - h_mean
+                # quasi-freeboard: WGS84 elevation - geoid height
+                QFB = h_gz - (geoid_h + mdt[i])
+                # ice thickness from quasi-freeboard and densities
                 w_thick = QFB*rho_w/(rho_w-rho_ice)
-                #-- fit with a hard piecewise model to get rough estimate of GZ
-                C1,C2,PWMODEL = piecewise_fit(dist, dh_gz, STEP=5, CONF=0.95)
-                #-- distance from estimated grounding line (0 = grounding line)
+                # fit with a hard piecewise model to get rough estimate of GZ
+                try:
+                    C1,C2,PWMODEL = piecewise_fit(dist, dh_gz, STEP=5, CONF=0.95)
+                except:
+                    continue
+
+                # distance from estimated grounding line (0 = grounding line)
                 d = (dist - C1[0]).astype(int)
-                #-- determine if spacecraft is approaching coastline
+                # determine if spacecraft is approaching coastline
                 sco = True if np.mean(h_gz[d<0]) < np.mean(h_gz[d>0]) else False
-                #-- fit physical elastic model
-                PGZ,PA,PE,PT,PdH,PEMODEL = physical_elastic_model(dist, dh_gz,
-                    GZ=C1, ORIENTATION=sco, THICKNESS=w_thick, CONF=0.95)
-                #-- linearly interpolate distance to grounding line
-                XGZ = np.interp(PGZ[0],dist,X)
-                YGZ = np.interp(PGZ[0],dist,X)
-                print(XGZ, YGZ, PGZ[0], PGZ[1], PT)
+                # set initial fit outputs to infinite
+                GZ = np.array([np.inf, np.inf])
+                PGZ = np.array([np.inf, np.inf])
+                # set grounding zone estimates for testing
+                GRZ = []
+                # 1,2: use GZ location values from piecewise fit
+                # 3,4: use GZ location values from known grounding line
+                GRZ.append(C1)
+                GRZ.append(C1)
+                GRZ.append([dist[iint],dist[iint]-2e3,dist[iint]+2e3])
+                GRZ.append([dist[iint],dist[iint]-2e3,dist[iint]+2e3])
+                # set tide values for testing
+                TIDE = []
+                i0 = 0 if sco else -1
+                tplus = h_tide[i0] + h_ib[i0]
+                # 1,3: use tide range values from Padman (2002)
+                # 2,4: use tide range values from model+ib
+                TIDE.append([1.2,-3.0,3.0])
+                TIDE.append([tplus,tplus-0.3,tplus+0.3])
+                TIDE.append([1.2,-3.0,3.0])
+                TIDE.append([tplus,tplus-0.3,tplus+0.3])
+                # iterate through tests
+                for grz,tide in zip(GRZ,TIDE):
+                    # fit physical elastic model
+                    try:
+                        GZ,PA,PE,PT,PdH,MODEL = physical_elastic_model(dist,
+                            dh_gz, GRZ=grz, TIDE=tide, ORIENTATION=sco,
+                            THICKNESS=w_thick, CONF=0.95, XOUT=i)
+                    except:
+                        pass
+                    # copy grounding zone parameters to get best fit
+                    if (GZ[1] < PGZ[1]):
+                        PGZ = np.copy(GZ)
+                        model_scale = np.copy(PA[0])
+                        PEMODEL = np.copy(MODEL)
+                    # use parameters if fit significance is within tolerance
+                    if (GZ[1] < 400.0):
+                        break
+                # skip saving parameters if no valid solution was found
+                if np.logical_not(np.isfinite(GZ[0])):
+                    continue
 
-    #-- close the auxiliary files
-    fid1.close()
-    fid2.close()
-    #-- fid3.close()
+                # linearly interpolate distance to grounding line
+                GZrpt = np.interp(PGZ[0],dist,v['segment_id'][i])
+                GZlat = np.interp(PGZ[0],dist,v['latitude'][i])
+                GZlon = np.interp(PGZ[0],dist,v['longitude'][i])
+                GZtime = np.interp(PGZ[0],dist,v['delta_time'][i])
+                # append outputs of grounding zone fit
+                # save all outputs (not just within tolerance)
+                grounding_zone_data['segment_id'].append(GZrpt)
+                grounding_zone_data['latitude'].append(GZlat)
+                grounding_zone_data['longitude'].append(GZlon)
+                grounding_zone_data['delta_time'].append(GZtime)
+                # grounding_zone_data['tide_ocean'].append(PA)
+                grounding_zone_data['gz_sigma'].append(PGZ[1])
+                grounding_zone_data['e_mod'].append(PE[0]/1e9)
+                grounding_zone_data['e_mod_sigma'].append(PE[1]/1e9)
+                # grounding_zone_data['H_ice'].append(PT)
+                # grounding_zone_data['delta_h'].append(PdH)
 
-#-- PURPOSE: create argument parser
+
+# PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
         description="""Calculates ice sheet grounding zones with ICESat-2
             ATL06 along-track land ice height data
             """
     )
-    #-- command line parameters
+    # command line parameters
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='ICESat-2 ATL06 file to run')
-    #-- directory with mask data
+    # directory with mask data
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         default=get_data_path('data'),
         help='Working data directory')
-    #-- verbosity settings
-    #-- verbose will output information about each output file
+    # mean file to remove
+    parser.add_argument('--mean-file',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        help='Mean elevation file to remove from the height data')
+    # tide model to use
+    parser.add_argument('--tide','-T',
+        metavar='TIDE', type=str, default='CATS2008',
+        help='Tide model to use in correction')
+    # dynamic atmospheric correction
+    parser.add_argument('--reanalysis','-R',
+        metavar='REANALYSIS', type=str,
+        help='Reanalysis model to use in inverse-barometer correction')
+    # mean dynamic topography
+    parser.add_argument('--sea-level','-S',
+        default=False, action='store_true',
+        help='Remove mean dynamic topography from heights')
+    # create test plots
+    parser.add_argument('--plot','-P',
+        default=False, action='store_true',
+        help='Create plots of flexural zone')
+    # verbosity settings
+    # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
         help='Output information about each created file')
-    #-- permissions mode of the local files (number in octal)
+    # permissions mode of the local files (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files created')
-    #-- return the parser
+    # return the parser
     return parser
 
-#-- This is the main part of the program that calls the individual functions
+# This is the main part of the program that calls the individual functions
 def main():
-    #-- Read the system arguments listed after the program
+    # Read the system arguments listed after the program
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    #-- create logger
+    # create logger
     loglevel = logging.INFO if args.verbose else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
-    #-- run for each input ATL06 file
+    # run for each input ATL06 file
     for FILE in args.infile:
-        calculate_GZ_ICESat2(args.directory, FILE, MODE=args.mode)
+        calculate_GZ_ICESat2(args.directory, FILE,
+            MEAN_FILE=args.mean_file, TIDE_MODEL=args.tide,
+            REANALYSIS=args.reanalysis, SEA_LEVEL=args.sea_level,
+            PLOT=args.plot, MODE=args.mode)
 
-#-- run main program
+# run main program
 if __name__ == '__main__':
     main()
