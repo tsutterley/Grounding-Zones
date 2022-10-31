@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL11_grounding_zone.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (10/2022)
 
 Create masks for reducing ICESat-2 annual land ice height data to within
     a buffer region near the ice sheet grounding zone
@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 10/2022: simplied HDF5 file output to match other reduction programs
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
@@ -149,7 +150,7 @@ def load_grounding_zone(base_dir, HEM, BUFFER):
     #-- reading buffered shapefile
     buffered_shapefile = buffer_shapefile[HEM].format(BUFFER)
     shape_input = fiona.open(os.path.join(base_dir,buffered_shapefile))
-    epsg = shape_input.crs['init']
+    epsg = pyproj.CRS(shape_input.crs).to_epsg()
     #-- create list of polygons
     polygons = []
     #-- extract the entities and assign by tile name
@@ -229,7 +230,7 @@ def main():
 
     #-- pyproj transformer for converting lat/lon to polar stereographic
     crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string(epsg)
+    crs2 = pyproj.CRS.from_epsg(epsg)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
     #-- copy variables for outputting to HDF5 file
@@ -416,17 +417,18 @@ def main():
     #-- parallel h5py I/O does not support compression filters at this time
     if (comm.rank == 0) and valid_check:
         #-- output HDF5 files with ice shelf masks
-        arg = (PRD,'GROUNDING_ZONE_MASK',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
+        fargs = (PRD,'GROUNDING_ZONE_MASK',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_{1}_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
+        output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
         #-- print file information
-        logging.info('\t{0}'.format(file_format.format(*arg)))
+        logging.info('\t{0}'.format(output_file))
         #-- write to output HDF5 file
         HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_mask_attrs,
             CLOBBER=True, INPUT=os.path.basename(args.file),
             FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-            FILENAME=os.path.join(DIRECTORY,file_format.format(*arg)))
+            FILENAME=output_file)
         #-- change the permissions mode
-        os.chmod(os.path.join(DIRECTORY,file_format.format(*arg)), args.mode)
+        os.chmod(output_file, args.mode)
     #-- close the input file
     fileID.close()
 

@@ -105,7 +105,7 @@ def set_hemisphere(GRANULE):
 def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     #-- reading grounded ice shapefile
     shape = fiona.open(os.path.join(base_dir,grounded_shapefile[HEM]))
-    epsg = shape.crs['init']
+    epsg = pyproj.CRS(shape.crs).to_epsg()
     #-- reduce to variables of interest if specified
     shape_entities = [f for f in shape.values() if int(f['id']) in VARIABLES]
     #-- create list of polygons
@@ -363,7 +363,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
     mpoly_obj,input_file,epsg = read_grounded_ice(base_dir, HEM)
     #-- projections for converting lat/lon to polar stereographic
     crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string(epsg)
+    crs2 = pyproj.CRS.from_epsg(epsg)
     #-- transformer object for converting projections
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 

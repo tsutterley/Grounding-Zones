@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (10/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -34,6 +34,7 @@ COMMAND LINE OPTIONS:
         ERA-Interim: http://apps.ecmwf.int/datasets/data/interim-full-moda
         ERA5: http://apps.ecmwf.int/data-catalogues/era5/?class=ea
         MERRA-2: https://gmao.gsfc.nasa.gov/reanalysis/MERRA-2/
+    -S, --sea-level: Remove mean dynamic topography from heights
     -C, --crossovers: Run ATL11 Crossovers
     -P, --plot: Create plots of flexural zone
     -V, --verbose: Output information about each created file
@@ -64,6 +65,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 10/2022: made reading mean dynamic topography an option
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
@@ -144,7 +146,7 @@ def set_hemisphere(GRANULE):
 def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # reading grounded ice shapefile
     shape = fiona.open(os.path.join(base_dir,grounded_shapefile[HEM]))
-    epsg = shape.crs['init']
+    epsg = pyproj.CRS(shape.crs).to_epsg()
     # reduce to variables of interest if specified
     shape_entities = [f for f in shape.values() if int(f['id']) in VARIABLES]
     # create list of polygons
@@ -376,7 +378,7 @@ def conf_interval(x,f,p):
 # use mean elevation to calculate elevation anomalies
 # use anomalies to calculate inward and seaward limits of tidal flexure
 def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
-    REANALYSIS=None, PLOT=False, MODE=0o775):
+    REANALYSIS=None, SEA_LEVEL=False, PLOT=False, MODE=0o775):
     # print file information
     logging.info(os.path.basename(FILE))
     # read data from FILE
@@ -402,7 +404,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
 
     # projections for converting lat/lon to polar stereographic
     crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string(epsg)
+    crs2 = pyproj.CRS.from_epsg(epsg)
     # transformer object for converting projections
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
@@ -583,16 +585,17 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
             val.data[val.mask] = val.fill_value
 
         # mean dynamic topography
-        a5 = (PRD,'AVISO','SEA_LEVEL',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-        f5 = os.path.join(DIRECTORY,file_format.format(*a5))
-        # check that mean dynamic topography file exists
-        try:
-            mds5,attr5 = read_HDF5_ATL11_pair(f5,ptx,VERBOSE=False)
-        except:
-            mdt = np.zeros((n_points))
-            pass
-        else:
-            mdt = mds5[ptx]['cycle_stats']['mdt']
+        if SEA_LEVEL:
+            a5 = (PRD,'AVISO','SEA_LEVEL',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
+            f5 = os.path.join(DIRECTORY,file_format.format(*a5))
+            # check that mean dynamic topography file exists
+            try:
+                mds5,attr5 = read_HDF5_ATL11_pair(f5,ptx,VERBOSE=False)
+            except:
+                mdt = np.zeros((n_points))
+                pass
+            else:
+                mdt = mds5[ptx]['cycle_stats']['mdt']
 
         # extract lat/lon and convert to polar stereographic
         X,Y = transformer.transform(longitude['AT'],latitude['AT'])
@@ -695,7 +698,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                     # determine if spacecraft is approaching coastline
                     sco = True if np.mean(h_gz[d<0]) < np.mean(h_gz[d>0]) else False
                     # set initial fit outputs to infinite
-                    PGZ = np.array([np.inf,np.inf])
+                    GZ = np.array([np.inf, np.inf])
+                    PGZ = np.array([np.inf, np.inf])
                     # set grounding zone estimates for testing
                     GRZ = []
                     # 1,2: use GZ location values from piecewise fit
@@ -731,6 +735,9 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                         # use parameters if fit significance is within tolerance
                         if (GZ[1] < 400.0):
                             break
+                    # skip saving parameters if no valid solution was found
+                    if np.isnan(GZ[0]):
+                        continue
 
                     # linearly interpolate distance to grounding line
                     GZrpt = np.interp(PGZ[0],output,ref_pt['AT'][iout])
@@ -1224,15 +1231,16 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
     # output flexure correction HDF5 file
     args = (PRD,TIDE_MODEL,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
     file_format = '{0}_{1}_GZ_TIDES_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
+    output_file = os.path.join(DIRECTORY,file_format.format(*args))
     # print file information
     logging.info('\t{0}'.format(file_format.format(*args)))
     HDF5_ATL11_corr_write(IS2_atl11_gz, IS2_atl11_gz_attrs,
         CLOBBER=True, INPUT=os.path.basename(FILE),
         GROUNDING_ZONE=GROUNDING_ZONE, CROSSOVERS=CROSSOVERS,
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=os.path.join(DIRECTORY,file_format.format(*args)))
+        FILENAME=output_file)
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,file_format.format(*args)), MODE)
+    os.chmod(output_file, MODE)
 
 # PURPOSE: outputting the correction values for ICESat-2 data to HDF5
 def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
@@ -1430,9 +1438,14 @@ def arguments():
     parser.add_argument('--tide','-T',
         metavar='TIDE', type=str, default='CATS2008',
         help='Tide model to use in correction')
+    # dynamic atmospheric correction
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,
         help='Reanalysis model to use in inverse-barometer correction')
+    # mean dynamic topography
+    parser.add_argument('--sea-level','-S',
+        default=False, action='store_true',
+        help='Remove mean dynamic topography from heights')
     # run with ATL11 crossovers
     parser.add_argument('--crossovers','-C',
         default=False, action='store_true',
@@ -1466,8 +1479,8 @@ def main():
     # run for each input ATL11 file
     for FILE in args.infile:
         calculate_GZ_ICESat2(args.directory, FILE, TIDE_MODEL=args.tide,
-            REANALYSIS=args.reanalysis, CROSSOVERS=args.crossovers,
-            PLOT=args.plot, MODE=args.mode)
+            REANALYSIS=args.reanalysis, SEA_LEVEL=args.sea_level,
+            CROSSOVERS=args.crossovers, PLOT=args.plot, MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':
