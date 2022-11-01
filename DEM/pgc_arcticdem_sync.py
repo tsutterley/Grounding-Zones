@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 pgc_arcticdem_sync.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (11/2022)
 
 Syncs ArcticDEM tar files from the Polar Geospatial Center (PGC)
     https://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/mosaic
@@ -46,6 +46,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2022: new ArcticDEM mosaic index shapefile
     Updated 05/2022: use argparse descriptions within documentation
         use logging for verbose output of sync
     Updated 01/2021: using utilities modules to list from server
@@ -101,7 +102,7 @@ def pgc_arcticdem_sync(base_dir, VERSION, RESOLUTION, TILES=None,
     R1 = re.compile(r'|'.join(TILES)) if TILES else re.compile(r'\d+_\d+')
     R2 = re.compile(r'(\d+_\d+)_(.*?)\.tar\.gz')
     #-- compile regular expression operators for shapefiles
-    R3 = re.compile(r'(.*?)_Tile_Index_Rel(\d+)\.zip')
+    R3 = re.compile(r'(.*?)_Mosaic_Index_v(\d+)_shp\.zip')
 
     #-- compile HTML parser for lxml
     parser = lxml.etree.HTMLParser()

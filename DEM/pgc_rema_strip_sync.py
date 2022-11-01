@@ -1,22 +1,21 @@
 #!/usr/bin/env python
 u"""
 pgc_rema_strip_sync.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (11/2022)
 
 Syncs Reference Elevation Map of Antarctica (REMA) DEM strip tar files
     from the Polar Geospatial Center (PGC)
-    https://data.pgc.umn.edu/elev/dem/setsm/REMA/geocell
+    https://data.pgc.umn.edu/elev/dem/setsm/REMA/strips
 
 CALLING SEQUENCE:
-    python pgc_rema_strip_sync.py --version v1.0 --resolution 8m
+    python pgc_rema_strip_sync.py --version s2s041 --resolution 2m
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
     -D X, --directory X: Working data directory
     -v X, --version X: REMA DEM version
-        v1.0 (default)
+        s2s041 (default)
     -r X, --resolution X: REMA DEM spatial resolution
-        8m
         2m (default)
     -s X, --strip X: REMA DEM strips to sync (default=All)
     -T X, --timeout X: Timeout in seconds for blocking operations
@@ -42,6 +41,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2022: new REMA strip version and directory structure
     Written 05/2022
 """
 from __future__ import print_function
@@ -72,12 +72,12 @@ def pgc_rema_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
     if LOG:
         #-- format: PGC_REMA_strip_sync_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
-        LOGFILE = 'PGC_REMA_strip_sync_{0}.log'.format(today)
+        LOGFILE = f'PGC_REMA_strip_sync_{today}.log'
         logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
             level=logging.INFO)
-        logging.info('PGC REMA Strip Sync Log ({0})'.format(today))
-        logging.info('VERSION={0}'.format(VERSION))
-        logging.info('RESOLUTION={0}'.format(RESOLUTION))
+        logging.info(f'PGC REMA Strip Sync Log ({today})')
+        logging.info(f'VERSION={VERSION}')
+        logging.info(f'RESOLUTION={RESOLUTION}')
         logging.info('STRIPS={0}'.format(','.join(STRIPS))) if STRIPS else None
     else:
         #-- standard output (terminal output)
@@ -90,13 +90,13 @@ def pgc_rema_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
     R2 = re.compile((r'(SETSM)_(\w+)_(\d{4})(\d{2})(\d{2})_'
         r'(\w+)_(\w+)_(seg\d+)_(\d+m)_(.*?)\.tar\.gz'), re.VERBOSE)
     #-- compile regular expression operators for shapefiles
-    R3 = re.compile(r'(.*?)_Strip_Index_Rel(\d+)\.zip', re.VERBOSE)
+    R3 = re.compile(r'(.*?)_Strip_Index_({0})_shp\.zip'.format(VERSION))
 
     #-- compile HTML parser for lxml
     parser = lxml.etree.HTMLParser()
 
     #-- remote directory for strip version and resolution
-    remote_path = [*HOST, 'REMA', 'geocell', VERSION, RESOLUTION]
+    remote_path = [*HOST, 'REMA', 'strips', VERSION, RESOLUTION]
     #-- open connection with PGC server at remote directory
     remote_sub,collastmod,_ = grounding_zones.utilities.pgc_list(remote_path,
         timeout=TIMEOUT, parser=parser, pattern=R1, sort=True)
@@ -107,7 +107,7 @@ def pgc_rema_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
         if not os.access(local_dir, os.F_OK) and not LIST:
             os.makedirs(local_dir,MODE)
         #-- open connection with PGC server at remote directory
-        remote_path = [*HOST, 'REMA', 'geocell', VERSION, RESOLUTION, sd]
+        remote_path = [*HOST, 'REMA', 'strips', VERSION, RESOLUTION, sd]
         remote_dir = posixpath.join(*remote_path)
         #-- read and parse request for files (names and modified dates)
         colnames,collastmod,_ = grounding_zones.utilities.pgc_list(remote_path,
@@ -201,8 +201,8 @@ def http_pull_file(remote_file, remote_mtime, local_file, TIMEOUT=None,
     #-- if file does not exist locally, is to be overwritten, or CLOBBER is set
     if TEST or CLOBBER:
         #-- Printing files transferred
-        logging.info('{0} --> '.format(remote_file))
-        logging.info('\t{0}{1}\n'.format(local_file,OVERWRITE))
+        logging.info(f'{remote_file} --> ')
+        logging.info(f'\t{local_file}{OVERWRITE}\n')
         #-- if executing copy command (not only printing the files)
         if not LIST:
             #-- attempt to retry the download
@@ -227,11 +227,11 @@ def arguments():
         help='Working data directory')
     #-- REMA DEM model version
     parser.add_argument('--version','-v',
-        type=str, choices=('v1.0',), default='v1.0',
+        type=str, choices=('s2s041',), default='s2s041',
         help='REMA DEM version')
     #-- DEM spatial resolution
     parser.add_argument('--resolution','-r',
-        type=str, choices=('2m','8m'), default='2m',
+        type=str, choices=('2m',), default='2m',
         help='REMA DEM spatial resolution')
     #-- REMA strip parameters
     parser.add_argument('--strip','-s',

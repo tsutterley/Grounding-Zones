@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 check_DEM_ICESat2_ATL06.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (11/2022)
 Determines which digital elevation model tiles to read for a given ATL06 file
 
 ArcticDEM 2m digital elevation model tiles
@@ -9,7 +9,7 @@ ArcticDEM 2m digital elevation model tiles
     http://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/indexes/
 
 REMA 8m digital elevation model tiles
-    http://data.pgc.umn.edu/elev/dem/setsm/REMA/mosaic/v1.1/
+    http://data.pgc.umn.edu/elev/dem/setsm/REMA/mosaic/v2.0/
     http://data.pgc.umn.edu/elev/dem/setsm/REMA/indexes/
 
 GIMP 30m digital elevation model tiles computed with nsidc_convert_GIMP_DEM.py
@@ -43,6 +43,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 11/2022: new ArcticDEM and REMA mosaic index shapefiles
     Updated 05/2022: use argparse descriptions within documentation
     Updated 01/2021: using argparse to set command line options
         using standalone ATL06 reader to get geolocations
@@ -64,13 +65,13 @@ elevation_dir = {}
 elevation_tile_index = {}
 #-- ArcticDEM
 elevation_dir['ArcticDEM'] = ['ArcticDEM']
-elevation_tile_index['ArcticDEM'] = 'ArcticDEM_Tile_Index_Rel7.zip'
+elevation_tile_index['ArcticDEM'] = 'ArcticDEM_Mosaic_Index_v3_shp.zip'
 #-- GIMP DEM
 elevation_dir['GIMP'] = ['GIMP','30m']
 elevation_tile_index['GIMP'] = 'gimpdem_Tile_Index_Rel1.1.zip'
 #-- REMA DEM
 elevation_dir['REMA'] = ['REMA']
-elevation_tile_index['REMA'] = 'REMA_Tile_Index_Rel1.1.zip'
+elevation_tile_index['REMA'] = 'REMA_Mosaic_Index_v2_shp.zip'
 
 #-- PURPOSE: set the DEM model to interpolate based on the input granule
 def set_DEM_model(GRANULE):
