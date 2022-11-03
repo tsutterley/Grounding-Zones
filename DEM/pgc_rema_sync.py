@@ -1,26 +1,34 @@
 #!/usr/bin/env python
 u"""
 pgc_rema_sync.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (11/2022)
 
 Syncs Reference Elevation Map of Antarctica (REMA) DEM tar files
     from the Polar Geospatial Center (PGC)
     https://data.pgc.umn.edu/elev/dem/setsm/REMA/mosaic
 
 CALLING SEQUENCE:
-    python pgc_rema_sync.py --version v1.1 --resolution 8m
+    python pgc_rema_sync.py --version v2.0 --resolution 2m
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
     -D X, --directory X: Working data directory
     -v X, --version X: REMA DEM version
-        v1.0
-        v1.1 (default)
+        v1.1
+        v2.0 (default)
     -r X, --resolution X: REMA DEM spatial resolution
-        1km
-        200m
-        100m
-        8m (default)
+        Version 1.1
+            1km
+            200m
+            100m
+            8m
+        Version 2.0
+            1km
+            500m
+            100m
+            32m
+            10m
+            2m (default)
     -t X, --tile X: REMA DEM tiles to sync (default=All)
     -T X, --timeout X: Timeout in seconds for blocking operations
     -R X, --retry X: Connection retry attempts
@@ -45,6 +53,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2022: new REMA mosaic version and resolution options
     Updated 05/2022: use argparse descriptions within documentation
         use logging for verbose output of sync
     Updated 01/2021: using utilities modules to list from server
@@ -83,12 +92,12 @@ def pgc_rema_sync(base_dir, VERSION, RESOLUTION, TILES=None,
     if LOG:
         #-- format: PGC_REMA_sync_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
-        LOGFILE = 'PGC_REMA_sync_{0}.log'.format(today)
+        LOGFILE = f'PGC_REMA_sync_{today}.log'
         logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
             level=logging.INFO)
-        logging.info('PGC REMA Sync Log ({0})'.format(today))
-        logging.info('VERSION={0}'.format(VERSION))
-        logging.info('RESOLUTION={0}'.format(RESOLUTION))
+        logging.info(f'PGC REMA Sync Log ({today})')
+        logging.info(f'VERSION={VERSION}')
+        logging.info(f'RESOLUTION={RESOLUTION}')
         logging.info('TILES={0}'.format(','.join(TILES))) if TILES else None
     else:
         #-- standard output (terminal output)
@@ -100,7 +109,10 @@ def pgc_rema_sync(base_dir, VERSION, RESOLUTION, TILES=None,
     R1 = re.compile(r'|'.join(TILES)) if TILES else re.compile(r'\d+_\d+')
     R2 = re.compile(r'(\d+_\d+)_(.*?)\.tar\.gz')
     #-- compile regular expression operators for shapefiles
-    R3 = re.compile(r'(.*?)_Tile_Index_Rel(\d+)\.zip')
+    if VERSION in ('v1.0','v1.1'):
+        R3 = re.compile(r'(.*?)_Tile_Index_Rel(\d+)\.zip')
+    else:
+        R3 = re.compile(r'(.*?)_Mosaic_Index_v(\d+)_shp\.zip')
 
     #-- compile HTML parser for lxml
     parser = lxml.etree.HTMLParser()
@@ -211,8 +223,8 @@ def http_pull_file(remote_file, remote_mtime, local_file, TIMEOUT=None,
     #-- if file does not exist locally, is to be overwritten, or CLOBBER is set
     if TEST or CLOBBER:
         #-- Printing files transferred
-        logging.info('{0} --> '.format(remote_file))
-        logging.info('\t{0}{1}\n'.format(local_file,OVERWRITE))
+        logging.info(f'{remote_file} --> ')
+        logging.info(f'\t{local_file}{OVERWRITE}\n')
         #-- if executing copy command (not only printing the files)
         if not LIST:
             #-- attempt to retry the download
@@ -237,12 +249,13 @@ def arguments():
         help='Working data directory')
     #-- REMA DEM model version
     parser.add_argument('--version','-v',
-        type=str, choices=('v1.0','v1.1'), default='v1.1',
+        type=str, choices=('v1.1','v2.0'), default='v2.0',
         help='REMA DEM version')
     #-- DEM spatial resolution
+    resolutions = ('2m','8m','10m','32m','100m','200m','500m','1km')
     parser.add_argument('--resolution','-r',
-        type=str, choices=('8m','100m','200m','1km'),
-        default='8m', help='REMA DEM spatial resolution')
+        metavar='RESOLUTION', type=str, choices=resolutions,
+        default='2m', help='REMA DEM spatial resolution')
     #-- REMA DEM parameters
     parser.add_argument('--tile','-t',
         type=str, nargs='+',
@@ -278,6 +291,18 @@ def main():
     #-- Read the system arguments listed after the program
     parser = arguments()
     args,_ = parser.parse_known_args()
+
+    #-- verify resolutions for selected version
+    resV1 = ('8m','100m','200m','1km')
+    resV2 = ('2m','10m','32m','100m','500m','1km')
+    if args.version in ('v1.0','v1.1') and args.resolution not in resV1:
+        choices = "', '".join(resV1)
+        raise ValueError("argument --resolution/-r: invalid choice: "
+            f"'{args.resolution}' (choose from '{choices}')")
+    elif args.version in ('v2.0',) and args.resolution not in resV2:
+        choices = "', '".join(resV2)
+        raise ValueError("argument --resolution/-r: invalid choice: "
+            f"'{args.resolution}' (choose from '{choices}')")
 
     #-- check internet connection before attempting to run program
     #-- attempt to connect to public http Polar Geospatial Center host

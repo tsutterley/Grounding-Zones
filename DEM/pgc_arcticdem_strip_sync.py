@@ -1,19 +1,19 @@
 #!/usr/bin/env python
 u"""
 pgc_arcticdem_strip_sync.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (11/2022)
 
 Syncs ArcticDEM strip tar files from the Polar Geospatial Center (PGC)
-    https://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/geocell
+    https://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/strips
 
 CALLING SEQUENCE:
-    python pgc_arcticdem_strip_sync.py --version v3.0 --resolution 2m
+    python pgc_arcticdem_strip_sync.py --version s2s041 --resolution 2m
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
     -D X, --directory X: Working data directory
     -v X, --version X: ArcticDEM version
-        v3.0 (default)
+        s2s041 (default)
     -r X, --resolution X: ArcticDEM spatial resolution
         2m (default)
     -s X, --strip X: ArcticDEM strips to sync (default=All)
@@ -40,6 +40,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2022: new ArcticDEM strip version and directory structure
     Written 05/2022
 """
 from __future__ import print_function
@@ -70,12 +71,12 @@ def pgc_arcticdem_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
     if LOG:
         #-- format: PGC_ArcticDEM_strip_sync_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
-        LOGFILE = 'PGC_ArcticDEM_strip_sync_{0}.log'.format(today)
+        LOGFILE = f'PGC_ArcticDEM_strip_sync_{today}.log'
         logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
             level=logging.INFO)
-        logging.info('PGC ArcticDEM Strip Sync Log ({0})'.format(today))
-        logging.info('VERSION={0}'.format(VERSION))
-        logging.info('RESOLUTION={0}'.format(RESOLUTION))
+        logging.info(f'PGC ArcticDEM Strip Sync Log ({today})')
+        logging.info(f'VERSION={VERSION}')
+        logging.info(f'RESOLUTION={RESOLUTION}'.format())
         logging.info('STRIPS={0}'.format(','.join(STRIPS))) if STRIPS else None
     else:
         #-- standard output (terminal output)
@@ -88,13 +89,13 @@ def pgc_arcticdem_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
     R2 = re.compile((r'(SETSM)_(\w+)_(\d{4})(\d{2})(\d{2})_'
         r'(\w+)_(\w+)_(seg\d+)_(\d+m)_(.*?)\.tar\.gz'))
     #-- compile regular expression operators for shapefiles
-    R3 = re.compile(r'(.*?)_Strip_Index_Rel(\d+)\.zip')
+    R3 = re.compile(r'(.*?)_Strip_Index_({0})_shp\.zip'.format(VERSION))
 
     #-- compile HTML parser for lxml
     parser = lxml.etree.HTMLParser()
 
     #-- remote directory for strip version and resolution
-    remote_path = [*HOST, 'ArcticDEM', 'geocell', VERSION, RESOLUTION]
+    remote_path = [*HOST, 'ArcticDEM', 'strips', VERSION, RESOLUTION]
     #-- open connection with PGC server at remote directory
     remote_sub,collastmod,_ = grounding_zones.utilities.pgc_list(remote_path,
         timeout=TIMEOUT, parser=parser, pattern=R1, sort=True)
@@ -105,7 +106,7 @@ def pgc_arcticdem_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
         if not os.access(local_dir, os.F_OK) and not LIST:
             os.makedirs(local_dir,MODE)
         #-- open connection with PGC server at remote directory
-        remote_path = [*HOST, 'ArcticDEM', 'geocell', VERSION, RESOLUTION, sd]
+        remote_path = [*HOST, 'ArcticDEM', 'strips', VERSION, RESOLUTION, sd]
         remote_dir = posixpath.join(*remote_path)
         #-- read and parse request for files (names and modified dates)
         colnames,collastmod,_ = grounding_zones.utilities.pgc_list(remote_path,
@@ -199,8 +200,8 @@ def http_pull_file(remote_file, remote_mtime, local_file, TIMEOUT=None,
     #-- if file does not exist locally, is to be overwritten, or CLOBBER is set
     if TEST or CLOBBER:
         #-- Printing files transferred
-        logging.info('{0} --> '.format(remote_file))
-        logging.info('\t{0}{1}\n'.format(local_file,OVERWRITE))
+        logging.info(f'{remote_file} --> ')
+        logging.info(f'\t{local_file}{OVERWRITE}\n')
         #-- if executing copy command (not only printing the files)
         if not LIST:
             #-- attempt to retry the download
@@ -225,7 +226,7 @@ def arguments():
         help='Working data directory')
     #-- ArcticDEM model version
     parser.add_argument('--version','-v',
-        type=str, choices=('v3.0',), default='v3.0',
+        type=str, choices=('s2s041',), default='s2s041',
         help='ArcticDEM version')
     #-- DEM spatial resolution
     parser.add_argument('--resolution','-r',

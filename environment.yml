@@ -5,7 +5,7 @@ dependencies:
   - cartopy
   - earthengine-api
   - gdal
-  - h5py
+  - h5py>=2.9=mpi*
   - lxml
   - matplotlib
   - mpi4py
