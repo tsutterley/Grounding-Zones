@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_ATL14_DEM_ICESat2_ATL11.py
-Written by Tyler Sutterley (10/2022)
+Written by Tyler Sutterley (11/2022)
 Interpolates ATL14 elevations to ICESat-2 ATL11 segment locations
 
 COMMAND LINE OPTIONS:
@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2022: check that granule intersects ATL14 DEM
     Written 10/2022
 """
 from __future__ import print_function
@@ -103,12 +104,6 @@ def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
 
     #-- for each input beam pair within the file
     for ptx in sorted(IS2_atl11_pairs):
-        #-- output data dictionaries for beam pair
-        IS2_atl11_dem[ptx] = dict(ref_surf=collections.OrderedDict())
-        IS2_atl11_fill[ptx] = dict(ref_surf={})
-        IS2_atl11_dims[ptx] = dict(ref_surf={})
-        IS2_atl11_dem_attrs[ptx] = dict(ref_surf={})
-
         #-- along-track (AT) reference point, latitude, longitude and time
         ref_pt = IS2_atl11_mds[ptx]['ref_pt'].copy()
         latitude = np.ma.array(IS2_atl11_mds[ptx]['latitude'],
@@ -120,6 +115,17 @@ def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
 
         #-- convert projection from latitude/longitude to DEM EPSG
         X,Y = transformer.transform(longitude, latitude)
+
+        #-- check that beam pair coordinates intersect ATL14
+        valid = (X >= x.min()) & (X <= x.max()) & (Y >= y.min()) & (Y <= y.max())
+        if not np.any(valid):
+            continue
+
+        #-- output data dictionaries for beam pair
+        IS2_atl11_dem[ptx] = dict(ref_surf=collections.OrderedDict())
+        IS2_atl11_fill[ptx] = dict(ref_surf={})
+        IS2_atl11_dims[ptx] = dict(ref_surf={})
+        IS2_atl11_dem_attrs[ptx] = dict(ref_surf={})
 
         #-- number of average segments and number of included cycles
         #-- fill_value for invalid heights and corrections
@@ -288,19 +294,21 @@ def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
     #-- close the ATL14 elevation file
     fileID.close()
 
-    #-- output HDF5 files with output masks
-    fargs = ('ATL14',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-    file_format = '{0}_{1}{2}_{3}{4}_{5}_{6}{7}.h5'
-    output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
-    #-- print file information
-    logging.info(f'\t{output_file}')
-    #-- write to output HDF5 file
-    HDF5_ATL11_dem_write(IS2_atl11_dem, IS2_atl11_dem_attrs,
-        CLOBBER=True, INPUT=os.path.basename(FILE),
-        FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=output_file)
-    #-- change the permissions mode
-    os.chmod(output_file, MODE)
+    #-- check that there are any valid pairs in the dataset
+    if bool([k for k in IS2_atl11_dem.keys() if bool(re.match(r'pt\d',k))]):
+        #-- output HDF5 files with output masks
+        fargs = ('ATL14',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
+        file_format = '{0}_{1}{2}_{3}{4}_{5}_{6}{7}.h5'
+        output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
+        #-- print file information
+        logging.info(f'\t{output_file}')
+        #-- write to output HDF5 file
+        HDF5_ATL11_dem_write(IS2_atl11_dem, IS2_atl11_dem_attrs,
+            CLOBBER=True, INPUT=os.path.basename(FILE),
+            FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
+            FILENAME=output_file)
+        #-- change the permissions mode
+        os.chmod(output_file, MODE)
 
 #-- PURPOSE: outputting the interpolated DEM data for ICESat-2 data to HDF5
 def HDF5_ATL11_dem_write(IS2_atl11_dem, IS2_atl11_attrs, INPUT=None,

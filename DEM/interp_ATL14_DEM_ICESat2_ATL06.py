@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2022: check that granule intersects ATL14 DEM
     Written 11/2022
 """
 from __future__ import print_function
@@ -102,12 +103,6 @@ def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
 
     #-- for each input beam within the file
     for gtx in sorted(IS2_atl06_beams):
-        #-- output data dictionaries for beam pair
-        IS2_atl06_dem[gtx] = dict(land_ice_segments={})
-        IS2_atl06_fill[gtx] = dict(land_ice_segments={})
-        IS2_atl06_dims[gtx] = dict(land_ice_segments={})
-        IS2_atl06_dem_attrs[gtx] = dict(land_ice_segments={})
-
         #-- variables for beam
         val = IS2_atl06_mds[gtx]['land_ice_segments']
         #-- number of segments
@@ -118,6 +113,16 @@ def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
         #-- convert projection from latitude/longitude to DEM EPSG
         X,Y = transformer.transform(val['longitude'], val['latitude'])
 
+        #-- check that beam coordinates intersect ATL14
+        valid = (X >= x.min()) & (X <= x.max()) & (Y >= y.min()) & (Y <= y.max())
+        if not np.any(valid):
+            continue
+
+        #-- output data dictionaries for beam pair
+        IS2_atl06_dem[gtx] = dict(land_ice_segments={})
+        IS2_atl06_fill[gtx] = dict(land_ice_segments={})
+        IS2_atl06_dims[gtx] = dict(land_ice_segments={})
+        IS2_atl06_dem_attrs[gtx] = dict(land_ice_segments={})
 
         #-- output interpolated digital elevation model
         dem_h = np.ma.zeros((n_seg),fill_value=fv,dtype=np.float32)
@@ -274,19 +279,21 @@ def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
     #-- close the ATL14 elevation file
     fileID.close()
 
-    #-- output HDF5 files with output masks
-    fargs = ('ATL14',YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX)
-    file_format = '{0}_{1}{2}{3}{4}{5}{6}_{7}{8}{9}_{10}_{11}{12}.h5'
-    output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
-    #-- print file information
-    logging.info(f'\t{output_file}')
-    #-- write to output HDF5 file
-    HDF5_ATL06_dem_write(IS2_atl06_dem, IS2_atl06_dem_attrs,
-        CLOBBER=True, INPUT=os.path.basename(FILE),
-        FILL_VALUE=IS2_atl06_fill, DIMENSIONS=IS2_atl06_dims,
-        FILENAME=output_file)
-    #-- change the permissions mode
-    os.chmod(output_file, MODE)
+    #-- check that there are any valid beams in the dataset
+    if bool([k for k in IS2_atl06_dem.keys() if bool(re.match(r'gt\d[lr]',k))]):
+        #-- output HDF5 files with output masks
+        fargs = ('ATL14',YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX)
+        file_format = '{0}_{1}{2}{3}{4}{5}{6}_{7}{8}{9}_{10}_{11}{12}.h5'
+        output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
+        #-- print file information
+        logging.info(f'\t{output_file}')
+        #-- write to output HDF5 file
+        HDF5_ATL06_dem_write(IS2_atl06_dem, IS2_atl06_dem_attrs,
+            CLOBBER=True, INPUT=os.path.basename(FILE),
+            FILL_VALUE=IS2_atl06_fill, DIMENSIONS=IS2_atl06_dims,
+            FILENAME=output_file)
+        #-- change the permissions mode
+        os.chmod(output_file, MODE)
 
 #-- PURPOSE: outputting the interpolated DEM data for ICESat-2 data to HDF5
 def HDF5_ATL06_dem_write(IS2_atl06_dem, IS2_atl06_attrs, INPUT=None,
