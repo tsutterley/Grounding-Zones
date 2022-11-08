@@ -44,6 +44,7 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 11/2022: new ArcticDEM and REMA mosaic index shapefiles
+        verify coordinate reference system attribute from shapefile
     Updated 05/2022: use argparse descriptions within documentation
     Updated 01/2021: using argparse to set command line options
         using standalone ATL06 reader to get geolocations
@@ -85,7 +86,11 @@ def set_DEM_model(GRANULE):
 def read_DEM_index(index_file, DEM_MODEL):
     #-- read the compressed shape file and extract entities
     shape = fiona.open('zip://{0}'.format(os.path.expanduser(index_file)))
-    epsg = shape.crs['init']
+    #-- extract coordinate reference system
+    if ('init' in shape.crs.keys()):
+        epsg = pyproj.CRS(shape.crs['init']).to_epsg()
+    else:
+        epsg = pyproj.CRS(shape.crs).to_epsg()
     #-- extract attribute indice for DEM tile (REMA,GIMP) or name (ArcticDEM)
     if (DEM_MODEL == 'REMA'):
         #-- REMA index file attributes:
@@ -202,7 +207,7 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
     #-- pyproj transformer for converting from latitude/longitude
     #-- into DEM tile coordinates
     crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string(tile_epsg)
+    crs2 = pyproj.CRS.from_epsg(tile_epsg)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
     #-- list of all tiles that are not presently in the file system

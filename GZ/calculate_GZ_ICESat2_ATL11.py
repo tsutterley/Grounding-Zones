@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (10/2022)
+Written by Tyler Sutterley (11/2022)
+
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -9,10 +10,12 @@ Calculates ice sheet grounding zones with ICESat-2 data following:
         https://doi.org/10.1029/2006GL026907
     Fricker et al. Antarctic Science, 21(5), 2009
         https://doi.org/10.1017/S095410200999023X
+
 Outputs an HDF5 file of flexure scaled to match the downstream tide model
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    --mean-file X: Mean elevation file to remove from the height data
     -T X, --tide X: Tide model to use in correction
         CATS0201
         CATS2008
@@ -65,6 +68,8 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2022: verify coordinate reference system attribute from shapefile
+        added option to remove a static mean file from heights
     Updated 10/2022: made reading mean dynamic topography an option
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place some imports within try/except statements
@@ -94,6 +99,7 @@ import argparse
 import operator
 import warnings
 import itertools
+import traceback
 import numpy as np
 import collections
 import scipy.stats
@@ -146,7 +152,11 @@ def set_hemisphere(GRANULE):
 def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # reading grounded ice shapefile
     shape = fiona.open(os.path.join(base_dir,grounded_shapefile[HEM]))
-    epsg = pyproj.CRS(shape.crs).to_epsg()
+    # extract coordinate reference system
+    if ('init' in shape.crs.keys()):
+        epsg = pyproj.CRS(shape.crs['init']).to_epsg()
+    else:
+        epsg = pyproj.CRS(shape.crs).to_epsg()
     # reduce to variables of interest if specified
     shape_entities = [f for f in shape.values() if int(f['id']) in VARIABLES]
     # create list of polygons
@@ -377,8 +387,8 @@ def conf_interval(x,f,p):
 # calculate inflexion point using elevation surface slopes
 # use mean elevation to calculate elevation anomalies
 # use anomalies to calculate inward and seaward limits of tidal flexure
-def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
-    REANALYSIS=None, SEA_LEVEL=False, PLOT=False, MODE=0o775):
+def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
+    TIDE_MODEL=None, REANALYSIS=None, SEA_LEVEL=False, PLOT=False, MODE=0o775):
     # print file information
     logging.info(os.path.basename(FILE))
     # read data from FILE
@@ -482,9 +492,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
         IB['AT'] = np.ma.array(mds1[ptx]['cycle_stats']['dac'],
             fill_value=attr1[ptx]['cycle_stats']['dac']['_FillValue'])
         IB['AT'].mask = (IB['AT'] == IB['AT'].fill_value)
-        # ATL11 reference surface elevations (derived from ATL06)
-        dem_h = mds1[ptx]['ref_surf']['dem_h']
-        # geoid_h = mds1[ptx]['ref_surf']['geoid_h']
+        # ATL11 geoid height values
+        geoid_h = mds1[ptx]['ref_surf']['geoid_h']
         # if running ATL11 crossovers
         if CROSSOVERS:
             # add to group
@@ -525,12 +534,34 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
         try:
             mds2,attr2 = read_HDF5_ATL11_pair(f3,ptx,
                 ATTRIBUTES=True,VERBOSE=False,SUBSETTING=True)
-        except:
+        except Exception as e:
+            logging.debug(traceback.format_exc())
             pass
         else:
             mds1[ptx]['subsetting']['ice_gz'] = \
                 mds2[ptx]['subsetting']['ice_gz']
             B = attr2[ptx]['subsetting']['ice_gz']['source']
+
+        # read mean elevation file (e.g. digital elevation model)
+        dem_h = np.ma.zeros((n_points), fill_value=fv)
+        if MEAN_FILE:
+            # read DEM HDF5 file
+            try:
+                mds2,attr2 = read_HDF5_ATL11_pair(MEAN_FILE, ptx,
+                    REFERENCE=True, VERBOSE=False)
+                dem_h.data[:] = mds2[ptx]['ref_surf']['dem_h'].copy()
+                fv2 = attr2[ptx]['dem']['dem_h']['_FillValue']
+            except Exception as e:
+                logging.debug(traceback.format_exc())
+                dem_h.mask = np.ones((n_points),dtype=bool)
+            else:
+                dem_h.mask = (dem_h.data[:] == fv2)
+        else:
+            # use default DEM within ATL11
+            # ATL11 reference surface elevations are derived from ATL06
+            dem_h.data[:] = mds1[ptx]['ref_surf']['dem_h'].copy()
+            fv2 = attr1[ptx]['dem']['dem_h']['_FillValue']
+            dem_h.mask = (dem_h.data[:] == fv2)
 
         # read tide model
         if TIDE_MODEL:
@@ -541,7 +572,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
             try:
                 mds3,attr3 = read_HDF5_ATL11_pair(f3,ptx,
                     VERBOSE=False,CROSSOVERS=CROSSOVERS)
-            except:
+            except Exception as e:
+                logging.debug(traceback.format_exc())
                 # mask all values
                 for group in groups:
                     tide_ocean[group].mask[:] = True
@@ -569,7 +601,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
             try:
                 mds4,attr4 = read_HDF5_ATL11_pair(f4,ptx,
                     VERBOSE=False,CROSSOVERS=CROSSOVERS)
-            except:
+            except Exception as e:
+                logging.debug(traceback.format_exc())
                 # mask all values
                 for group in groups:
                     IB[group].mask[:] = True
@@ -591,7 +624,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
             # check that mean dynamic topography file exists
             try:
                 mds5,attr5 = read_HDF5_ATL11_pair(f5,ptx,VERBOSE=False)
-            except:
+            except Exception as e:
+                logging.debug(traceback.format_exc())
                 mdt = np.zeros((n_points))
                 pass
             else:
@@ -685,7 +719,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                     # deflection from mean land ice height in grounding zone
                     dh_gz = h_gz - h_mean
                     # quasi-freeboard: WGS84 elevation - geoid height
-                    QFB = h_gz # - geoid_h
+                    QFB = h_gz - geoid_h
                     # ice thickness from quasi-freeboard and densities
                     w_thick = QFB*rho_w/(rho_w-rho_ice)
                     # fit with a hard piecewise model to get rough estimate of GZ
@@ -736,7 +770,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                         if (GZ[1] < 400.0):
                             break
                     # skip saving parameters if no valid solution was found
-                    if np.isnan(GZ[0]):
+                    if np.isnan(PGZ[0]):
                         continue
 
                     # linearly interpolate distance to grounding line
@@ -1434,6 +1468,10 @@ def arguments():
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         default=get_data_path('data'),
         help='Working data directory')
+    # mean file to remove
+    parser.add_argument('--mean-file',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        help='Mean elevation file to remove from the height data')
     # tide model to use
     parser.add_argument('--tide','-T',
         metavar='TIDE', type=str, default='CATS2008',
@@ -1478,7 +1516,8 @@ def main():
 
     # run for each input ATL11 file
     for FILE in args.infile:
-        calculate_GZ_ICESat2(args.directory, FILE, TIDE_MODEL=args.tide,
+        calculate_GZ_ICESat2(args.directory, FILE,
+            MEAN_FILE=args.mean_file, TIDE_MODEL=args.tide,
             REANALYSIS=args.reanalysis, SEA_LEVEL=args.sea_level,
             CROSSOVERS=args.crossovers, PLOT=args.plot, MODE=args.mode)
 
