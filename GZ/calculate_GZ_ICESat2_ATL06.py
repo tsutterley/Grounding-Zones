@@ -2,6 +2,7 @@
 u"""
 calculate_GZ_ICESat2_ATL06.py
 Written by Tyler Sutterley (11/2022)
+
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -12,6 +13,7 @@ Calculates ice sheet grounding zones with ICESat-2 data following:
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    --mean-file X: Mean elevation file to remove from the height data
     -T X, --tide X: Tide model to use in correction
         CATS0201
         CATS2008
