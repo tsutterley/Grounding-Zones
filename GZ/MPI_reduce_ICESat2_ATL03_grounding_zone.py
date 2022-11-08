@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL03_grounding_zone.py
-Written by Tyler Sutterley (10/2022)
+Written by Tyler Sutterley (11/2022)
 
 Create masks for reducing ICESat-2 geolocated photon height data to within
     a buffer region near the ice sheet grounding zone
@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2022: verify coordinate reference system attribute from shapefile
     Updated 10/2022: simplied HDF5 file output to match other reduction programs
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place some imports within try/except statements
@@ -155,10 +156,16 @@ def set_hemisphere(GRANULE):
 
 #-- PURPOSE: load the polygon object for the buffered estimated grounding zone
 def load_grounding_zone(base_dir, HEM, BUFFER):
-    #-- reading buffered shapefile
+    #-- buffered shapefile for region
     buffered_shapefile = buffer_shapefile[HEM].format(BUFFER)
+    logging.info(os.path.join(base_dir,buffered_shapefile))
+    #-- read buffered shapefile
     shape_input = fiona.open(os.path.join(base_dir,buffered_shapefile))
-    epsg = pyproj.CRS(shape_input.crs).to_epsg()
+    #-- extract coordinate reference system
+    if ('init' in shape_input.crs.keys()):
+        epsg = pyproj.CRS(shape_input.crs['init']).to_epsg()
+    else:
+        epsg = pyproj.CRS(shape_input.crs).to_epsg()
     #-- create list of polygons
     polygons = []
     #-- extract the entities and assign by tile name

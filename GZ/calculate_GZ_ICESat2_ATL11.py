@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (10/2022)
+Written by Tyler Sutterley (11/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -65,6 +65,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2022: verify coordinate reference system attribute from shapefile
     Updated 10/2022: made reading mean dynamic topography an option
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place some imports within try/except statements
@@ -94,6 +95,7 @@ import argparse
 import operator
 import warnings
 import itertools
+import traceback
 import numpy as np
 import collections
 import scipy.stats
@@ -146,7 +148,11 @@ def set_hemisphere(GRANULE):
 def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # reading grounded ice shapefile
     shape = fiona.open(os.path.join(base_dir,grounded_shapefile[HEM]))
-    epsg = pyproj.CRS(shape.crs).to_epsg()
+    # extract coordinate reference system
+    if ('init' in shape.crs.keys()):
+        epsg = pyproj.CRS(shape.crs['init']).to_epsg()
+    else:
+        epsg = pyproj.CRS(shape.crs).to_epsg()
     # reduce to variables of interest if specified
     shape_entities = [f for f in shape.values() if int(f['id']) in VARIABLES]
     # create list of polygons
@@ -525,7 +531,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
         try:
             mds2,attr2 = read_HDF5_ATL11_pair(f3,ptx,
                 ATTRIBUTES=True,VERBOSE=False,SUBSETTING=True)
-        except:
+        except Exception as e:
+            logging.debug(traceback.format_exc())
             pass
         else:
             mds1[ptx]['subsetting']['ice_gz'] = \
@@ -541,7 +548,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
             try:
                 mds3,attr3 = read_HDF5_ATL11_pair(f3,ptx,
                     VERBOSE=False,CROSSOVERS=CROSSOVERS)
-            except:
+            except Exception as e:
+                logging.debug(traceback.format_exc())
                 # mask all values
                 for group in groups:
                     tide_ocean[group].mask[:] = True
@@ -569,7 +577,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
             try:
                 mds4,attr4 = read_HDF5_ATL11_pair(f4,ptx,
                     VERBOSE=False,CROSSOVERS=CROSSOVERS)
-            except:
+            except Exception as e:
+                logging.debug(traceback.format_exc())
                 # mask all values
                 for group in groups:
                     IB[group].mask[:] = True
@@ -591,7 +600,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
             # check that mean dynamic topography file exists
             try:
                 mds5,attr5 = read_HDF5_ATL11_pair(f5,ptx,VERBOSE=False)
-            except:
+            except Exception as e:
+                logging.debug(traceback.format_exc())
                 mdt = np.zeros((n_points))
                 pass
             else:
@@ -736,7 +746,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, TIDE_MODEL=None,
                         if (GZ[1] < 400.0):
                             break
                     # skip saving parameters if no valid solution was found
-                    if np.isnan(GZ[0]):
+                    if np.isnan(PGZ[0]):
                         continue
 
                     # linearly interpolate distance to grounding line

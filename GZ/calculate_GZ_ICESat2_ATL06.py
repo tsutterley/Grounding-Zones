@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL06.py
-Written by Tyler Sutterley (10/2022)
+Written by Tyler Sutterley (11/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -60,10 +60,13 @@ PYTHON DEPENDENCIES:
 
 PROGRAM DEPENDENCIES:
     read_ICESat2_ATL06.py: reads ICESat-2 ATL06 land ice data files
+    convert_delta_time.py: converts from delta time into Julian and year-decimal
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2022: verify coordinate reference system attribute from shapefile
+        output estimated grounding zone location for each beam to HDF5
     Updated 10/2022: use a defined mean height file for the baseline
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place shapely within try/except statement
@@ -79,20 +82,25 @@ UPDATE HISTORY:
 """
 from __future__ import print_function
 
+import sys
 import os
 import re
 import h5py
 import pyproj
 import logging
 import argparse
+import datetime
 import operator
 import warnings
 import itertools
+import traceback
+import collections
 import numpy as np
 import scipy.stats
 import scipy.optimize
 import icesat2_toolkit.time
 from icesat2_toolkit.read_ICESat2_ATL06 import read_HDF5_ATL06
+from icesat2_toolkit.convert_delta_time import convert_delta_time
 from grounding_zones.utilities import get_data_path
 # attempt imports
 try:
@@ -138,7 +146,11 @@ def set_hemisphere(GRANULE):
 def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # reading grounded ice shapefile
     shape = fiona.open(os.path.join(base_dir,grounded_shapefile[HEM]))
-    epsg = pyproj.CRS(shape.crs).to_epsg()
+    # extract coordinate reference system
+    if ('init' in shape.crs.keys()):
+        epsg = pyproj.CRS(shape.crs['init']).to_epsg()
+    else:
+        epsg = pyproj.CRS(shape.crs).to_epsg()
     # reduce to variables of interest if specified
     shape_entities = [f for f in shape.values() if int(f['id']) in VARIABLES]
     # create list of polygons
@@ -380,7 +392,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
     HEM = set_hemisphere(GRAN)
 
     # file format for auxiliary files
-    file_format='{0}_{1}_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
+    file_format='{0}_{1}_{2}_{3}{4}{5}{6}{7}{8}_{9}{10}{11}_{12}_{13}{14}.h5'
+    plot_format='{0}_{1}_{2}_{3}_{4}{5}{6}{7}{8}{9}_{10}{11}{12}_{13}_{14}{15}.png'
 
     # grounded ice line string to determine if segment crosses coastline
     mline_obj,epsg = read_grounded_ice(base_dir, HEM)
@@ -416,19 +429,6 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
         for att_name,att_val in IS2_atl06_attrs['ancillary_data'][key].items():
             IS2_atl06_gz_attrs['ancillary_data'][key][att_name] = att_val
 
-    # outputs of grounding zone fit
-    grounding_zone_data = {}
-    grounding_zone_data['segment_id'] = []
-    grounding_zone_data['latitude'] = []
-    grounding_zone_data['longitude'] = []
-    grounding_zone_data['delta_time'] = []
-    # grounding_zone_data['tide_ocean'] = []
-    grounding_zone_data['gz_sigma'] = []
-    grounding_zone_data['e_mod'] = []
-    grounding_zone_data['e_mod_sigma'] = []
-    # grounding_zone_data['H_ice'] = []
-    # grounding_zone_data['delta_h'] = []
-
     # for each input beam within the file
     for gtx in sorted(IS2_atl06_beams):
         # number of segments
@@ -440,8 +440,27 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
         # land ice height
         h_li = np.ma.array(v['h_li'], fill_value=fv, mask=(v['h_li']==fv))
 
+        # if creating a test plot
+        if PLOT:
+            fig1,ax1 = plt.subplots(num=1,figsize=(13,7))
+
+        # flag that a valid grounding zone fit has been found
+        valid_fit = False
+        # outputs of grounding zone fit
+        grounding_zone_data = {}
+        grounding_zone_data['segment_id'] = []
+        grounding_zone_data['latitude'] = []
+        grounding_zone_data['longitude'] = []
+        grounding_zone_data['delta_time'] = []
+        # grounding_zone_data['tide_ocean'] = []
+        grounding_zone_data['gz_sigma'] = []
+        grounding_zone_data['e_mod'] = []
+        grounding_zone_data['e_mod_sigma'] = []
+        # grounding_zone_data['H_ice'] = []
+        # grounding_zone_data['delta_h'] = []
+
         # grounding zone mask file
-        a1 = (PRD,'GROUNDING_ZONE_MASK',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
+        a1 = (PRD,'GROUNDING_ZONE','MASK',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
         f1 = os.path.join(DIRECTORY,file_format.format(*a1))
         ice_gz = np.zeros((n_seg),dtype=bool)
         # check that mask file exists
@@ -453,6 +472,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
             ice_gz[:] = fid1['/'.join(v1)][:].copy()
             B = fid1['/'.join(v1)].attrs['source']
         except Exception as e:
+            logging.debug(traceback.format_exc())
             continue
         else:
             fid1.close()
@@ -465,8 +485,9 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                 fid2 = h5py.File(MEAN_FILE, 'r')
                 v2 = [gtx,'land_ice_segments','dem','dem_h']
                 dem_h.data[:] = fid2['/'.join(v2)][:].copy()
-                fv2 = fid2['/'.join(v2)].attrs['_FillValue']
+                fv2 = fid2['/'.join(v2)].fillvalue
             except Exception as e:
+                logging.debug(traceback.format_exc())
                 dem_h.mask = np.ones((n_seg),dtype=bool)
             else:
                 dem_h.mask = (dem_h.data[:] == fv2)
@@ -488,8 +509,9 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                 fid3 = h5py.File(f3,'r')
                 v3 = [gtx,'land_ice_segments','geophysical','tide_ocean']
                 tide_ocean.data[:] = fid3['/'.join(v3)][:].copy()
-                fv3 = fid3['/'.join(v3)].attrs['_FillValue']
+                fv3 = fid3['/'.join(v3)].fillvalue
             except Exception as e:
+                logging.debug(traceback.format_exc())
                 tide_ocean.mask = np.ones((n_seg),dtype=bool)
             else:
                 tide_ocean.mask = (tide_ocean.data[:] == fv3)
@@ -511,8 +533,9 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                 fid4 = h5py.File(f4,'r')
                 v4 = [gtx,'land_ice_segments','geophysical','ib']
                 IB.data[:] = fid4['/'.join(v4)][:].copy()
-                fv4 = fid4['/'.join(v4)].attrs['_FillValue']
+                fv4 = fid4['/'.join(v4)].fillvalue
             except Exception as e:
+                logging.debug(traceback.format_exc())
                 IB.mask = np.ones((n_seg),dtype=bool)
             else:
                 IB.mask = (IB.data[:] == fv4)
@@ -533,8 +556,9 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                 fid5 = h5py.File(f5,'r')
                 v5 = [gtx,'land_ice_segments','geophysical','h_mdt']
                 mdt.data[:] = fid5['/'.join(v5)][:].copy()
-                fv5 = fid5['/'.join(v5)].attrs['_FillValue']
+                fv5 = fid5['/'.join(v5)].fillvalue
             except Exception as e:
+                logging.debug(traceback.format_exc())
                 mdt.mask = np.ones((n_seg),dtype=bool)
                 pass
             else:
@@ -542,7 +566,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                 fid5.close()
         else:
             # use no mean dynamic topography
-            mdt.mask = np.ones((n_seg),dtype=bool)
+            mdt.mask = np.zeros((n_seg),dtype=bool)
 
         # find valid points with GZ for both ATL06 and the interpolated DEM
         valid, = np.nonzero((~h_li.mask) & (~dem_h.mask) & ice_gz)
@@ -552,16 +576,6 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
         for imin,imax in ice_gz_indices:
             # find valid indices within range
             i = sorted(set(np.arange(imin,imax+1)) & set(valid))
-            # convert time from ATLAS SDP to days relative into Julian days
-            gps_seconds = atlas_sdp_gps_epoch + v['delta_time'][i]
-            time_leaps = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
-            # convert from seconds since 1980-01-06T00:00:00 to Julian days
-            time_julian = 2400000.5 + icesat2_toolkit.time.convert_delta_time(
-                gps_seconds - time_leaps, epoch1=(1980,1,6,0,0,0),
-                epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
-            # convert to calendar date
-            YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(time_julian,
-                format='tuple')
             # extract lat/lon and convert to polar stereographic
             X,Y = transformer.transform(v['longitude'][i],v['latitude'][i])
             # shapely LineString object for altimetry segment
@@ -585,13 +599,10 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                 geoid_h = v['dem']['geoid_h'][i]
 
                 # ocean tide height for scaling model
-                tide_mean = np.mean(tide_ocean[i])
-                h_tide = np.ma.array(tide_ocean.data[i] - tide_mean,
-                    fill_value=fv)
+                h_tide = np.ma.array(tide_ocean.data[i], fill_value=fv)
                 h_tide.mask = tide_ocean.mask[i]
                 # inverse-barometer response
-                ib_mean = np.mean(IB[i])
-                h_ib = np.ma.array(IB.data[i] - ib_mean, fill_value=fv)
+                h_ib = np.ma.array(IB.data[i], fill_value=fv)
                 h_ib.mask = IB.mask[i]
 
                 # deflection from mean land ice height in grounding zone
@@ -638,7 +649,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                         GZ,PA,PE,PT,PdH,MODEL = physical_elastic_model(dist,
                             dh_gz, GRZ=grz, TIDE=tide, ORIENTATION=sco,
                             THICKNESS=w_thick, CONF=0.95, XOUT=i)
-                    except:
+                    except Exception as e:
+                        logging.debug(traceback.format_exc())
                         pass
                     # copy grounding zone parameters to get best fit
                     if (GZ[1] < PGZ[1]):
@@ -649,17 +661,19 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                     if (GZ[1] < 400.0):
                         break
                 # skip saving parameters if no valid solution was found
-                if np.logical_not(np.isfinite(GZ[0])):
+                if np.logical_not(np.isfinite(PGZ[0])):
                     continue
+                # set valid beam fit flag
+                valid_fit = True
 
                 # linearly interpolate distance to grounding line
-                GZrpt = np.interp(PGZ[0],dist,v['segment_id'][i])
+                GZseg = np.interp(PGZ[0],dist,v['segment_id'][i])
                 GZlat = np.interp(PGZ[0],dist,v['latitude'][i])
                 GZlon = np.interp(PGZ[0],dist,v['longitude'][i])
                 GZtime = np.interp(PGZ[0],dist,v['delta_time'][i])
                 # append outputs of grounding zone fit
                 # save all outputs (not just within tolerance)
-                grounding_zone_data['segment_id'].append(GZrpt)
+                grounding_zone_data['segment_id'].append(GZseg)
                 grounding_zone_data['latitude'].append(GZlat)
                 grounding_zone_data['longitude'].append(GZlon)
                 grounding_zone_data['delta_time'].append(GZtime)
@@ -670,6 +684,299 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                 # grounding_zone_data['H_ice'].append(PT)
                 # grounding_zone_data['delta_h'].append(PdH)
 
+                # add to test plot
+                if PLOT:
+                    # plot height differences
+                    l, = ax1.plot(v['segment_id'][i], dh_gz-PdH[0], '.', ms=1.5)
+                    # plot grounding line location
+                    ax1.axvline(GZseg, color=l.get_color(), ls='--', dashes=(8,4))
+
+        # make final plot adjustments and save to file
+        if PLOT and valid_fit:
+            # adjust figure
+            fig1.subplots_adjust(left=0.05,right=0.97,bottom=0.04,top=0.96,hspace=0.15)
+            # create plot file of flexural zone
+            args = (PRD,gtx,TIDE_MODEL,'GZ',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
+            fig1.savefig(os.path.join(DIRECTORY,plot_format.format(*args)), dpi=240,
+                metadata={'Title':os.path.basename(sys.argv[0])}, format='png')
+            # log output plot file
+            logging.info(os.path.join(DIRECTORY,plot_format.format(*args)))
+            # clear all figure axes
+            plt.cla()
+            plt.clf()
+
+        # if no valid grounding zone fit has been found
+        # skip saving variables and attributes for beam
+        if not valid_fit:
+            continue
+
+        # output data dictionaries for beam
+        IS2_atl06_gz[gtx] = dict(grounding_zone_data=collections.OrderedDict())
+        IS2_atl06_fill[gtx] = dict(grounding_zone_data=collections.OrderedDict())
+        IS2_atl06_dims[gtx] = dict(grounding_zone_data=collections.OrderedDict())
+        IS2_atl06_gz_attrs[gtx] = dict(grounding_zone_data=collections.OrderedDict())
+
+        # group attributes for beam
+        IS2_atl06_gz_attrs[gtx]['Description'] = IS2_atl06_attrs[gtx]['Description']
+        IS2_atl06_gz_attrs[gtx]['atlas_pce'] = IS2_atl06_attrs[gtx]['atlas_pce']
+        IS2_atl06_gz_attrs[gtx]['atlas_beam_type'] = IS2_atl06_attrs[gtx]['atlas_beam_type']
+        IS2_atl06_gz_attrs[gtx]['groundtrack_id'] = IS2_atl06_attrs[gtx]['groundtrack_id']
+        IS2_atl06_gz_attrs[gtx]['atmosphere_profile'] = IS2_atl06_attrs[gtx]['atmosphere_profile']
+        IS2_atl06_gz_attrs[gtx]['atlas_spot_number'] = IS2_atl06_attrs[gtx]['atlas_spot_number']
+        IS2_atl06_gz_attrs[gtx]['sc_orientation'] = IS2_atl06_attrs[gtx]['sc_orientation']
+        # group attributes for grounding zone variables
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['Description'] = ("The grounding_zone_data "
+            "subgroup contains statistic data at grounding zone locations.")
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['data_rate'] = ("Data within this group are "
+            "stored at the average segment rate.")
+
+        # geolocation, time and segment ID
+        # segment ID
+        IS2_atl06_gz[gtx]['grounding_zone_data']['segment_id'] = np.copy(grounding_zone_data['segment_id'])
+        IS2_atl06_fill[gtx]['grounding_zone_data']['segment_id'] = None
+        IS2_atl06_dims[gtx]['grounding_zone_data']['segment_id'] = None
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id'] = collections.OrderedDict()
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['units'] = "1"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['contentType'] = "referenceInformation"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['long_name'] = "Along-track segment ID number"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['description'] = ("A 7 digit number "
+            "identifying the along-track geolocation segment number.  These are sequential, starting with "
+            "1 for the first segment after an ascending equatorial crossing node. Equal to the segment_id for "
+            "the second of the two 20m ATL03 segments included in the 40m ATL06 segment")
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['coordinates'] = \
+            "delta_time latitude longitude"
+        # delta time
+        IS2_atl06_gz[gtx]['grounding_zone_data']['delta_time'] = np.copy(grounding_zone_data['delta_time'])
+        IS2_atl06_fill[gtx]['grounding_zone_data']['delta_time'] = None
+        IS2_atl06_dims[gtx]['grounding_zone_data']['delta_time'] = ['segment_id']
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['delta_time'] = collections.OrderedDict()
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['delta_time']['units'] = "seconds since 2018-01-01"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['delta_time']['long_name'] = "Elapsed GPS seconds"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['delta_time']['standard_name'] = "time"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['delta_time']['calendar'] = "standard"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['delta_time']['description'] = ("Number of GPS "
+            "seconds since the ATLAS SDP epoch. The ATLAS Standard Data Products (SDP) epoch offset "
+            "is defined within /ancillary_data/atlas_sdp_gps_epoch as the number of GPS seconds "
+            "between the GPS epoch (1980-01-06T00:00:00.000000Z UTC) and the ATLAS SDP epoch. By "
+            "adding the offset contained within atlas_sdp_gps_epoch to delta time parameters, the "
+            "time in gps_seconds relative to the GPS epoch can be computed.")
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['delta_time']['coordinates'] = \
+            "segment_id latitude longitude"
+        # latitude
+        IS2_atl06_gz[gtx]['grounding_zone_data']['latitude'] = np.copy(grounding_zone_data['latitude'])
+        IS2_atl06_fill[gtx]['grounding_zone_data']['latitude'] = None
+        IS2_atl06_dims[gtx]['grounding_zone_data']['latitude'] = ['segment_id']
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude'] = collections.OrderedDict()
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude']['units'] = "degrees_north"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude']['contentType'] = "physicalMeasurement"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude']['long_name'] = "Latitude"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude']['standard_name'] = "latitude"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude']['description'] = ("Latitude of "
+            "estimated grounding zone location")
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude']['valid_min'] = -90.0
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude']['valid_max'] = 90.0
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude']['coordinates'] = \
+            "segment_id delta_time longitude"
+        # longitude
+        IS2_atl06_gz[gtx]['grounding_zone_data']['longitude'] = np.copy(grounding_zone_data['longitude'])
+        IS2_atl06_fill[gtx]['grounding_zone_data']['longitude'] = None
+        IS2_atl06_dims[gtx]['grounding_zone_data']['longitude'] = ['segment_id']
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude'] = collections.OrderedDict()
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude']['units'] = "degrees_east"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude']['contentType'] = "physicalMeasurement"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude']['long_name'] = "Longitude"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude']['standard_name'] = "longitude"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude']['description'] = ("Longitude of "
+            "estimated grounding zone location")
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude']['valid_min'] = -180.0
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude']['valid_max'] = 180.0
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude']['coordinates'] = \
+            "segment_id delta_time latitude"
+
+        # uncertainty of the grounding zone
+        IS2_atl06_gz[gtx]['grounding_zone_data']['gz_sigma'] = np.copy(grounding_zone_data['gz_sigma'])
+        IS2_atl06_fill[gtx]['grounding_zone_data']['gz_sigma'] = 0.0
+        IS2_atl06_dims[gtx]['grounding_zone_data']['gz_sigma'] = ['segment_id']
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['gz_sigma'] = collections.OrderedDict()
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['gz_sigma']['units'] = "meters"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['gz_sigma']['contentType'] = "physicalMeasurement"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['gz_sigma']['long_name'] = "grounding zone uncertainty"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['gz_sigma']['source'] = "ATL11"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['gz_sigma']['description'] = ("Uncertainty in grounding"
+            "zone location derived by the physical elastic bending model")
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['gz_sigma']['coordinates'] = \
+            "segment_id delta_time latitude longitude"
+        # effective elastic modulus
+        IS2_atl06_gz[gtx]['grounding_zone_data']['e_mod'] = np.copy(grounding_zone_data['e_mod'])
+        IS2_atl06_fill[gtx]['grounding_zone_data']['e_mod'] = 0.0
+        IS2_atl06_dims[gtx]['grounding_zone_data']['e_mod'] = ['segment_id']
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod'] = collections.OrderedDict()
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod']['units'] = "GPa"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod']['contentType'] = "physicalMeasurement"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod']['long_name'] = "Elastic modulus"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod']['source'] = "ATL11"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod']['description'] = ("Effective Elastic modulus "
+            "of ice estimating using an elastic beam model")
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod']['coordinates'] = \
+            "segment_id delta_time latitude longitude"
+        # uncertainty of the elastic modulus
+        IS2_atl06_gz[gtx]['grounding_zone_data']['e_mod_sigma'] = np.copy(grounding_zone_data['e_mod_sigma'])
+        IS2_atl06_fill[gtx]['grounding_zone_data']['e_mod_sigma'] = 0.0
+        IS2_atl06_dims[gtx]['grounding_zone_data']['e_mod_sigma'] = ['segment_id']
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod_sigma'] = collections.OrderedDict()
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod_sigma']['units'] = "GPa"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod_sigma']['contentType'] = "physicalMeasurement"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod_sigma']['long_name'] = "Elastic modulus uncertainty"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod_sigma']['source'] = "ATL11"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod_sigma']['description'] = ("Uncertainty in the "
+            "effective Elastic modulus of ice")
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod_sigma']['coordinates'] = \
+            "segment_id delta_time latitude longitude"
+
+    # check that there are any valid beams in the dataset
+    if bool([k for k in IS2_atl06_gz.keys() if bool(re.match(r'gt\d[lr]',k))]):
+        # output HDF5 file for grounding zone locations
+        fargs = (PRD,TIDE_MODEL,'GZ',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
+        output_file=os.path.join(DIRECTORY,file_format.format(*fargs))
+        # print file information
+        logging.info('\t{0}'.format(output_file))
+        # write to output HDF5 file
+        HDF5_ATL06_corr_write(IS2_atl06_gz, IS2_atl06_gz_attrs,
+            CLOBBER=True, INPUT=os.path.basename(FILE),
+            FILL_VALUE=IS2_atl06_fill, DIMENSIONS=IS2_atl06_dims,
+            FILENAME=output_file)
+        # change the permissions mode
+        os.chmod(output_file, MODE)
+
+# PURPOSE: outputting the grounding zone data for ICESat-2 data to HDF5
+def HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_attrs, INPUT=None,
+    FILENAME='', FILL_VALUE=None, DIMENSIONS=None, CLOBBER=True):
+    # setting HDF5 clobber attribute
+    if CLOBBER:
+        clobber = 'w'
+    else:
+        clobber = 'w-'
+
+    # open output HDF5 file
+    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+
+    # create HDF5 records
+    h5 = {}
+
+    # number of GPS seconds between the GPS epoch (1980-01-06T00:00:00Z UTC)
+    # and ATLAS Standard Data Product (SDP) epoch (2018-01-01T00:00:00Z UTC)
+    h5['ancillary_data'] = {}
+    for k,v in IS2_atl06_corr['ancillary_data'].items():
+        # Defining the HDF5 dataset variables
+        val = 'ancillary_data/{0}'.format(k)
+        h5['ancillary_data'][k] = fileID.create_dataset(val, np.shape(v), data=v,
+            dtype=v.dtype, compression='gzip')
+        # add HDF5 variable attributes
+        for att_name,att_val in IS2_atl06_attrs['ancillary_data'][k].items():
+            h5['ancillary_data'][k].attrs[att_name] = att_val
+
+    # write each output beam
+    beams = [k for k in IS2_atl06_corr.keys() if bool(re.match(r'gt\d[lr]',k))]
+    for gtx in beams:
+        fileID.create_group(gtx)
+        # add HDF5 group attributes for beam
+        for att_name in ['Description','atlas_pce','atlas_beam_type',
+            'groundtrack_id','atmosphere_profile','atlas_spot_number',
+            'sc_orientation']:
+            fileID[gtx].attrs[att_name] = IS2_atl06_attrs[gtx][att_name]
+        # create grounding_zone_data group
+        fileID[gtx].create_group('grounding_zone_data')
+        h5[gtx] = dict(grounding_zone_data={})
+        for att_name in ['Description','data_rate']:
+            att_val = IS2_atl06_attrs[gtx]['grounding_zone_data'][att_name]
+            fileID[gtx]['grounding_zone_data'].attrs[att_name] = att_val
+
+        # segment_id, geolocation, time and height variables
+        for k,v in IS2_atl06_corr[gtx]['grounding_zone_data'].items():
+            # values and attributes
+            attrs = IS2_atl06_attrs[gtx]['grounding_zone_data'][k]
+            fillvalue = FILL_VALUE[gtx]['grounding_zone_data'][k]
+            # Defining the HDF5 dataset variables
+            val = '{0}/{1}/{2}'.format(gtx,'grounding_zone_data',k)
+            if fillvalue:
+                h5[gtx]['grounding_zone_data'][k] = fileID.create_dataset(val,
+                    np.shape(v), data=v, dtype=v.dtype, fillvalue=fillvalue,
+                    compression='gzip')
+            else:
+                h5[gtx]['grounding_zone_data'][k] = fileID.create_dataset(val,
+                    np.shape(v), data=v, dtype=v.dtype, compression='gzip')
+            # create or attach dimensions for HDF5 variable
+            if DIMENSIONS[gtx]['grounding_zone_data'][k]:
+                # attach dimensions
+                for i,dim in enumerate(DIMENSIONS[gtx]['grounding_zone_data'][k]):
+                    h5[gtx]['grounding_zone_data'][k].dims[i].attach_scale(
+                        h5[gtx]['grounding_zone_data'][dim])
+            else:
+                # make dimension
+                h5[gtx]['grounding_zone_data'][k].make_scale(k)
+            # add HDF5 variable attributes
+            for att_name,att_val in attrs.items():
+                h5[gtx]['grounding_zone_data'][k].attrs[att_name] = att_val
+
+    # HDF5 file title
+    fileID.attrs['featureType'] = 'trajectory'
+    fileID.attrs['title'] = 'ATLAS/ICESat-2 Land Ice Grounding Zones'
+    fileID.attrs['summary'] = ('Grounding zone data for ice-sheets segments '
+        'estimated using an elastic beam fit.')
+    fileID.attrs['description'] = ('Land ice parameters for each beam.  All '
+        'grounding zone are calculated for each beam.')
+    date_created = datetime.datetime.today()
+    fileID.attrs['date_created'] = date_created.isoformat()
+    project = 'ICESat-2 > Ice, Cloud, and land Elevation Satellite-2'
+    fileID.attrs['project'] = project
+    platform = 'ICESat-2 > Ice, Cloud, and land Elevation Satellite-2'
+    fileID.attrs['project'] = platform
+    # add attribute for elevation instrument and designated processing level
+    instrument = 'ATLAS > Advanced Topographic Laser Altimeter System'
+    fileID.attrs['instrument'] = instrument
+    fileID.attrs['source'] = 'Spacecraft'
+    fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
+    fileID.attrs['processing_level'] = '4'
+    # add attributes for input ATL06 file
+    fileID.attrs['input_files'] = os.path.basename(INPUT)
+    # find geospatial and temporal ranges
+    lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
+    for gtx in beams:
+        lon = IS2_atl06_corr[gtx]['grounding_zone_data']['longitude']
+        lat = IS2_atl06_corr[gtx]['grounding_zone_data']['latitude']
+        delta_time = IS2_atl06_corr[gtx]['grounding_zone_data']['delta_time']
+        # setting the geospatial and temporal ranges
+        lnmn = lon.min() if (lon.min() < lnmn) else lnmn
+        lnmx = lon.max() if (lon.max() > lnmx) else lnmx
+        ltmn = lat.min() if (lat.min() < ltmn) else ltmn
+        ltmx = lat.max() if (lat.max() > ltmx) else ltmx
+        tmn = delta_time.min() if (delta_time.min() < tmn) else tmn
+        tmx = delta_time.max() if (delta_time.max() > tmx) else tmx
+    # add geospatial and temporal attributes
+    fileID.attrs['geospatial_lat_min'] = ltmn
+    fileID.attrs['geospatial_lat_max'] = ltmx
+    fileID.attrs['geospatial_lon_min'] = lnmn
+    fileID.attrs['geospatial_lon_max'] = lnmx
+    fileID.attrs['geospatial_lat_units'] = "degrees_north"
+    fileID.attrs['geospatial_lon_units'] = "degrees_east"
+    fileID.attrs['geospatial_ellipsoid'] = "WGS84"
+    fileID.attrs['date_type'] = 'UTC'
+    fileID.attrs['time_type'] = 'CCSDS UTC-A'
+    # convert start and end time from ATLAS SDP seconds into UTC time
+    time_utc = convert_delta_time(np.array([tmn,tmx]))
+    # convert to calendar date
+    YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(time_utc['julian'],
+        FORMAT='tuple')
+    # add attributes with measurement date start, end and duration
+    tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
+        int(HH[0]), int(MN[0]), int(SS[0]), int(1e6*(SS[0] % 1)))
+    fileID.attrs['time_coverage_start'] = tcs.isoformat()
+    tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
+        int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
+    fileID.attrs['time_coverage_end'] = tce.isoformat()
+    fileID.attrs['time_coverage_duration'] = '{0:0.0f}'.format(tmx-tmn)
+    # Closing the HDF5 file
+    fileID.close()
 
 # PURPOSE: create argument parser
 def arguments():

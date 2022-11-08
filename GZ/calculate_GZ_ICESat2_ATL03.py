@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL03.py
-Written by Tyler Sutterley (08/2022)
+Written by Tyler Sutterley (11/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2022: verify coordinate reference system attribute from shapefile
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place shapely within try/except statement
     Updated 05/2022: use argparse descriptions within documentation
@@ -105,7 +106,11 @@ def set_hemisphere(GRANULE):
 def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     #-- reading grounded ice shapefile
     shape = fiona.open(os.path.join(base_dir,grounded_shapefile[HEM]))
-    epsg = pyproj.CRS(shape.crs).to_epsg()
+    #-- extract coordinate reference system
+    if ('init' in shape.crs.keys()):
+        epsg = pyproj.CRS(shape.crs['init']).to_epsg()
+    else:
+        epsg = pyproj.CRS(shape.crs).to_epsg()
     #-- reduce to variables of interest if specified
     shape_entities = [f for f in shape.values() if int(f['id']) in VARIABLES]
     #-- create list of polygons
