@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../DAC/calculate_inverse_barometer.py
+    :filename: calculate_inverse_barometer.py
     :func: arguments
     :prog: calculate_inverse_barometer.py
     :nodescription:

@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../scripts/MPI_median_elevation_filter.py
+    :filename: MPI_median_elevation_filter.py
     :func: arguments
     :prog: MPI_median_elevation_filter.py
     :nodescription:

@@ -11,7 +11,7 @@ compute_LPT_ICESat_GLA12.py
 .. __: https://github.com/tsutterley/Grounding-Zones/blob/main/tides/compute_LPT_ICESat_GLA12.py
 
 .. argparse::
-    :filename: ../../tides/compute_LPET_ICESat_GLA12.py
+    :filename: compute_LPET_ICESat_GLA12.py
     :func: arguments
     :prog: compute_LPET_ICESat_GLA12.py
     :nodescription:

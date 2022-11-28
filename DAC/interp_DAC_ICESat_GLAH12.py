@@ -1,15 +1,22 @@
 #!/usr/bin/env python
 u"""
-compute_LPET_ICESat_GLA12.py
-Written by Tyler Sutterley (07/2022)
-Calculates long-period equilibrium tidal elevations for correcting
-    ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
-Will calculate the long-period tides for all GLAS elevations and not just
-    ocean elevations defined by the ocean tide mask
+interp_DAC_ICESat_GLAH12.py
+Written by Tyler Sutterley (11/2022)
+Calculates and interpolates dynamic atmospheric corrections for ICESat/GLAS
+    L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
+
+Data will be interpolated for all valid points
+    (masking land values will be needed for accurate assessments)
+
+https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/
+    atmospheric-corrections.html
+
+Note that the AVISO DAC data are bz2 compressed netCDF4 files
 
 COMMAND LINE OPTIONS:
-    -M X, --mode X: Permission mode of directories and files created
+    -D X, --directory X: Working data directory
     -V, --verbose: Output information about each created file
+    -M X, --mode X: Permission mode of directories and files created
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -17,61 +24,54 @@ PYTHON DEPENDENCIES:
         https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     scipy: Scientific Tools for Python
         https://docs.scipy.org/doc/
-    h5py: Python interface for Hierarchal Data Format 5 (HDF5)
-        https://www.h5py.org/
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    h5py: Python interface for Hierarchal Data Format 5 (HDF5)
+        https://h5py.org
+    netCDF4: Python interface to the netCDF C library
+         https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
-    spatial.py: utilities for reading, writing and operating on spatial data
+    spatial.py: utilities for reading and writing spatial data
     utilities.py: download and management utilities for syncing files
-    calc_delta_time.py: calculates difference between universal and dynamic time
-    compute_equilibrium_tide.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
-    Updated 07/2022: place some imports within try/except statements
-    Updated 04/2022: use argparse descriptions within documentation
-    Updated 02/2022: save ICESat campaign attribute to output file
+    Updated 11/2022: use f-strings for formatting verbose or ascii output
+    Updated 05/2022: use argparse descriptions within sphinx documentation
     Updated 10/2021: using python logging for handling verbose output
-    Updated 07/2021: can use prefix files to define command line arguments
-    Updated 04/2021: can use a generically named GLA12 file as input
-    Updated 12/2020: H5py deprecation warning change to use make_scale
-    Written 12/2020
+        added parsing for converting file lines to arguments
+    Updated 05/2021: print full path of output filename
+    Updated 03/2021: replaced numpy bool/int to prevent deprecation warnings
+    Updated 09/2017: reduce grid domains for faster processing times
+    Written 09/2017
 """
 from __future__ import print_function
 
-import sys
 import os
 import re
+import bz2
+import h5py
+import pyproj
 import logging
+import netCDF4
 import argparse
-import warnings
 import numpy as np
-import pyTMD.time
-import pyTMD.spatial
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.compute_equilibrium_tide import compute_equilibrium_tide
-# attempt imports
-try:
-    import h5py
-except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("h5py not available")
-# ignore warnings
-warnings.filterwarnings("ignore")
+import scipy.interpolate
+import icesat2_toolkit.time
+import icesat2_toolkit.spatial
+import icesat2_toolkit.utilities
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
-# compute long-period equilibrium tides at points and times
-def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
+# calculate and interpolate the dynamic atmospheric correction
+def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
 
-    # create logger for verbosity level
+    # create logger
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
+    logging.basicConfig(level=loglevel)
 
     # get directory from INPUT_FILE
-    logger.info(f'{INPUT_FILE} -->')
+    logging.info(f'{INPUT_FILE} -->')
     DIRECTORY = os.path.dirname(INPUT_FILE)
 
     # compile regular expression operator for extracting information from file
@@ -93,18 +93,18 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
     try:
         PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(INPUT_FILE).pop()
     except:
-        # output long-period equilibrium tide HDF5 file (generic)
+        # output dynamic atmospheric correction HDF5 file (generic)
         fileBasename,fileExtension = os.path.splitext(INPUT_FILE)
-        OUTPUT_FILE = '{0}_{1}{2}'.format(fileBasename,'LPET',fileExtension)
+        args = (fileBasename,fileExtension)
+        OUTPUT_FILE = '{0}_DAC{1}'.format(*args)
     else:
-        # output long-period equilibrium tide HDF5 file for NSIDC granules
+        # output dynamic atmospheric correction HDF5 file for NSIDC granules
         args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
-        file_format = 'GLAH{0}_{1}_LPET_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
+        file_format = 'GLAH{0}_{1}_DAC_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
         OUTPUT_FILE = file_format.format(*args)
 
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE,'r')
-    n_40HZ, = fileID['Data_40HZ']['Time']['i_rec_ndx'].shape
     # get variables and attributes
     rec_ndx_40HZ = fileID['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
     # seconds since 2000-01-01 12:00:00 UTC (J2000)
@@ -117,28 +117,64 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
     elev_TPX = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'][:].copy()
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
+    # convert time from J2000 to days relative to 1950-01-01 (MJD:33282)
+    # J2000: seconds since 2000-01-01 12:00:00 UTC
+    t = DS_UTCTime_40HZ/86400.0 + 18262.5
+    # days and hours to read
+    unique_hours = np.unique([np.floor(t*24.0/6.0)*6.0, np.ceil(t*24.0/6.0)*6.0])
+    days,hours = (unique_hours // 24, unique_hours % 24)
+
     # semimajor axis (a) and flattening (f) for TP and WGS84 ellipsoids
     atop,ftop = (6378136.3,1.0/298.257)
     awgs,fwgs = (6378137.0,1.0/298.257223563)
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
-        atop, ftop, awgs, fwgs, eps=1e-12, itmax=10)
+    lat_40HZ,elev_40HZ = icesat2_toolkit.spatial.convert_ellipsoid(lat_TPX,
+        elev_TPX, atop, ftop, awgs, fwgs, eps=1e-12, itmax=10)
 
-    # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    tide_time = pyTMD.time.convert_delta_time(DS_UTCTime_40HZ,
-        epoch1=(2000,1,1,12,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
-    # interpolate delta times from calendar dates to tide time
-    delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-    deltat = calc_delta_time(delta_file, tide_time)
+    # pyproj transformer for converting from input coordinates (EPSG)
+    # to model coordinates
+    crs1 = pyproj.CRS.from_epsg(4326)
+    crs2 = pyproj.CRS.from_string('+proj=longlat +ellps=WGS84 +datum=WGS84 '
+        '+no_defs lon_wrap=180')
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
-    # predict long-period equilibrium tides at latitudes and time
-    tide_lpe = compute_equilibrium_tide(tide_time + deltat, lat_40HZ)
+    # calculate projected coordinates of input coordinates
+    ix,iy = transformer.transform(lon_40HZ, lat_40HZ)
+
+    # shape of pressure field
+    ny,nx = (721,1440)
+    # allocate for DAC fields
+    idac = np.ma.zeros((len(days),ny,nx))
+    icjd = np.zeros((len(days)))
+    for i,CJD in enumerate(days):
+        # convert from CNES Julians Day to calendar
+        YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(CJD + 2433282.5,
+            format='tuple')
+        # input file for 6-hour period
+        input_file = f'dac_dif_{CJD:0.0f}_{hours[i]:02.0f}.nc.bz2'
+        # read bytes from compressed file
+        fd = bz2.BZ2File(os.path.join(base_dir,f'{YY:0.0f}',input_file))
+        # read netCDF file for time
+        with netCDF4.Dataset('dac', mode='r', memory=fd.read()) as fid:
+            ilon = fid['longitude'][:]
+            ilat = fid['latitude'][:]
+            idac[i,:,:] = fid['dac'][:]
+            icjd[i] = fid['dac'].getncattr('Date_CNES_JD')
+        # close the compressed file objects
+        fd.close()
+    # create an interpolator for dynamic atmospheric correction
+    RGI = scipy.interpolate.RegularGridInterpolator((icjd,ilat,ilon), idac,
+        bounds_error=False)
+    # interpolate dynamic atmospheric correction to points
+    DAC = np.ma.zeros((rec_ndx_40HZ), fill_value=fv)
+    DAC.data = RGI.__call__(np.c_[t, iy, ix])
+    DAC.mask = np.isnan(DAC.data)
+    DAC.data[DAC.mask] = DAC.fill_value
 
     # copy variables for outputting to HDF5 file
-    IS_gla12_tide = dict(Data_40HZ={})
+    IS_gla12_corr = dict(Data_40HZ={})
     IS_gla12_fill = dict(Data_40HZ={})
-    IS_gla12_tide_attrs = dict(Data_40HZ={})
+    IS_gla12_corr_attrs = dict(Data_40HZ={})
 
     # copy global file attributes
     global_attribute_list = ['featureType','title','comment','summary','license',
@@ -163,89 +199,91 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
         'identifier_product_doi','identifier_file_uuid',
         'identifier_product_doi_authority']
     for att in global_attribute_list:
-        IS_gla12_tide_attrs[att] = fileID.attrs[att]
+        IS_gla12_corr_attrs[att] = fileID.attrs[att]
     # copy ICESat campaign name from ancillary data
-    IS_gla12_tide_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
+    IS_gla12_corr_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     # add attributes for input GLA12 file
-    IS_gla12_tide_attrs['input_files'] = os.path.basename(INPUT_FILE)
+    IS_gla12_corr_attrs['input_files'] = os.path.basename(INPUT_FILE)
     # update geospatial ranges for ellipsoid
-    IS_gla12_tide_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
-    IS_gla12_tide_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
-    IS_gla12_tide_attrs['geospatial_lon_min'] = np.min(lon_40HZ)
-    IS_gla12_tide_attrs['geospatial_lon_max'] = np.max(lon_40HZ)
-    IS_gla12_tide_attrs['geospatial_lat_units'] = "degrees_north"
-    IS_gla12_tide_attrs['geospatial_lon_units'] = "degrees_east"
-    IS_gla12_tide_attrs['geospatial_ellipsoid'] = "WGS84"
+    IS_gla12_corr_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
+    IS_gla12_corr_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
+    IS_gla12_corr_attrs['geospatial_lon_min'] = np.min(lon_40HZ)
+    IS_gla12_corr_attrs['geospatial_lon_max'] = np.max(lon_40HZ)
+    IS_gla12_corr_attrs['geospatial_lat_units'] = "degrees_north"
+    IS_gla12_corr_attrs['geospatial_lon_units'] = "degrees_east"
+    IS_gla12_corr_attrs['geospatial_ellipsoid'] = "WGS84"
 
     # copy 40Hz group attributes
     for att_name,att_val in fileID['Data_40HZ'].attrs.items():
-        IS_gla12_tide_attrs['Data_40HZ'][att_name] = att_val
+        IS_gla12_corr_attrs['Data_40HZ'][att_name] = att_val
     # copy attributes for time, geolocation and geophysical groups
     for var in ['Time','Geolocation','Geophysical']:
-        IS_gla12_tide['Data_40HZ'][var] = {}
+        IS_gla12_corr['Data_40HZ'][var] = {}
         IS_gla12_fill['Data_40HZ'][var] = {}
-        IS_gla12_tide_attrs['Data_40HZ'][var] = {}
+        IS_gla12_corr_attrs['Data_40HZ'][var] = {}
         for att_name,att_val in fileID['Data_40HZ'][var].attrs.items():
-            IS_gla12_tide_attrs['Data_40HZ'][var][att_name] = att_val
+            IS_gla12_corr_attrs['Data_40HZ'][var][att_name] = att_val
 
     # J2000 time
-    IS_gla12_tide['Data_40HZ']['DS_UTCTime_40'] = DS_UTCTime_40HZ
+    IS_gla12_corr['Data_40HZ']['DS_UTCTime_40'] = DS_UTCTime_40HZ
     IS_gla12_fill['Data_40HZ']['DS_UTCTime_40'] = None
-    IS_gla12_tide_attrs['Data_40HZ']['DS_UTCTime_40'] = {}
+    IS_gla12_corr_attrs['Data_40HZ']['DS_UTCTime_40'] = {}
     for att_name,att_val in fileID['Data_40HZ']['DS_UTCTime_40'].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
-            IS_gla12_tide_attrs['Data_40HZ']['DS_UTCTime_40'][att_name] = att_val
+            IS_gla12_corr_attrs['Data_40HZ']['DS_UTCTime_40'][att_name] = att_val
     # record
-    IS_gla12_tide['Data_40HZ']['Time']['i_rec_ndx'] = rec_ndx_40HZ
+    IS_gla12_corr['Data_40HZ']['Time']['i_rec_ndx'] = rec_ndx_40HZ
     IS_gla12_fill['Data_40HZ']['Time']['i_rec_ndx'] = None
-    IS_gla12_tide_attrs['Data_40HZ']['Time']['i_rec_ndx'] = {}
+    IS_gla12_corr_attrs['Data_40HZ']['Time']['i_rec_ndx'] = {}
     for att_name,att_val in fileID['Data_40HZ']['Time']['i_rec_ndx'].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
-            IS_gla12_tide_attrs['Data_40HZ']['Time']['i_rec_ndx'][att_name] = att_val
+            IS_gla12_corr_attrs['Data_40HZ']['Time']['i_rec_ndx'][att_name] = att_val
     # latitude
-    IS_gla12_tide['Data_40HZ']['Geolocation']['d_lat'] = lat_40HZ
+    IS_gla12_corr['Data_40HZ']['Geolocation']['d_lat'] = lat_40HZ
     IS_gla12_fill['Data_40HZ']['Geolocation']['d_lat'] = None
-    IS_gla12_tide_attrs['Data_40HZ']['Geolocation']['d_lat'] = {}
+    IS_gla12_corr_attrs['Data_40HZ']['Geolocation']['d_lat'] = {}
     for att_name,att_val in fileID['Data_40HZ']['Geolocation']['d_lat'].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
-            IS_gla12_tide_attrs['Data_40HZ']['Geolocation']['d_lat'][att_name] = att_val
+            IS_gla12_corr_attrs['Data_40HZ']['Geolocation']['d_lat'][att_name] = att_val
     # longitude
-    IS_gla12_tide['Data_40HZ']['Geolocation']['d_lon'] = lon_40HZ
+    IS_gla12_corr['Data_40HZ']['Geolocation']['d_lon'] = lon_40HZ
     IS_gla12_fill['Data_40HZ']['Geolocation']['d_lon'] = None
-    IS_gla12_tide_attrs['Data_40HZ']['Geolocation']['d_lon'] = {}
+    IS_gla12_corr_attrs['Data_40HZ']['Geolocation']['d_lon'] = {}
     for att_name,att_val in fileID['Data_40HZ']['Geolocation']['d_lon'].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
-            IS_gla12_tide_attrs['Data_40HZ']['Geolocation']['d_lon'][att_name] = att_val
+            IS_gla12_corr_attrs['Data_40HZ']['Geolocation']['d_lon'][att_name] = att_val
 
-    # geophysical variables
-    # computed long-period equilibrium tide
-    IS_gla12_tide['Data_40HZ']['Geophysical']['d_eqElv'] = tide_lpe
-    IS_gla12_fill['Data_40HZ']['Geophysical']['d_eqElv'] = None
-    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_eqElv'] = {}
-    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_eqElv']['units'] = "meters"
-    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_eqElv']['long_name'] = \
-        "Long Period Equilibrium Tide"
-    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_eqElv']['description'] = ("Long-period "
-            "equilibrium tidal elevation from the summation of fifteen tidal spectral lines")
-    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_eqElv']['reference'] = \
-        "https://doi.org/10.1111/j.1365-246X.1973.tb03420.x"
-    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_eqElv']['coordinates'] = \
+    # dynamic atmospheric correction (DAC)
+    IS_gla12_corr['Data_40HZ']['Geophysical']['d_dacElv'] = DAC.copy()
+    IS_gla12_fill['Data_40HZ']['Geophysical']['d_dacElv'] = DAC.fill_value
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv'] = {}
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['units'] = "meters"
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['long_name'] = \
+        "Dynamic_Atmosphere_Correction"
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['description'] = ("Dynamic_"
+        "atmospheric_correction_(DAC)_which_includes_inverse_barometer_(IB)_effects")
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['source'] = \
+        'Mog2D-G_High_Resolution_barotropic_model'
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['reference'] = \
+        ('https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/'
+         'atmospheric-corrections.html')
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['coordinates'] = \
         "../DS_UTCTime_40"
 
     # close the input HDF5 file
     fileID.close()
 
     # print file information
-    logger.info(f'\t{OUTPUT_FILE}')
-    HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_tide_attrs,
+    logging.info(f'\t{OUTPUT_FILE}')
+    HDF5_GLA12_corr_write(IS_gla12_corr, IS_gla12_corr_attrs,
         FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)
     # change the permissions mode
     os.chmod(os.path.join(DIRECTORY,OUTPUT_FILE), MODE)
 
-# PURPOSE: outputting the tide values for ICESat data to HDF5
-def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
+# PURPOSE: outputting the correction values for ICESat data to HDF5
+def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
     FILENAME='', FILL_VALUE=None, CLOBBER=False):
     # setting HDF5 clobber attribute
     if CLOBBER:
@@ -322,17 +360,23 @@ def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
-        description="""Calculates long-period equilibrium tidal elevations for
-            correcting ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
-            elevation data
+        description="""Calculates and interpolates dynamic atmospheric
+            corrections to ICESat/GLAS L2 GLA12 Antarctic and Greenland
+            Ice Sheet elevation data
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = pyTMD.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = \
+        icesat2_toolkit.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='ICESat GLA12 file to run')
+    # directory with reanalysis data
+    parser.add_argument('--directory','-D',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.getcwd(),
+        help='Working data directory')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -351,9 +395,10 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    # run for each input GLA12 file
+    # run for each input GLAH12 file
     for FILE in args.infile:
-        compute_LPET_ICESat(FILE, VERBOSE=args.verbose, MODE=args.mode)
+        interp_DAC_ICESat_GLAH12(args.directory, FILE,
+            VERBOSE=args.verbose, MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

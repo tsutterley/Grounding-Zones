@@ -394,13 +394,13 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
     HEM = set_hemisphere(GRAN)
 
     # file format for auxiliary files
-    file_format='{0}_{1}_{2}_{3}{4}{5}{6}{7}{8}_{9}{10}{11}_{12}_{13}{14}.h5'
+    file_format = '{0}_{1}_{2}_{3}{4}{5}{6}{7}{8}_{9}{10}{11}_{12}_{13}{14}.h5'
     plot_format='{0}_{1}_{2}_{3}_{4}{5}{6}{7}{8}{9}_{10}{11}{12}_{13}_{14}{15}.png'
 
     # grounded ice line string to determine if segment crosses coastline
     mline_obj,epsg = read_grounded_ice(base_dir, HEM)
     # projections for converting lat/lon to polar stereographic
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(epsg)
     # transformer object for converting projections
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
@@ -839,9 +839,9 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
     if bool([k for k in IS2_atl06_gz.keys() if bool(re.match(r'gt\d[lr]',k))]):
         # output HDF5 file for grounding zone locations
         fargs = (PRD,TIDE_MODEL,'GZ',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
-        output_file=os.path.join(DIRECTORY,file_format.format(*fargs))
+        output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
         # print file information
-        logging.info('\t{0}'.format(output_file))
+        logging.info(f'\t{output_file}')
         # write to output HDF5 file
         HDF5_ATL06_corr_write(IS2_atl06_gz, IS2_atl06_gz_attrs,
             CLOBBER=True, INPUT=os.path.basename(FILE),
@@ -976,7 +976,7 @@ def HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_attrs, INPUT=None,
     tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
-    fileID.attrs['time_coverage_duration'] = '{0:0.0f}'.format(tmx-tmn)
+    fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     # Closing the HDF5 file
     fileID.close()
 

@@ -76,7 +76,7 @@ def filter_ICESat_GLA12(INPUT_FILE,
     logging.basicConfig(level=loglevel)
 
     #-- get directory from INPUT_FILE
-    logging.info('{0} -->'.format(INPUT_FILE))
+    logging.info(f'{INPUT_FILE} -->')
     DIRECTORY = os.path.dirname(INPUT_FILE)
 
     #-- compile regular expression operator for extracting information from file
@@ -251,7 +251,7 @@ def filter_ICESat_GLA12(INPUT_FILE,
     IS_gla12_attrs['Data_40HZ']['Quality']['quality_summary']['flag_values'] = [0,1]
 
     #-- print file information
-    logging.info('\t{0}'.format(OUTPUT_FILE))
+    logging.info(f'\t{OUTPUT_FILE}')
     HDF5_GLA12_mask_write(IS_gla12_mask, IS_gla12_attrs,
         FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
         CLOBBER=True)

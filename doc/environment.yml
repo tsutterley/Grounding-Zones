@@ -21,10 +21,10 @@ dependencies:
   - pyyaml
   - scipy
   - sphinx
-  - sphinx-argparse
   - sphinx_rtd_theme
   - texlive-core
   - pip:
+     - sphinx-argparse>=0.4
      - icesat2-toolkit
      - pyTMD
      - ..

@@ -164,13 +164,13 @@ def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
 def read_ATM_qfit_file(input_file, input_subsetter):
     # regular expression pattern for extracting parameters
     mission_flag = r'(BLATM1B|ILATM1B|ILNSA1B)'
-    regex_pattern = r'{0}_(\d+)_(\d+)(.*?).(qi|TXT|h5)'.format(mission_flag)
+    regex_pattern = rf'{mission_flag}_(\d+)_(\d+)(.*?).(qi|TXT|h5)'
     # extract mission and other parameters from filename
     MISSION,YYMMDD,HHMMSS,AUX,SFX = re.findall(regex_pattern,input_file).pop()
     # early date strings omitted century and millenia (e.g. 93 for 1993)
     if (len(YYMMDD) == 6):
-        ypre,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
-        year = (ypre + 1900.0) if (ypre >= 90) else (ypre + 2000.0)
+        yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
+        year = (yr2d + 1900.0) if (yr2d >= 90) else (yr2d + 2000.0)
     elif (len(YYMMDD) == 8):
         year,month,day = np.array([YYMMDD[:4],YYMMDD[4:6],YYMMDD[6:]],dtype='i')
     # output python dictionary with variables
@@ -222,7 +222,7 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         # for each line within the file
         for i,packed_time in enumerate(time_hhmmss):
             # convert to zero-padded string with 3 decimal points
-            line_contents = '{0:010.3f}'.format(packed_time)
+            line_contents = f'{packed_time:010.3f}'
             hour[i] = np.float64(line_contents[:2])
             minute[i] = np.float64(line_contents[2:4])
             second[i] = np.float64(line_contents[4:])
@@ -244,7 +244,7 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         # for each line within the file
         for i,packed_time in enumerate(time_hhmmss):
             # convert to zero-padded string with 3 decimal points
-            line_contents = '{0:010.3f}'.format(packed_time)
+            line_contents = f'{packed_time:010.3f}'
             hour[i] = np.float64(line_contents[:2])
             minute[i] = np.float64(line_contents[2:4])
             second[i] = np.float64(line_contents[4:])
@@ -277,13 +277,14 @@ def read_ATM_qfit_file(input_file, input_subsetter):
 # PURPOSE: read the ATM Level-2 data file for variables of interest
 def read_ATM_icessn_file(input_file, input_subsetter):
     # regular expression pattern for extracting parameters
-    regex_pattern=r'(BLATM2|ILATM2)_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
+    mission_flag = r'(BLATM2|ILATM2)'
+    regex_pattern = rf'{mission_flag}_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
     # extract mission and other parameters from filename
     MISSION,YYMMDD,HHMMSS,AUX,SFX = re.findall(regex_pattern,input_file).pop()
     # early date strings omitted century and millenia (e.g. 93 for 1993)
     if (len(YYMMDD) == 6):
-        ypre,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
-        year = (ypre + 1900.0) if (ypre >= 90) else (ypre + 2000.0)
+        yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
+        year = (yr2d + 1900.0) if (yr2d >= 90) else (yr2d + 2000.0)
     elif (len(YYMMDD) == 8):
         year,month,day = np.array([YYMMDD[:4],YYMMDD[4:6],YYMMDD[6:]],dtype='i')
     # input file column names for variables of interest with column indices
@@ -350,8 +351,8 @@ def read_LVIS_HDF5_file(input_file, input_subsetter):
     lvis_flag = {'GL':'N','AQ':'S'}
     # regular expression pattern for extracting parameters from HDF5 files
     # computed in read_icebridge_lvis.py
-    mission_flag = '(BLVIS2|BVLIS2|ILVIS2|ILVGH2)'
-    regex_pattern = r'{0}_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5'.format(mission_flag)
+    mission_flag = r'(BLVIS2|BVLIS2|ILVIS2|ILVGH2)'
+    regex_pattern = rf'{mission_flag}_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5'
     # extract mission, region and other parameters from filename
     MISSION,REGION,YY,MMDD,RLD,SS = re.findall(regex_pattern,input_file).pop()
     LDS_VERSION = '2.0.2' if (int(RLD[1:3]) >= 18) else '1.04'
@@ -520,11 +521,12 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         M1,YYMMDD1,HHMMSS1,AX1,SF1 = re.findall(regex[OIB], input_file).pop()
         # early date strings omitted century and millenia (e.g. 93 for 1993)
         if (len(YYMMDD1) == 6):
-            ypre,MM1,DD1 = YYMMDD1[:2],YYMMDD1[2:4],YYMMDD1[4:]
-            if (np.float64(ypre) >= 90):
-                YY1 = '{0:4.0f}'.format(np.float64(ypre) + 1900.0)
+            year_two_digit,MM1,DD1 = YYMMDD1[:2],YYMMDD1[2:4],YYMMDD1[4:]
+            year_two_digit = float(year_two_digit)
+            if (year_two_digit >= 90):
+                YY1 = f'{1900.0+year_two_digit:4.0f}'
             else:
-                YY1 = '{0:4.0f}'.format(np.float64(ypre) + 2000.0)
+                YY1 = f'{2000.0+year_two_digit:4.0f}'
         elif (len(YYMMDD1) == 8):
             YY1,MM1,DD1 = YYMMDD1[:4],YYMMDD1[4:6],YYMMDD1[6:]
     elif OIB in ('LVIS','LVGH'):
@@ -532,7 +534,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         MM1,DD1 = MMDD1[:2],MMDD1[2:]
 
     # read data from input_file
-    logger.info('{0} -->'.format(input_file))
+    logger.info(f'{input_file} -->')
     if (OIB == 'ATM'):
         # load IceBridge ATM data from input_file
         dinput,file_lines,HEM = read_ATM_icessn_file(input_file,input_subsetter)
@@ -601,7 +603,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     args = (hem_flag[HEM],model.name,flexure_flag,OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}{2}_TIDES_WGS84_{3}{4}{5}{6}{7:05.0f}.H5'.format(*args)
     # print file information
-    logger.info('\t{0}'.format(FILENAME))
+    logger.info(f'\t{FILENAME}')
 
     # open output HDF5 file
     fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')
@@ -673,7 +675,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     args = (cal['year'][-1],cal['month'][-1],cal['day'][-1])
     fid.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
     duration = np.round(time_julian[-1]*86400.0 - time_julian[0]*86400.0)
-    fid.attrs['DurationTimeSeconds'] = '{0:0.0f}'.format(duration)
+    fid.attrs['DurationTimeSeconds'] = f'{duration:0.0f}'
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE

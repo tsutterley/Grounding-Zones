@@ -13,7 +13,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../DAC/interp_IB_response_ICESat2_ATL06.py
+    :filename: interp_IB_response_ICESat2_ATL06.py
     :func: arguments
     :prog: interp_IB_response_ICESat2_ATL06.py
     :nodescription:

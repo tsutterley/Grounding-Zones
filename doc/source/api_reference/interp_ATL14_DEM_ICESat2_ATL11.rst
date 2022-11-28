@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../DEM/interp_ATL14_DEM_ICESat2_ATL11.py
+    :filename: interp_ATL14_DEM_ICESat2_ATL11.py
     :func: arguments
     :prog: interp_ATL14_DEM_ICESat2_ATL11.py
     :nodescription:

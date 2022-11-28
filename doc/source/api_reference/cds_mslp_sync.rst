@@ -9,7 +9,7 @@ cds_mslp_sync.py
 .. __: https://github.com/tsutterley/Grounding-Zones/blob/main/DAC/cds_mslp_sync.py
 
 .. argparse::
-    :filename: ../../DAC/cds_mslp_sync.py
+    :filename: cds_mslp_sync.py
     :func: arguments
     :prog: cds_mslp_sync.py
     :nodescription:

@@ -92,8 +92,8 @@ def tile_ICESat2_ATL06(FILE,
 
     #-- pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413,S=3031)
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG[HEM]))
+    crs1 = pyproj.CRS.from_epsg(4326)
+    crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     #-- dictionary of coordinate reference system variables
     cs_to_cf = crs2.cs_to_cf()
@@ -161,7 +161,7 @@ def tile_ICESat2_ATL06(FILE,
             xc = (xp+1)*SPACING
             yc = (yp+1)*SPACING
             #-- create group
-            tile_group = 'E{0:0.0f}_N{1:0.0f}'.format(xc/1e3, yc/1e3)
+            tile_group = f'E{xc/1e3:0.0f}_N{yc/1e3:0.0f}'
             if tile_group not in f2:
                 g1 = f2.create_group(tile_group)
             else:
@@ -173,7 +173,7 @@ def tile_ICESat2_ATL06(FILE,
 
             #-- create merged tile file if not existing
             tile_file = os.path.join(DIRECTORY,index_directory,
-                '{0}.h5'.format(tile_group))
+                f'{tile_group}.h5')
             clobber = 'a' if os.access(tile_file,os.F_OK) else 'w'
             #-- open output merged tile file
             f3 = multiprocess_h5py(tile_file,clobber)

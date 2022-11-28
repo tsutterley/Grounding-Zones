@@ -146,8 +146,7 @@ def main():
     else:
         logging.basicConfig(level=logging.CRITICAL)
     #-- print username for remote client
-    logging.info('{0}@{1}:\n'.format(client_kwds['username'],
-        client_kwds['hostname']))
+    logging.info(f'{client_kwds["username"]}@{client_kwds["hostname"]}:\n')
 
     #-- run copy program
     scp_pgc_dem_strips(client, client_ftp, args.directory, args.remote,
@@ -179,7 +178,7 @@ def attempt_login(**client_kwds):
     #-- add attempt
     attempts += 1
     #-- phrase for entering password
-    phrase = 'Password for {0}@{1}: '.format(kwds['username'],kwds['hostname'])
+    phrase = f'Password for {kwds["username"]}@{kwds["hostname"]}: '
     #-- remove key_filename from keywords
     kwds.pop('key_filename') if 'key_filename' in kwds.keys() else None
     #-- enter password securely from command-line
@@ -193,7 +192,7 @@ def attempt_login(**client_kwds):
             kwds.pop('password')
             return client
         #-- retry with new password
-        logging.critical('Authentication Failed (Attempt {0:d})'.format(attempts))
+        logging.critical(f'Authentication Failed (Attempt {attempts:d})')
         tryagain = builtins.input('Try Different Password? (Y/N): ') in ('Y','y')
         #-- add attempt
         attempts += 1
@@ -215,8 +214,8 @@ def scp_pgc_dem_strips(client, client_ftp, DIRECTORY, REMOTE,
     for fi in sorted(file_list):
         #-- extract parameters from file
         INST,YY,MM,DD,S1,S2,SEG,RES,VERS,TYPE = rx.findall(fi).pop()
-        # SUBDIRECTORY = '{0}.{1}.{2}'.format(YY,MM,DD)
-        SUBDIRECTORY = '{0}'.format(YY)
+        # SUBDIRECTORY = f'{YY}.{MM}.{DD}'
+        SUBDIRECTORY = f'{YY}'
         remote_path = os.path.join(REMOTE,SUBDIRECTORY)
         #-- check if data directory exists and recursively create if not
         remote_makedirs(client_ftp, remote_path, LIST=LIST, MODE=MODE)
@@ -263,8 +262,8 @@ def scp_push_file(client, client_ftp, transfer_file, local_dir, remote_dir,
         OVERWRITE = 'new'
     #-- if file does not exist remotely, is to be overwritten, or CLOBBER is set
     if TEST or CLOBBER:
-        logging.info('{0} --> '.format(local_file))
-        logging.info('\t{0} ({1})\n'.format(remote_file,OVERWRITE))
+        logging.info(f'{local_file} --> ')
+        logging.info(f'\t{remote_file} ({OVERWRITE})\n')
         #-- if not only listing files
         if not LIST:
             retry_scp_push(client, client_ftp, local_file, remote_file,

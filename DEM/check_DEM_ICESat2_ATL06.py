@@ -85,7 +85,7 @@ def set_DEM_model(GRANULE):
 #-- PURPOSE: read zip file containing index shapefiles for finding DEM tiles
 def read_DEM_index(index_file, DEM_MODEL):
     #-- read the compressed shape file and extract entities
-    shape = fiona.open('zip://{0}'.format(os.path.expanduser(index_file)))
+    shape = fiona.open(f'zip://{os.path.expanduser(index_file)}')
     #-- extract coordinate reference system
     if ('init' in shape.crs.keys()):
         epsg = pyproj.CRS(shape.crs['init']).to_epsg()
@@ -206,7 +206,7 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
 
     #-- pyproj transformer for converting from latitude/longitude
     #-- into DEM tile coordinates
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(tile_epsg)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
@@ -251,10 +251,10 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
 
         #-- for each valid tile
         for key in valid_tiles:
-            sub = tile_attrs[key]['tile']
-            name = tile_attrs[key]['name']
+            sub = tile_attrs[key]["tile"]
+            name = tile_attrs[key]["name"]
             #-- read central DEM file (geotiff within gzipped tar file)
-            tar = '{0}.tar.gz'.format(name)
+            tar = f'{name}.tar.gz'
             elevation_file = os.path.join(elevation_directory,sub,tar)
             if not os.access(elevation_file, os.F_OK):
                 all_tiles.append(sub)
@@ -267,12 +267,12 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
                 ytiles = [IMy-1,IMy,IMy+1,IMy-1,IMy+1,IMy-1,IMy,IMy+1] #-- BMTBTBMT
                 for xtl,ytl in zip(xtiles,ytiles):
                     #-- read DEM file (geotiff within gzipped tar file)
-                    bkey = '{0:02d}_{1:02d}'.format(ytl,xtl)
+                    bkey = f'{ytl:02d}_{xtl:02d}'
                     #-- if buffer file is a valid tile within the DEM
                     #-- if file doesn't exist: will be all fill value with all mask
                     if bkey in tile_attrs.keys():
-                        bsub = tile_attrs[bkey]['tile']
-                        btar = '{0}.tar.gz'.format(tile_attrs[bkey]['name'])
+                        bsub = tile_attrs[bkey]["tile"]
+                        btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
                         buffer_file = os.path.join(elevation_directory,bkey,btar)
                         if not os.access(buffer_file, os.F_OK):
                             all_tiles.append(bsub)
@@ -284,12 +284,12 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
                 ytiles = [IMy-1,IMy,IMy+1,IMy-1,IMy+1,IMy-1,IMy,IMy+1] #-- BMTBTBMT
                 for xtl,ytl in zip(xtiles,ytiles):
                     #-- read DEM file (geotiff within gzipped tar file)
-                    bkey = '{0:d}_{1:d}'.format(xtl,ytl)
+                    bkey = f'{xtl:d}_{ytl:d}'
                     #-- if buffer file is a valid tile within the DEM
                     #-- if file doesn't exist: will be all fill value with all mask
                     if bkey in tile_attrs.keys():
-                        bsub = tile_attrs[bkey]['tile']
-                        btar = '{0}.tar.gz'.format(tile_attrs[bkey]['name'])
+                        bsub = tile_attrs[bkey]["tile"]
+                        btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
                         buffer_file = os.path.join(elevation_directory,bkey,btar)
                         if not os.access(buffer_file, os.F_OK):
                             all_tiles.append(bsub)
@@ -312,13 +312,12 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
                 #-- for each buffer tile and sub-tile
                 for xtl,ytl,xs,ys in zip(xtiles,ytiles,xsubtiles,ysubtiles):
                     #-- read DEM file (geotiff within gzipped tar file)
-                    args = (ytl,xtl,xs,ys,res,vers)
-                    bkey = '{0:02d}_{1:02d}_{2}_{3}'.format(*args)
+                    bkey = f'{ytl:02d}_{xtl:02d}_{xs}_{ys}'
                     #-- if buffer file is a valid sub-tile within the DEM
                     #-- if file doesn't exist: all fill value with all mask
                     if bkey in tile_attrs.keys():
-                        bsub = tile_attrs[bkey]['tile']
-                        btar = '{0}.tar.gz'.format(tile_attrs[bkey]['name'])
+                        bsub = tile_attrs[bkey]["tile"]
+                        btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
                         buffer_file = os.path.join(elevation_directory,bsub,btar)
                         if not os.access(buffer_file, os.F_OK):
                             all_tiles.append(bsub)

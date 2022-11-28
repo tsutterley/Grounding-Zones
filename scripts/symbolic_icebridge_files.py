@@ -122,7 +122,7 @@ def symbolic_icebridge_files(base_dir, incoming, PRODUCT, MODE=0o775):
         #-- get the date information from the input file
         year,month,day = parse_icebridge_file(f, PRODUCT)
         #-- put symlinks in directories similar to NSIDC
-        sd = '{0:4d}.{1:02d}.{2:02d}'.format(year,month,day)
+        sd = '{year:4d}.{month:02d}.{day:02d}'.format(year,month,day)
         local_dir = os.path.join(base_dir,sd)
         os.makedirs(local_dir,MODE) if not os.path.exists(local_dir) else None
         #-- attempt to create the symbolic link else continue
@@ -156,8 +156,8 @@ def parse_ATM_qfit_file(input_file):
     MISSION,YYMMDD,HHMMSS,AUX,SFX = rx.findall(input_file).pop()
     #-- early date strings omitted century and millenia (e.g. 93 for 1993)
     if (len(YYMMDD) == 6):
-        ypre,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
-        year = (ypre + 1900.0) if (ypre >= 90) else (ypre + 2000.0)
+        yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
+        year = (yr2d + 1900.0) if (yr2d >= 90) else (yr2d + 2000.0)
     elif (len(YYMMDD) == 8):
         year,month,day = np.array([YYMMDD[:4],YYMMDD[4:6],YYMMDD[6:]],dtype='i')
     #-- return the year, month and day
@@ -166,14 +166,15 @@ def parse_ATM_qfit_file(input_file):
 #-- PURPOSE: extract information from ATM Level-2 icessn files
 def parse_ATM_icessn_file(input_file):
     #-- regular expression pattern for extracting parameters
-    regex_pattern=r'(BLATM2|ILATM2)_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
+    mission_flag = r'(BLATM2|ILATM2)'
+    regex_pattern = rf'{mission_flag}_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
     rx = re.compile(regex_pattern, re.VERBOSE)
     #-- extract mission and other parameters from filename
     MISSION,YYMMDD,HHMMSS,AUX,SFX = rx.findall(input_file).pop()
     #-- early date strings omitted century and millenia (e.g. 93 for 1993)
     if (len(YYMMDD) == 6):
-        ypre,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
-        year = (ypre + 1900.0) if (ypre >= 90) else (ypre + 2000.0)
+        yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
+        year = (yr2d + 1900.0) if (yr2d >= 90) else (yr2d + 2000.0)
     elif (len(YYMMDD) == 8):
         year,month,day = np.array([YYMMDD[:4],YYMMDD[4:6],YYMMDD[6:]],dtype='i')
     #-- return the year, month and day

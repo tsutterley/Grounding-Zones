@@ -62,6 +62,7 @@ import sys
 import os
 import re
 import h5py
+import logging
 import argparse
 import datetime
 import warnings
@@ -98,11 +99,15 @@ def fit_tides_ICESat2(tide_dir, FILE,
     VERBOSE=False,
     MODE=0o775):
 
+    # create logger
+    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
+
     # get tide model parameters
     model = pyTMD.model(tide_dir, verify=False).elevation(TIDE_MODEL)
 
     # print file information
-    print(os.path.basename(FILE)) if VERBOSE else None
+    logging.info(os.path.basename(FILE))
     # read data from FILE
     mds1,attr1,pairs1 = read_HDF5_ATL11(FILE, REFERENCE=True,
         CROSSOVERS=True, ATTRIBUTES=True, VERBOSE=VERBOSE)
@@ -749,14 +754,15 @@ def fit_tides_ICESat2(tide_dir, FILE,
     # output flexure correction HDF5 file
     args = (PRD,TIDE_MODEL,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
     file_format = '{0}_{1}_FIT_TIDES_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
+    OUTPUT_FILE = os.path.join(DIRECTORY,file_format.format(*args))
     # print file information
-    print('\t{0}'.format(file_format.format(*args))) if VERBOSE else None
+    logging.info(f'\t{OUTPUT_FILE}')
     HDF5_ATL11_corr_write(IS2_atl11_tide, IS2_atl11_tide_attrs,
         CLOBBER=True, INPUT=os.path.basename(FILE),
         CROSSOVERS=True, FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=os.path.join(DIRECTORY,file_format.format(*args)))
+        FILENAME=OUTPUT_FILE)
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,file_format.format(*args)), MODE)
+    os.chmod(OUTPUT_FILE, MODE)
 
 # PURPOSE: outputting the correction values for ICESat-2 data to HDF5
 def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
@@ -929,7 +935,7 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
-    fileID.attrs['time_coverage_duration'] = '{0:0.0f}'.format(tmx-tmn)
+    fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     # Closing the HDF5 file
     fileID.close()
 

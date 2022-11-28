@@ -62,6 +62,7 @@ import uuid
 import netrc
 import zipfile
 import getpass
+import logging
 import builtins
 import argparse
 import warnings
@@ -84,11 +85,10 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
     #-- recursively create directories if not currently available
     os.makedirs(ddir,MODE) if not os.access(ddir,os.F_OK) else None
     #-- remote https server
-    REMOTE = ['https://n5eil01u.ecs.nsidc.org','MEASURES',
-        'NSIDC-0645.{0:03.0f}'.format(VERSION),'2003.02.20']
-    remote_dir = posixpath.join(*REMOTE)
+    remote_dir = posixpath.join('https://n5eil01u.ecs.nsidc.org',
+        'MEASURES',f'NSIDC-0645.{VERSION:03.0f}','2003.02.20')
     #-- regex pattern to find files and extract tile coordinates
-    rx = re.compile('gimpdem(\d+_\d+)_v{0:04.1f}.tif$'.format(VERSION))
+    rx = re.compile(rf'gimpdem(\d+_\d+)_v{VERSION:04.1f}.tif$')
     #-- output file format
     ff = 'gimpdem_Tile_Index_Rel{0:0.1f}.{1}'
 
@@ -124,13 +124,13 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
     #-- create a counter for shapefile id
     id = 1
     #-- read and parse request for remote files (columns and dates)
-    colnames,collastmod,_ = grounding_zones.utilities.nsidc_list(REMOTE,
+    colnames,collastmod,_ = grounding_zones.utilities.nsidc_list(remote_dir,
         build=False, parser=parser, pattern=rx,sort=True)
 
     #-- read each GIMP DEM file
     for colname,remote_mtime in zip(colnames,collastmod):
         #-- print input file to track progress
-        print(colname)
+        logging.info(colname)
         #-- extract tile number
         tile, = rx.findall(colname)
 
@@ -140,13 +140,14 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
         CHUNK = 16 * 1024
         #-- copy contents to BytesIO object using chunked transfer encoding
         #-- transfer should work properly with ascii and binary data formats
-        fileID,_ = grounding_zones.utilities.from_nsidc(REMOTE + [colname],
+        fileID,_ = grounding_zones.utilities.from_nsidc(
+            posixpath.join(remote_dir,colname),
             build=False, chunk=CHUNK)
         #-- rewind retrieved binary to start of file
         fileID.seek(0)
 
         #-- use GDAL memory-mapped file to read dem
-        mmap_name = "/vsimem/{0}".format(uuid.uuid4().hex)
+        mmap_name = f'/vsimem/{uuid.uuid4().hex}'
         osgeo.gdal.FileFromMemBuffer(mmap_name, fileID.read())
         dataset = osgeo.gdal.Open(mmap_name)
 
@@ -251,6 +252,10 @@ def arguments():
     parser.add_argument('--version','-v',
         type=float, default=1.1,
         help='GIMP Data Version')
+    #-- print information about processing run
+    parser.add_argument('--verbose','-V',
+        action='count', default=0,
+        help='Verbose output of processing run')
     #-- permissions mode of the local directories and files (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
@@ -264,19 +269,23 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
+    #-- create logger
+    loglevels = [logging.CRITICAL, logging.INFO, logging.DEBUG]
+    logging.basicConfig(level=loglevels[args.verbose])
+
     #-- NASA Earthdata hostname
     HOST = 'urs.earthdata.nasa.gov'
     #-- get authentication
     if not args.user and not os.access(args.netrc,os.F_OK):
         #-- check that NASA Earthdata credentials were entered
-        args.user=builtins.input('Username for {0}: '.format(HOST))
+        args.user = builtins.input(f'Username for {HOST}: ')
         #-- enter password securely from command-line
-        args.password=getpass.getpass('Password for {0}@{1}: '.format(args.user,HOST))
+        args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
     elif os.access(args.netrc, os.F_OK):
-        args.user,_,args.password=netrc.netrc(args.netrc).authenticators(HOST)
+        args.user,_,args.password = netrc.netrc(args.netrc).authenticators(HOST)
     elif args.user and not args.password:
         #-- enter password securely from command-line
-        args.password=getpass.getpass('Password for {0}@{1}: '.format(args.user,HOST))
+        args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
 
     #-- build a urllib opener for NSIDC
     #-- Add the username and password for NASA Earthdata Login system

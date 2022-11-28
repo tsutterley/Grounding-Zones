@@ -90,7 +90,7 @@ def pgc_rema_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
     R2 = re.compile((r'(SETSM)_(\w+)_(\d{4})(\d{2})(\d{2})_'
         r'(\w+)_(\w+)_(seg\d+)_(\d+m)_(.*?)\.tar\.gz'), re.VERBOSE)
     #-- compile regular expression operators for shapefiles
-    R3 = re.compile(r'(.*?)_Strip_Index_({0})_shp\.zip'.format(VERSION))
+    R3 = re.compile(rf'(.*?)_Strip_Index_({VERSION})_shp\.zip')
 
     #-- compile HTML parser for lxml
     parser = lxml.etree.HTMLParser()

@@ -159,10 +159,10 @@ def interpolate_sea_level(base_dir, xi, yi, CJD, HEM):
         YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(JD1[0],
             FORMAT='tuple', ASTYPE=int)
         #-- sea level directory
-        ddir = os.path.join(base_dir, '{0:0.0f}'.format(YY))
+        ddir = os.path.join(base_dir, f'{YY:0.0f}')
         #-- input file for day before the measurement
-        regex = re.compile(('dt_global_allsat_phy_l4_{0:4d}{1:02d}{2:02d}_'
-            '(\d{{4}})(\d{{2}})(\d{{2}}).nc.gz').format(YY,MM,DD))
+        regex = re.compile((rf'dt_global_allsat_phy_l4_{YY:4d}{MM:02d}{DD:02d}'
+            r'_(\d{4})(\d{2})(\d{2}).nc.gz'))
         input_file, = [fi for fi in os.listdir(ddir) if regex.match(fi)]
         #-- dictionary with input fields
         dinput = {}
@@ -206,7 +206,7 @@ def interp_sea_level_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
     logging.basicConfig(level=loglevel)
 
     #-- read data from input file
-    logging.info('{0} -->'.format(os.path.basename(FILE)))
+    logging.info(f'{FILE} -->')
     IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = read_HDF5_ATL06(FILE,
         ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
@@ -242,8 +242,8 @@ def interp_sea_level_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
     #-- EPSG projections for converting lat/lon to polar stereographic
     EPSG = dict(N=3413,S=3031)
     #-- pyproj transformer for converting to polar stereographic
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG[HEM]))
+    crs1 = pyproj.CRS.from_epsg(4326)
+    crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
     #-- number of GPS seconds between the GPS epoch
@@ -417,7 +417,7 @@ def interp_sea_level_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
     file_format = '{0}_{1}_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
     output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
     #-- print file information
-    logging.info('\t{0}'.format(output_file))
+    logging.info(f'\t{output_file}')
     HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_corr_attrs,
         CLOBBER=True, INPUT=os.path.basename(FILE),
         FILL_VALUE=IS2_atl06_fill, DIMENSIONS=IS2_atl06_dims,
@@ -588,7 +588,7 @@ def HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_attrs, INPUT=None,
     tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
-    fileID.attrs['time_coverage_duration'] = '{0:0.0f}'.format(tmx-tmn)
+    fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     #-- Closing the HDF5 file
     fileID.close()
 

@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../geoid/compute_geoid_icebridge_data.py
+    :filename: compute_geoid_icebridge_data.py
     :func: arguments
     :prog: compute_geoid_icebridge_data.py
     :nodescription:

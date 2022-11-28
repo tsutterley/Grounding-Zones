@@ -85,12 +85,12 @@ def pgc_arcticdem_sync(base_dir, VERSION, RESOLUTION, TILES=None,
     if LOG:
         #-- format: PGC_ArcticDEM_sync_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
-        LOGFILE = 'PGC_ArcticDEM_sync_{0}.log'.format(today)
+        LOGFILE = f'PGC_ArcticDEM_sync_{today}.log'
         logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
             level=logging.INFO)
-        logging.info('PGC ArcticDEM Strip Sync Log ({0})'.format(today))
-        logging.info('VERSION={0}'.format(VERSION))
-        logging.info('RESOLUTION={0}'.format(RESOLUTION))
+        logging.info(f'PGC ArcticDEM Strip Sync Log ({today})')
+        logging.info(f'VERSION={VERSION}')
+        logging.info(f'RESOLUTION={RESOLUTION}')
         logging.info('TILES={0}'.format(','.join(TILES))) if TILES else None
     else:
         #-- standard output (terminal output)
@@ -213,8 +213,8 @@ def http_pull_file(remote_file, remote_mtime, local_file, TIMEOUT=None,
     #-- if file does not exist locally, is to be overwritten, or CLOBBER is set
     if TEST or CLOBBER:
         #-- Printing files transferred
-        logging.info('{0} --> '.format(remote_file))
-        logging.info('\t{0}{1}\n'.format(local_file,OVERWRITE))
+        logging.info(f'{remote_file} -->')
+        logging.info(f'\t{local_file}{OVERWRITE}\n')
         #-- if executing copy command (not only printing the files)
         if not LIST:
             #-- attempt to retry the download

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 u"""
-cds_mslp_retrieve.py (07/2022)
+cds_mslp_retrieve.py (11/2022)
 Retrieves ERA5 mean sea level pressure reanalysis datasets from the CDS Web API
 https://cds.climate.copernicus.eu/user/register
 https://cds.climate.copernicus.eu/cdsapp/#!/terms/licence-to-use-copernicus-products
@@ -30,6 +30,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/cdsapi/
 
 UPDATE HISTORY:
+    Updated 11/2022: use f-strings for formatting verbose or ascii output
     Updated 07/2022: place cdsapi import within try/except statement
     Updated 05/2022: use argparse descriptions within sphinx documentation
     Updated 10/2021: added option to retrieve specific surface variables
@@ -64,6 +65,7 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
     SURFACE=[],
     INVARIANT=True,
     MODE=0o775):
+
     #-- parameters for ERA5 dataset
     MODEL = 'ERA5'
     model_class = "ea"
@@ -73,8 +75,6 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
     surface_variable_dict = {}
     #-- mean sea level pressure field
     surface_variable_dict['MSL'] = 'mean_sea_level_pressure'
-    #-- output filename structure
-    output_filename = "{0}-Monthly-{1}-{2:4d}.nc"
     #-- setup output directory and recursively create if currently non-existent
     ddir = os.path.join(base_dir,MODEL)
     os.makedirs(ddir, MODE) if not os.access(ddir, os.F_OK) else None
@@ -82,13 +82,14 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
     #-- for each year
     for y in YEAR:
         #-- months to retrieve
-        months = ['{0:02d}'.format(m+1) for m in range(12)]
+        months = [f'{m+1:02d}' for m in range(12)]
         #-- monthly dates to retrieve
-        d = "/".join(['{0:4d}{1}{2:02d}'.format(y,m,1) for m in months])
+        d = "/".join([f'{y:4d}{m}{1:02d}' for m in months])
 
         #-- for each surface variable to retrieve
         for surf in SURFACE:
-            output_surface_file = output_filename.format(MODEL,surf,y)
+            #-- output filename
+            output_surface_file = f"{MODEL}-Monthly-{surf}-{y:4d}.nc"
             server.retrieve('reanalysis-era5-single-levels-monthly-means', {
                 "year": str(y),
                 'month': months,
@@ -103,7 +104,7 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
 
     #-- if retrieving the model invariant parameters
     if INVARIANT:
-        output_invariant_file = '{0}-Invariant-Parameters.nc'.format(MODEL)
+        output_invariant_file = f'{MODEL}-Invariant-Parameters.nc'
         server.retrieve('reanalysis-era5-single-levels-monthly-means', {
             "class": model_class,
             "dataset": model_dataset,

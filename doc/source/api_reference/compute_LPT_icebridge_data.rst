@@ -11,7 +11,7 @@ compute_LPT_icebridge_data.py
 .. __: https://github.com/tsutterley/Grounding-Zones/blob/main/tides/compute_LPT_icebridge_data.py
 
 .. argparse::
-    :filename: ../../tides/compute_LPT_icebridge_data.py
+    :filename: compute_LPT_icebridge_data.py
     :func: arguments
     :prog: compute_LPT_icebridge_data.py
     :nodescription:

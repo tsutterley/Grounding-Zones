@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../DEM/scp_pgc_dem_strips.py
+    :filename: scp_pgc_dem_strips.py
     :func: arguments
     :prog: scp_pgc_dem_strips.py
     :nodescription:

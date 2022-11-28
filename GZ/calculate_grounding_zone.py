@@ -106,7 +106,7 @@ grounded_reference['S'] = 'https://doi.org/10.5067/IKBWW4RYHF1Q'
 #-- PURPOSE: reading the number of file lines removing commented lines
 def file_length(input_file):
     #-- read the input file, split at lines and remove all commented lines
-    with open(input_file,'r') as f:
+    with open(input_file, mode='r', encoding='utf8') as f:
         i = [i for i in f.readlines() if re.match(r'^(?!\#|\n)',i)]
     #-- return the number of lines
     return len(i)
@@ -390,7 +390,7 @@ def calculate_grounding_zone(base_dir, input_file, output_file,
     #-- converting x,y from projection to polar stereographic
     #-- could try to extract projection attributes from netCDF4 and HDF5 files
     try:
-        crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(int(PROJECTION)))
+        crs1 = pyproj.CRS.from_epsg(int(PROJECTION))
     except (ValueError,pyproj.exceptions.CRSError):
         crs1 = pyproj.CRS.from_string(PROJECTION)
     crs2 = pyproj.CRS.from_string(epsg)

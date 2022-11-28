@@ -81,7 +81,7 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     logging.basicConfig(level=loglevel)
 
     #-- read data from input file
-    logging.info('{0} -->'.format(INPUT_FILE))
+    logging.info(f'{INPUT_FILE} -->')
     IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = read_HDF5_ATL11(INPUT_FILE,
         ATTRIBUTES=True, CROSSOVERS=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
@@ -278,7 +278,7 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
         IS2_atl11_geoid_attrs[ptx]['ref_surf']['geoid_h']['contentType'] = "referenceInformation"
         IS2_atl11_geoid_attrs[ptx]['ref_surf']['geoid_h']['long_name'] = 'Geoidal_Undulation'
         IS2_atl11_geoid_attrs[ptx]['ref_surf']['geoid_h']['description'] = ('Geoidal '
-            'undulation above the {0} ellipsoid').format(REFERENCE)
+            f'undulation above the {REFERENCE} ellipsoid')
         IS2_atl11_geoid_attrs[ptx]['ref_surf']['geoid_h']['source'] = Ylms['modelname']
         IS2_atl11_geoid_attrs[ptx]['ref_surf']['geoid_h']['earth_gravity_constant'] = GM
         IS2_atl11_geoid_attrs[ptx]['ref_surf']['geoid_h']['radius'] = R
@@ -302,7 +302,7 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
             "../ref_pt ../cycle_number ../delta_time ../latitude ../longitude"
 
     #-- print file information
-    logging.info('\t{0}'.format(OUTPUT_FILE))
+    logging.info(f'\t{OUTPUT_FILE}')
     HDF5_ATL11_geoid_write(IS2_atl11_geoid, IS2_atl11_geoid_attrs,
         CLOBBER=True, INPUT=os.path.basename(INPUT_FILE),
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
@@ -464,7 +464,7 @@ def HDF5_ATL11_geoid_write(IS2_atl11_geoid, IS2_atl11_attrs, INPUT=None,
     tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
-    fileID.attrs['time_coverage_duration'] = '{0:0.0f}'.format(tmx-tmn)
+    fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     #-- Closing the HDF5 file
     fileID.close()
 

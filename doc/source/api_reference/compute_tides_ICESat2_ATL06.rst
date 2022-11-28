@@ -12,7 +12,7 @@ compute_tides_ICESat2_ATL06.py
 .. __: https://github.com/tsutterley/Grounding-Zones/blob/main/tides/compute_tides_ICESat2_ATL06.py
 
 .. argparse::
-    :filename: ../../tides/compute_tides_ICESat2_ATL06.py
+    :filename: compute_tides_ICESat2_ATL06.py
     :func: arguments
     :prog: compute_tides_ICESat2_ATL06.py
     :nodescription:

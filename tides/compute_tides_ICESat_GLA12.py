@@ -153,7 +153,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
             compressed=GZIP).elevation(TIDE_MODEL)
 
     # get directory from INPUT_FILE
-    logger.info('{0} -->'.format(INPUT_FILE))
+    logger.info(f'{INPUT_FILE} -->')
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # flexure flag if being applied
     flexure_flag = '_FLEXURE' if APPLY_FLEXURE and model.flexure else ''
@@ -367,7 +367,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     fileID.close()
 
     # print file information
-    logger.info('\t{0}'.format(OUTPUT_FILE))
+    logger.info(f'\t{OUTPUT_FILE}')
     HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_tide_attrs,
         FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)

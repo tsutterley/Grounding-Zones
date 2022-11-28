@@ -241,7 +241,7 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
         proj4_params = 'epsg:4326'
 
     #-- read data from input_file
-    logging.info('{0} -->'.format(os.path.basename(FILE)))
+    logging.info(f'{FILE} -->')
     IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = read_HDF5_ATL07(FILE,
         ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
@@ -521,7 +521,7 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
     file_format = '{0}-{1}_{2}_IB_{3}{4}{5}{6}{7}{8}_{9}{10}{11}_{12}_{13}{14}.h5'
     output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
     #-- print file information
-    logging.info('\t{0}'.format(output_file))
+    logging.info(f'\t{output_file}')
     HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_corr_attrs,
         CLOBBER=True, INPUT=os.path.basename(FILE),
         FILL_VALUE=IS2_atl07_fill, DIMENSIONS=IS2_atl07_dims,
@@ -695,7 +695,7 @@ def HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_attrs, INPUT=None,
     tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
-    fileID.attrs['time_coverage_duration'] = '{0:0.0f}'.format(tmx-tmn)
+    fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     #-- Closing the HDF5 file
     fileID.close()
 

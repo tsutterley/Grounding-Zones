@@ -71,10 +71,10 @@ warnings.filterwarnings("ignore")
 def info(args):
     logging.info(os.path.basename(sys.argv[0]))
     logging.info(args)
-    logging.info('module name: {0}'.format(__name__))
+    logging.info(f'module name: {__name__}')
     if hasattr(os, 'getppid'):
-        logging.info('parent process: {0:d}'.format(os.getppid()))
-    logging.info('process id: {0:d}'.format(os.getpid()))
+        logging.info(f'parent process: {os.getppid():d}')
+    logging.info(f'process id: {os.getpid():d}')
 
 # PURPOSE: get number of currently pending or running tasks
 def current_tasks():
@@ -147,17 +147,18 @@ def gee_pgc_strip_sync(model, version, resolution,
         #-- verify that start and end time are in ISO format
         start_time = dateutil.parser.parse(TIME[0]).isoformat()
         end_time = dateutil.parser.parse(TIME[1]).isoformat()
-        logging.info('Start Time: {0}'.format(start_time))
-        logging.info('End Time: {0}'.format(end_time))
+        logging.info(f'Start Time: {start_time}')
+        logging.info(f'End Time: {end_time}')
         collection = collection.filterDate(start_time, end_time)
     # reduce image collection to spatial bounding box
     if BOUNDS is not None:
-        logging.info('Bounding Box: {0}'.format(','.join(map(str,BOUNDS))))
+        BBOX = ','.join(map(str,BOUNDS))
+        logging.info(f'Bounding Box: {BBOX}')
         collection = collection.filterBounds(ee.Geometry.BBox(*BOUNDS))
     # reduce image collection to spatial geometry
     if POLYGON is not None:
         # read georeferenced file
-        logging.info('Georeferenced File: {0}'.format(POLYGON))
+        logging.info(f'Georeferenced File: {POLYGON}')
         shape = fiona.open(os.path.expanduser(POLYGON))
         # convert input polygons into a list of geometries
         polys = [ee.Geometry(rec['geometry'], shape.crs['init'])
@@ -170,7 +171,7 @@ def gee_pgc_strip_sync(model, version, resolution,
     # create list from filtered image collection
     collection_list = collection.toList(n_images)
     # track the number of images to process
-    logging.info('Number of Images: {0:d}'.format(n_images))
+    logging.info(f'Number of Images: {n_images:d}')
 
     # for each image in the list
     for i in range(START,n_images):

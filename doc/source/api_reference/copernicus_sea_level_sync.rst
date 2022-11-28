@@ -9,7 +9,7 @@ copernicus_sea_level_sync.py
 .. __: https://github.com/tsutterley/Grounding-Zones/blob/main/SL/copernicus_sea_level_sync.py
 
 .. argparse::
-    :filename: ../../SL/copernicus_sea_level_sync.py
+    :filename: copernicus_sea_level_sync.py
     :func: arguments
     :prog: copernicus_sea_level_sync.py
     :nodescription:

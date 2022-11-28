@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../scripts/symbolic_icebridge_files.py
+    :filename: symbolic_icebridge_files.py
     :func: arguments
     :prog: symbolic_icebridge_files.py
     :nodescription:

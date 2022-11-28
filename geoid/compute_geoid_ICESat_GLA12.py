@@ -82,7 +82,7 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     logging.basicConfig(level=loglevel)
 
     #-- get directory from INPUT_FILE
-    logging.info('{0} -->'.format(INPUT_FILE))
+    logging.info(f'{INPUT_FILE} -->')
     DIRECTORY = os.path.dirname(INPUT_FILE)
 
     #-- read gravity model Ylms and change tide to tide free
@@ -251,7 +251,7 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['units'] = "meters"
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['long_name'] = 'Geoidal_Undulation'
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['description'] = ('Geoidal '
-        'undulation above the {0} ellipsoid').format(REFERENCE)
+        f'undulation above the {REFERENCE} ellipsoid')
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['tide_system'] = Ylms['tide_system']
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['source'] = Ylms['modelname']
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['earth_gravity_constant'] = GM
@@ -277,7 +277,7 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     fileID.close()
 
     #-- print file information
-    logging.info('\t{0}'.format(OUTPUT_FILE))
+    logging.info(f'\t{OUTPUT_FILE}')
     HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_geoid_attrs,
         FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)

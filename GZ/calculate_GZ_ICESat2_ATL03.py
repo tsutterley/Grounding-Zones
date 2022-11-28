@@ -352,7 +352,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
     DEM_MODEL = dict(N='ArcticDEM', S='REMA')
 
     #-- file format for auxiliary files
-    file_format='{0}_{1}_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
+    file_format = '{0}_{1}_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
     #-- grounding zone mask file
     args = (PRD,'GROUNDING_ZONE_MASK',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
     #-- extract mask values for mask flags to create grounding zone mask
@@ -367,7 +367,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
     #-- grounded ice line string to determine if segment crosses coastline
     mpoly_obj,input_file,epsg = read_grounded_ice(base_dir, HEM)
     #-- projections for converting lat/lon to polar stereographic
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(epsg)
     #-- transformer object for converting projections
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)

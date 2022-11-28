@@ -112,8 +112,8 @@ def interpolate_tide_adjustment(tile_file,
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413,S=3031)[HEM]
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs1 = pyproj.CRS.from_epsg(4326)
+    crs2 = pyproj.CRS.from_epsg(EPSG)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     # dictionary of coordinate reference system variables
     cs_to_cf = crs2.cs_to_cf()
@@ -132,7 +132,7 @@ def interpolate_tide_adjustment(tile_file,
         if not os.access(os.path.join(tile_directory,tile), os.F_OK):
             continue
         # read the HDF5 file
-        logging.info('Reading Buffer File: {0}'.format(tile))
+        logging.info(f'Reading Buffer File: {tile}')
         f1 = multiprocess_h5py(os.path.join(tile_directory,tile),'r')
         # find ATL11 files within tile
         ATL11_files = [f for f in f1.keys() if R2.match(f)]
@@ -145,7 +145,7 @@ def interpolate_tide_adjustment(tile_file,
         # close the tile file
         f1.close()
     # log total number of points
-    logging.info('Total Points: {0:d}'.format(npts))
+    logging.info(f'Total Points: {npts:d}')
 
     # allocate for combined variables
     d = {}
@@ -169,7 +169,7 @@ def interpolate_tide_adjustment(tile_file,
         if not os.access(os.path.join(tile_directory,tile), os.F_OK):
             continue
         # read the HDF5 file
-        logging.info('Reading Buffer File: {0}'.format(tile))
+        logging.info(f'Reading Buffer File: {tile}')
         f1 = multiprocess_h5py(os.path.join(tile_directory,tile),'r')
         # find ATL11 files within tile
         ATL11_files = [f for f in f1.keys() if R2.match(f)]
@@ -237,7 +237,7 @@ def interpolate_tide_adjustment(tile_file,
     # combining ref_pt, rgt and pair
     global_ref_pt = 3*1387*d['ref_pt'] + 3*(d['rgt']-1) + (d['pair']-1)
     _, indices = np.unique(global_ref_pt, return_index=True)
-    logging.info('Unique Points: {0:d}'.format(len(indices)))
+    logging.info(f'Unique Points: {len(indices):d}')
     # reduce to unique indices
     for key,val in d.items():
         d[key] = val[indices]
@@ -253,7 +253,7 @@ def interpolate_tide_adjustment(tile_file,
     output['y'] = np.arange(ymin+dx/2.0,ymax+dy,dy)
     output['tide_adj_scale'] = np.zeros((ny,nx))
     output['weight'] = np.zeros((ny,nx))
-    logging.info('Grid Dimensions {0:d} {1:d}'.format(ny,nx))
+    logging.info(f'Grid Dimensions {ny:d} {nx:d}')
     # attributes for each output item
     attributes = dict(x={},y={},tide_adj_scale={},weight={})
     fill_value = {}
@@ -403,7 +403,7 @@ def interpolate_tide_adjustment(tile_file,
     h5 = {}
     for key,val in output.items():
         # create or overwrite HDF5 variables
-        logging.info('{0}/{1}'.format(group,key))
+        logging.info(f'{group}/{key}')
         if key not in fileID[group]:
             # create HDF5 variables
             if fill_value[key]:

@@ -62,6 +62,7 @@ import uuid
 import netrc
 import tarfile
 import getpass
+import logging
 import builtins
 import argparse
 import warnings
@@ -81,22 +82,24 @@ warnings.filterwarnings("ignore")
 def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
 
     #-- remote https server
-    REMOTE = ['https://n5eil01u.ecs.nsidc.org','MEASURES',
-        'NSIDC-0645.{0:03.0f}'.format(VERSION),'2003.02.20']
+    remote_dir = posixpath.join('https://n5eil01u.ecs.nsidc.org',
+        'MEASURES',f'NSIDC-0645.{VERSION:03.0f}','2003.02.20')
     #-- regex pattern to find files and extract tile coordinates
-    rx = re.compile('gimpdem(\d+_\d+)_v{0:04.1f}.tif$'.format(VERSION))
+    rx = re.compile(rf'gimpdem(\d+_\d+)_v{VERSION:04.1f}.tif$')
+    #-- image resolution
+    res = '30m'
 
     #-- compile HTML parser for lxml
     parser = lxml.etree.HTMLParser()
 
     #-- read and parse request for remote files (columns and dates)
     colnames,collastmod,_ = grounding_zones.utilities.nsidc_list(
-        REMOTE, build=False, parser=parser, pattern=rx,sort=True)
+        remote_dir, build=False, parser=parser, pattern=rx,sort=True)
 
     #-- read each GIMP DEM file
     for colname,remote_mtime in zip(colnames,collastmod):
         #-- print input file to track progress
-        print(colname)
+        logging.info(colname)
         #-- extract tile number
         tile, = rx.findall(colname)
         #-- recursively create directories if not currently available
@@ -109,7 +112,8 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         CHUNK = 16 * 1024
         #-- copy contents to BytesIO object using chunked transfer encoding
         #-- transfer should work properly with ascii and binary data formats
-        fileID,_ = grounding_zones.utilities.from_nsidc(REMOTE + [colname],
+        fileID,_ = grounding_zones.utilities.from_nsidc(
+            posixpath.join(remote_dir, colname),
             build=False, chunk=CHUNK)
         #-- rewind retrieved binary to start of file
         fileID.seek(0)
@@ -118,14 +122,14 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         FILE = colname.replace('.tif','.tar.gz')
         tar = tarfile.open(name=os.path.join(d,FILE),mode='w:gz')
         #-- add directory
-        subdir = '{0}_{1}'.format(tile,'30m')
+        subdir = f'{tile}_{res}'
         info1 = tarfile.TarInfo(name=subdir)
         info1.type = tarfile.DIRTYPE
         info1.mtime = remote_mtime
         info1.mode = MODE
         tar.addfile(tarinfo=info1)
         #-- add in memory file to tar
-        output = '{0}_{1}_dem.tif'.format(tile,'30m')
+        output = f'{tile}_{res}_dem.tif'
         info2 = tarfile.TarInfo(name=posixpath.join(subdir,output))
         info2.size = fileID.getbuffer().nbytes
         info2.mtime = remote_mtime
@@ -141,7 +145,7 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         #-- rewind retrieved binary to start of file
         fileID.seek(0)
         #-- use GDAL memory-mapped file to read dem
-        mmap_name = "/vsimem/{0}".format(uuid.uuid4().hex)
+        mmap_name = f"/vsimem/{uuid.uuid4().hex}"
         osgeo.gdal.FileFromMemBuffer(mmap_name, fileID.read())
         dataset = osgeo.gdal.Open(mmap_name)
 
@@ -174,7 +178,7 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         #-- use GDAL memory-mapped file
         mmap = {}
         for key in ('dbf','prj','shp','shx'):
-            mmap[key] = "/vsimem/{0}_{1}_index.{2}".format(tile,'30m',key)
+            mmap[key] = f"/vsimem/{tile}_{res}_index.{key}"
         #-- create memory-mapped shapefile
         ds = driver.CreateDataSource(mmap['shp'])
         #-- set the spatial reference info
@@ -199,7 +203,7 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         #-- Create a new feature (attribute and geometry)
         feature = osgeo.ogr.Feature(defn)
         #-- Add shapefile attributes
-        feature.SetField('DEM_ID', '{0}_{1}'.format(tile,'30m'))
+        feature.SetField('DEM_ID', f'{tile}_{res}')
         feature.SetField('DEM_NAME', colname)
         feature.SetField('TILE', tile)
         feature.SetField('ND_VALUE', fill_value)
@@ -228,7 +232,7 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
 
         #-- add in memory shapefile to tar
         for key in ('dbf','prj','shp','shx'):
-            output = '{0}_{1}_index.{2}'.format(tile,'30m',key)
+            output = f'{tile}_{res}_index.{key}'
             info4 = tarfile.TarInfo(name=posixpath.join(subdir,'index',output))
             info4.size = osgeo.gdal.VSIStatL(mmap[key]).size
             info4.mtime = remote_mtime
@@ -276,6 +280,10 @@ def arguments():
     parser.add_argument('--version','-v',
         type=float, default=1.1,
         help='GIMP Data Version')
+    #-- print information about processing run
+    parser.add_argument('--verbose','-V',
+        action='count', default=0,
+        help='Verbose output of processing run')
     #-- permissions mode of the local directories and files (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
@@ -289,19 +297,23 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
+    #-- create logger
+    loglevels = [logging.CRITICAL, logging.INFO, logging.DEBUG]
+    logging.basicConfig(level=loglevels[args.verbose])
+
     #-- NASA Earthdata hostname
     HOST = 'urs.earthdata.nasa.gov'
     #-- get authentication
     if not args.user and not os.access(args.netrc,os.F_OK):
         #-- check that NASA Earthdata credentials were entered
-        args.user=builtins.input('Username for {0}: '.format(HOST))
+        args.user = builtins.input(f'Username for {HOST}: ')
         #-- enter password securely from command-line
-        args.password=getpass.getpass('Password for {0}@{1}: '.format(args.user,HOST))
-    elif not args.user and os.access(args.netrc,os.F_OK):
-        args.user,_,args.password=netrc.netrc(args.netrc).authenticators(HOST)
+        args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
+    elif os.access(args.netrc, os.F_OK):
+        args.user,_,args.password = netrc.netrc(args.netrc).authenticators(HOST)
     elif args.user and not args.password:
         #-- enter password securely from command-line
-        args.password=getpass.getpass('Password for {0}@{1}: '.format(args.user,HOST))
+        args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
 
     #-- build a urllib opener for NSIDC
     #-- Add the username and password for NASA Earthdata Login system

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 aviso_dac_sync.py
-Written by Tyler Sutterley (02/2022)
+Written by Tyler Sutterley (11/2022)
 
 Syncs the dynamic atmospheric correction (DAC) from AVISO
     https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/
@@ -26,6 +26,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the directories and files synced
 
 UPDATE HISTORY:
+    Updated 11/2022: use f-strings for formatting verbose or ascii output
     Updated 02/2022: using argparse to set command line parameters
         use logging for verbose and log output
     Updated 05/2019: new authenticated ftp host (changed 2018-05-31)
@@ -64,18 +65,18 @@ def aviso_dac_sync(DIRECTORY,
     if LOG:
         # format: AVISO_DAC_sync_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
-        LOGFILE = 'AVISO_DAC_sync_{0}.log'.format(today)
+        LOGFILE = f'AVISO_DAC_sync_{today}.log'
         logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
             level=logging.INFO)
-        logging.info('ICESat-2 Data Sync Log ({0})'.format(today))
+        logging.info(f'AVISO DAC Sync Log ({today})')
 
     else:
         # standard output (terminal output)
         logging.basicConfig(level=logging.INFO)
 
     # compile regular expression operator for years to sync
-    regex_years = r'|'.join('{0:d}'.format(y) for y in YEAR) if YEAR else r'\d+'
-    R1 = re.compile(r'({0})'.format(regex_years), re.VERBOSE)
+    regex_years = r'|'.join(rf'{y:d}' for y in YEAR) if YEAR else r'\d+'
+    R1 = re.compile(rf'({regex_years})', re.VERBOSE)
     # compile regular expression pattern for finding files
     R2 = re.compile(r'dac_dif_(\d+)_(\d+).nc.bz2$', re.VERBOSE)
 
@@ -128,15 +129,16 @@ def ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
     # if file does not exist locally, is to be overwritten, or CLOBBER is set
     if TEST or CLOBBER:
         # Printing files transferred
-        arg=(posixpath.join('ftp://',*remote_path),local_file,OVERWRITE)
-        logging.info('{0} -->\n\t{1}{2}\n'.format(*arg))
+        remote_ftp_url = posixpath.join('ftp://',*remote_path)
+        logging.info(f'{remote_ftp_url} -->')
+        logging.info(f'\t{local_file}{OVERWRITE}\n')
         # if executing copy command (not only printing the files)
         if not LIST:
             # path to remote file
             remote_file = posixpath.join(*remote_path[1:])
             # copy remote file contents to local file
             with open(local_file, 'wb') as f:
-                ftp.retrbinary('RETR {0}'.format(remote_file), f.write)
+                ftp.retrbinary(f'RETR {remote_file}', f.write)
             # keep remote modification time of file and local access time
             os.utime(local_file, (os.stat(local_file).st_atime, remote_mtime))
             os.chmod(local_file, MODE)
@@ -203,18 +205,19 @@ def main():
     # get authentication
     if not args.user and not os.access(args.netrc,os.F_OK):
         # check that AVISO credentials were entered
-        args.user=builtins.input('Username for {0}: '.format(HOST))
+        args.user = builtins.input(f'Username for {HOST}: ')
         # enter password securely from command-line
-        args.password=getpass.getpass('Password for {0}@{1}: '.format(args.user,HOST))
+        args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
     elif os.access(args.netrc, os.F_OK):
-        args.user,_,args.password=netrc.netrc(args.netrc).authenticators(HOST)
+        args.user,_,args.password = netrc.netrc(args.netrc).authenticators(HOST)
     elif args.user and not args.password:
         # enter password securely from command-line
-        args.password=getpass.getpass('Password for {0}@{1}: '.format(args.user,HOST))
+        args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
 
     # check AVISO credentials before attempting to run program
     if grounding_zones.utilities.check_ftp_connection(HOST,
-            username=args.user,password=args.password):
+            username=args.user, password=args.password):
+        # run AVISO sync program
         aviso_dac_sync(args.directory,
             USER=args.user,
             PASSWORD=args.password,

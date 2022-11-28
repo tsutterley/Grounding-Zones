@@ -103,6 +103,7 @@ import re
 import uuid
 import pyproj
 import tarfile
+import logging
 import argparse
 import warnings
 import numpy as np
@@ -151,11 +152,11 @@ elevation_tile_index['REMA'] = 'REMA_Mosaic_Index_v2_shp.zip'
 
 #-- PURPOSE: keep track of MPI threads
 def info(rank, size):
-    print('Rank {0:d} of {1:d}'.format(rank+1,size))
-    print('module name: {0}'.format(__name__))
+    logging.info(f'Rank {rank+1:d} of {size:d}')
+    logging.info(f'module name: {__name__}')
     if hasattr(os, 'getppid'):
-        print('parent process: {0:d}'.format(os.getppid()))
-    print('process id: {0:d}'.format(os.getpid()))
+        logging.info(f'parent process: {os.getppid():d}')
+    logging.info(f'process id: {os.getpid():d}')
 
 #-- PURPOSE: create argument parser
 def arguments():
@@ -220,7 +221,7 @@ def arguments():
 #-- PURPOSE: read zip file containing index shapefiles for finding DEM tiles
 def read_DEM_index(index_file, DEM_MODEL):
     #-- read the compressed shapefile and extract entities
-    shape = fiona.open('zip://{0}'.format(os.path.expanduser(index_file)))
+    shape = fiona.open(f'zip://{os.path.expanduser(index_file)}')
     epsg = shape.crs['init']
     #-- extract attribute indice for DEM tile (REMA,GIMP) or name (ArcticDEM)
     if (DEM_MODEL == 'REMA'):
@@ -321,7 +322,7 @@ def read_DEM_file(elevation_file):
     #-- find dem geotiff file within tar file
     member, = [m for m in tar.getmembers() if re.search(r'dem\.tif',m.name)]
     #-- use GDAL virtual file systems to read dem
-    mmap_name = "/vsitar/{0}/{1}".format(elevation_file,member.name)
+    mmap_name = f"/vsitar/{elevation_file}/{member.name}"
     ds = osgeo.gdal.Open(mmap_name)
     #-- read data matrix
     im = ds.GetRasterBand(1).ReadAsArray()
@@ -361,7 +362,7 @@ def read_DEM_buffer(elevation_file, xlimits, ylimits):
     #-- find dem geotiff file within tar file
     member, = [m for m in tar.getmembers() if re.search(r'dem\.tif',m.name)]
     #-- use GDAL virtual file systems to read dem
-    mmap_name = "/vsitar/{0}/{1}".format(elevation_file,member.name)
+    mmap_name = f"/vsitar/{elevation_file}/{member.name}"
     ds = osgeo.gdal.Open(mmap_name)
     #-- get geotiff info
     info_geotiff = ds.GetGeoTransform()
@@ -411,6 +412,10 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
+    #-- create logger
+    loglevel = logging.INFO if args.verbose else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
+
     #-- set output file from input filename if not entered
     if not args.outfile:
         fileBasename,fileExtension = os.path.splitext(args.infile)
@@ -454,7 +459,7 @@ def main():
     #-- converting x,y from input projection to projection of DEM
     #-- could try to extract projection attributes from netCDF4 and HDF5 files
     try:
-        crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(int(args.projection)))
+        crs1 = pyproj.CRS.from_epsg(int(args.projection))
     except (ValueError,pyproj.exceptions.CRSError):
         crs1 = pyproj.CRS.from_string(args.projections)
     crs2 = pyproj.CRS.from_string(tile_epsg)
@@ -551,10 +556,10 @@ def main():
     #-- read and interpolate DEM to coordinates in parallel
     for t in range(comm.Get_rank(), len(valid_tiles), comm.Get_size()):
         key = valid_tiles[t]
-        sub = tile_attrs[key]['tile']
-        name = tile_attrs[key]['name']
+        sub = tile_attrs[key]["tile"]
+        name = tile_attrs[key]["name"]
         #-- read central DEM file (geotiff within gzipped tar file)
-        tar = '{0}.tar.gz'.format(name)
+        tar = f'{name}.tar.gz'
         elevation_file = os.path.join(elevation_directory,sub,tar)
         DEM,MASK,FV,xi,yi = read_DEM_file(elevation_file)
         #-- buffer DEM using values from adjacent tiles
@@ -589,12 +594,12 @@ def main():
             ytiles = [IMy-1,IMy,IMy+1,IMy-1,IMy+1,IMy-1,IMy,IMy+1] #-- BMTBTBMT
             for xtl,ytl,xlim,ylim in zip(xtiles,ytiles,xlimits,ylimits):
                 #-- read DEM file (geotiff within gzipped tar file)
-                bkey = '{0:02d}_{1:02d}'.format(ytl,xtl)
+                bkey = f'{ytl:02d}_{xtl:02d}'
                 #-- if buffer file is a valid tile within the DEM
                 #-- if file doesn't exist: will be all fill value with all mask
                 if bkey in tile_attrs.keys():
                     bsub = tile_attrs[bkey]['tile']
-                    btar = '{0}.tar.gz'.format(tile_attrs[bkey]['name'])
+                    btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
                     buffer_file = os.path.join(elevation_directory,bkey,btar)
                     if os.access(buffer_file, os.F_OK):
                         DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)
@@ -614,12 +619,12 @@ def main():
             ytiles = [IMy-1,IMy,IMy+1,IMy-1,IMy+1,IMy-1,IMy,IMy+1] #-- BMTBTBMT
             for xtl,ytl,xlim,ylim in zip(xtiles,ytiles,xlimits,ylimits):
                 #-- read DEM file (geotiff within gzipped tar file)
-                bkey = '{0:d}_{1:d}'.format(xtl,ytl)
+                bkey = f'{xtl:d}_{ytl:d}'
                 #-- if buffer file is a valid tile within the DEM
                 #-- if file doesn't exist: will be all fill value with all mask
                 if bkey in tile_attrs.keys():
                     bsub = tile_attrs[bkey]['tile']
-                    btar = '{0}.tar.gz'.format(tile_attrs[bkey]['name'])
+                    btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
                     buffer_file = os.path.join(elevation_directory,bkey,btar)
                     if os.access(buffer_file, os.F_OK):
                         DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)
@@ -652,12 +657,12 @@ def main():
             for xtl,ytl,xs,ys,xlim,ylim in zip(*kwargs):
                 #-- read DEM file (geotiff within gzipped tar file)
                 bargs = (ytl,xtl,xs,ys,res,vers)
-                bkey = '{0:02d}_{1:02d}_{2}_{3}'.format(*bargs)
+                bkey = f'{ytl:02d}_{xtl:02d}_{xs}_{ys}'
                 #-- if buffer file is a valid sub-tile within the DEM
                 #-- if file doesn't exist: all fill value with all mask
                 if bkey in tile_attrs.keys():
-                    bsub = tile_attrs[bkey]['tile']
-                    btar = '{0}.tar.gz'.format(tile_attrs[bkey]['name'])
+                    bsub = tile_attrs[bkey]["tile"]
+                    btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
                     buffer_file = os.path.join(elevation_directory,bsub,btar)
                     if os.access(buffer_file, os.F_OK):
                         DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)

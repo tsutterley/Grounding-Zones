@@ -108,7 +108,7 @@ def symbolic_ICESat_GLA12(base_dir, incoming, MODE=0o775):
         #-- get the date information from the input file
         year,month,day = parse_GLA12_HDF5_file(os.path.join(incoming,f))
         #-- put symlinks in directories similar to NSIDC
-        sd = '{0:4d}.{1:02d}.{2:02d}'.format(year,month,day)
+        sd = '{year:4d}.{month:02d}.{day:02d}'.format(year,month,day)
         local_dir = os.path.join(base_dir,sd)
         os.makedirs(local_dir,MODE) if not os.path.exists(local_dir) else None
         #-- attempt to create the symbolic link else continue

@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../tides/interpolate_tide_adjustment.py
+    :filename: interpolate_tide_adjustment.py
     :func: arguments
     :prog: interpolate_tide_adjustment.py
     :nodescription:

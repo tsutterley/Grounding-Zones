@@ -111,11 +111,11 @@ warnings.filterwarnings("ignore")
 
 #-- PURPOSE: keep track of MPI threads
 def info(rank, size):
-    logging.info('Rank {0:d} of {1:d}'.format(rank+1,size))
-    logging.info('module name: {0}'.format(__name__))
+    logging.info(f'Rank {rank+1:d} of {size:d}')
+    logging.info(f'module name: {__name__}')
     if hasattr(os, 'getppid'):
-        logging.info('parent process: {0:d}'.format(os.getppid()))
-    logging.info('process id: {0:d}'.format(os.getpid()))
+        logging.info(f'parent process: {os.getppid():d}')
+    logging.info(f'process id: {os.getpid():d}')
 
 #-- PURPOSE: create argument parser
 def arguments():
@@ -162,7 +162,7 @@ def file_length(input_file,input_subsetter,HDF5=False,QFIT=False):
         file_lines = ATM1b_QFIT.ATM1b_QFIT_shape(input_file)
     else:
         #-- read the input file, split at lines and remove all commented lines
-        with open(input_file,'r') as f:
+        with open(input_file, mode='r', encoding='utf8') as f:
             i = [i for i in f.readlines() if re.match(r'^(?!\#|\n)',i)]
         file_lines = len(i)
     #-- return the number of lines
@@ -172,13 +172,13 @@ def file_length(input_file,input_subsetter,HDF5=False,QFIT=False):
 def read_ATM_qfit_file(input_file, input_subsetter):
     #-- regular expression pattern for extracting parameters
     mission_flag = r'(BLATM1B|ILATM1B|ILNSA1B)'
-    regex_pattern = r'{0}_(\d+)_(\d+)(.*?).(qi|TXT|h5)'.format(mission_flag)
+    regex_pattern = rf'{mission_flag}_(\d+)_(\d+)(.*?).(qi|TXT|h5)'
     #-- extract mission and other parameters from filename
     MISSION,YYMMDD,HHMMSS,AUX,SFX = re.findall(regex_pattern,input_file).pop()
     #-- early date strings omitted century and millenia (e.g. 93 for 1993)
     if (len(YYMMDD) == 6):
-        ypre,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
-        year = (ypre + 1900.0) if (ypre >= 90) else (ypre + 2000.0)
+        yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
+        year = (yr2d + 1900.0) if (yr2d >= 90) else (yr2d + 2000.0)
     elif (len(YYMMDD) == 8):
         year,month,day = np.array([YYMMDD[:4],YYMMDD[4:6],YYMMDD[6:]],dtype='i')
     #-- output python dictionary with variables
@@ -230,7 +230,7 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         #-- for each line within the file
         for i,packed_time in enumerate(time_hhmmss):
             #-- convert to zero-padded string with 3 decimal points
-            line_contents = '{0:010.3f}'.format(packed_time)
+            line_contents = f'{packed_time:010.3f}'
             hour[i] = np.float64(line_contents[:2])
             minute[i] = np.float64(line_contents[2:4])
             second[i] = np.float64(line_contents[4:])
@@ -252,7 +252,7 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         #-- for each line within the file
         for i,packed_time in enumerate(time_hhmmss):
             #-- convert to zero-padded string with 3 decimal points
-            line_contents = '{0:010.3f}'.format(packed_time)
+            line_contents = f'{packed_time:010.3f}'
             hour[i] = np.float64(line_contents[:2])
             minute[i] = np.float64(line_contents[2:4])
             second[i] = np.float64(line_contents[4:])
@@ -285,8 +285,8 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     MISSION,YYMMDD,HHMMSS,AUX,SFX = re.findall(regex_pattern,input_file).pop()
     #-- early date strings omitted century and millenia (e.g. 93 for 1993)
     if (len(YYMMDD) == 6):
-        ypre,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
-        year = (ypre + 1900.0) if (ypre >= 90) else (ypre + 2000.0)
+        yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
+        year = (yr2d + 1900.0) if (yr2d >= 90) else (yr2d + 2000.0)
     elif (len(YYMMDD) == 8):
         year,month,day = np.array([YYMMDD[:4],YYMMDD[4:6],YYMMDD[6:]],dtype='i')
     #-- input file column names for variables of interest with column indices
@@ -296,7 +296,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     regex_pattern = r'[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[Ee][+-]?\d+)?'
     rx = re.compile(regex_pattern, re.VERBOSE)
     #-- read the input file, split at lines and remove all commented lines
-    with open(input_file,'r') as f:
+    with open(input_file, mode='r', encoding='utf8') as f:
         file_contents=[i for i in f.readlines() if re.match(r'^(?!\#|\n)',i)]
     #-- number of lines of data within file
     file_lines = file_length(input_file,input_subsetter)
@@ -348,7 +348,7 @@ def read_LVIS_HDF5_file(input_file, input_subsetter):
     #-- regular expression pattern for extracting parameters from HDF5 files
     #-- computed in read_icebridge_lvis.py
     mission_flag = r'(BLVIS2|BVLIS2|ILVIS2|ILVGH2)'
-    regex_pattern = r'{0}_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5'.format(mission_flag)
+    regex_pattern = rf'{mission_flag}_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5'
     #-- extract mission, region and other parameters from filename
     MISSION,REGION,YY,MMDD,RLD,SS = re.findall(regex_pattern,input_file).pop()
     LDS_VERSION = '2.0.2' if (np.int64(RLD[1:3]) >= 18) else '1.04'
@@ -533,7 +533,7 @@ def main():
     #-- if there are no data points in the input file (primary)
     if (n_1 == 0):
         file1 = os.path.basename(input_files[0])
-        raise ValueError('No data points found in {0}'.format(file1))
+        raise ValueError(f'No data points found in {file1}')
 
     #-- extract information from second set of input files
     #-- acquisition year, month and day
@@ -567,7 +567,7 @@ def main():
     #-- end program with error for set of input files
     if (n_2 == 0):
         file2 = ','.join([os.path.basename(f) for f in input_files[1:]])
-        raise ValueError('No data points found in {0}'.format(file2))
+        raise ValueError(f'No data points found in {file2}')
 
     #-- read all input data on rank 0 (parent process)
     if (comm.rank == 0):
@@ -606,12 +606,12 @@ def main():
         #-- check that hemispheres are matching for both files
         #-- if not: exist with error for input files
         if (HEM != HEM2):
-            raise RuntimeError('Hemisphere Mismatch ({0} {1})'.format(HEM,HEM2))
+            raise RuntimeError(f'Hemisphere Mismatch ({HEM} {HEM2})')
 
         #-- pyproj transformer for converting lat/lon to polar stereographic
         EPSG = dict(N=3413,S=3031)
-        crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-        crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG[HEM]))
+        crs1 = pyproj.CRS.from_epsg(4326)
+        crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
         transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
         #-- convert from latitude/longitude to polar stereographic coordinates
         X1,Y1 = transformer.transform(dinput1['lon'], dinput1['lat'])
@@ -1194,7 +1194,7 @@ def HDF5_triangulated_data(output_data, MISSION=None, INPUT=None, FILENAME='',
     args = (cal_date['year'][-1],cal_date['month'][-1],cal_date['day'][-1])
     fileID.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
     duration = np.round(time_end - time_start).astype(np.int64)
-    fileID.attrs['DurationTimeSeconds'] = '{0:d}'.format(duration)
+    fileID.attrs['DurationTimeSeconds'] = f'{duration:d}'
 
     #-- Closing the HDF5 file
     fileID.close()

@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../scripts/MPI_triangulate_elevation.py
+    :filename: MPI_triangulate_elevation.py
     :func: arguments
     :prog: MPI_triangulate_elevation.py
     :nodescription:

@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../geoid/compute_geoid_ICESat_GLA12.py
+    :filename: compute_geoid_ICESat_GLA12.py
     :func: arguments
     :prog: compute_geoid_ICESat_GLA12.py
     :nodescription:

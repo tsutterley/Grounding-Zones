@@ -14,7 +14,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../GZ/calculate_GZ_ICESat2_ATL11.py
+    :filename: calculate_GZ_ICESat2_ATL11.py
     :func: arguments
     :prog: calculate_GZ_ICESat2_ATL11.py
     :nodescription:

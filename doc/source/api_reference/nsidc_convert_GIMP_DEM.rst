@@ -13,7 +13,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../DEM/nsidc_convert_GIMP_DEM.py
+    :filename: nsidc_convert_GIMP_DEM.py
     :func: arguments
     :prog: nsidc_convert_GIMP_DEM.py
     :nodescription:
