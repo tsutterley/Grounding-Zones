@@ -51,44 +51,44 @@ import os
 import time
 import argparse
 import warnings
-#-- attempt imports
+# attempt imports
 try:
     import cdsapi
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("cdsapi not available")
-#-- ignore warnings
+# ignore warnings
 warnings.filterwarnings("ignore")
 
-#-- PURPOSE: retrieve ERA5 surface data for a set of years from CDS server
+# PURPOSE: retrieve ERA5 surface data for a set of years from CDS server
 def cds_mslp_retrieve(base_dir, server, YEAR,
     SURFACE=[],
     INVARIANT=True,
     MODE=0o775):
 
-    #-- parameters for ERA5 dataset
+    # parameters for ERA5 dataset
     MODEL = 'ERA5'
     model_class = "ea"
     model_dataset = "era5"
     model_grid = "0.25/0.25"
-    #-- surface variables
+    # surface variables
     surface_variable_dict = {}
-    #-- mean sea level pressure field
+    # mean sea level pressure field
     surface_variable_dict['MSL'] = 'mean_sea_level_pressure'
-    #-- setup output directory and recursively create if currently non-existent
+    # setup output directory and recursively create if currently non-existent
     ddir = os.path.join(base_dir,MODEL)
     os.makedirs(ddir, MODE) if not os.access(ddir, os.F_OK) else None
 
-    #-- for each year
+    # for each year
     for y in YEAR:
-        #-- months to retrieve
+        # months to retrieve
         months = [f'{m+1:02d}' for m in range(12)]
-        #-- monthly dates to retrieve
+        # monthly dates to retrieve
         d = "/".join([f'{y:4d}{m}{1:02d}' for m in months])
 
-        #-- for each surface variable to retrieve
+        # for each surface variable to retrieve
         for surf in SURFACE:
-            #-- output filename
+            # output filename
             output_surface_file = f"{MODEL}-Monthly-{surf}-{y:4d}.nc"
             server.retrieve('reanalysis-era5-single-levels-monthly-means', {
                 "year": str(y),
@@ -99,10 +99,10 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
                 "format" : "netcdf",
                 'product_type': 'monthly_averaged_reanalysis',
             }, os.path.join(ddir,output_surface_file))
-            #-- change the permissions mode to MODE
+            # change the permissions mode to MODE
             os.chmod(os.path.join(ddir,output_surface_file), MODE)
 
-    #-- if retrieving the model invariant parameters
+    # if retrieving the model invariant parameters
     if INVARIANT:
         output_invariant_file = f'{MODEL}-Invariant-Parameters.nc'
         server.retrieve('reanalysis-era5-single-levels-monthly-means', {
@@ -125,72 +125,72 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
             'product_type': 'monthly_averaged_reanalysis',
             "format" : "netcdf",
         }, os.path.join(ddir,output_invariant_file))
-        #-- change the permissions mode to MODE
+        # change the permissions mode to MODE
         os.chmod(os.path.join(ddir,output_invariant_file), MODE)
 
-#-- PURPOSE: create argument parser
+# PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
         description="""Retrieves ERA5 mean sea level pressure
             reanalysis datasets from the CDS Web API
             """
     )
-    #-- command line parameters
-    #-- CDS api credentials
+    # command line parameters
+    # CDS api credentials
     parser.add_argument('--api-url','-U',
         type=str, default=os.environ.get('CDSAPI_URL'),
         help='CDS api url')
     parser.add_argument('--api-key','-K',
         type=str, default=os.environ.get('CDSAPI_KEY'),
         help='CDS api key')
-    #-- working data directory
+    # working data directory
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         default=os.getcwd(),
         help='Working data directory')
-    #-- years to retrieve
+    # years to retrieve
     now = time.gmtime()
     parser.add_argument('--year','-Y',
         type=int, nargs='+', default=range(2000,now.tm_year+1),
         help='Model years to retrieve')
-    #-- retrieve model surface variables
-    #-- MSL: mean sea level pressure field
+    # retrieve model surface variables
+    # MSL: mean sea level pressure field
     choices = ['MSL']
     parser.add_argument('--surface','-S',
         type=str, nargs='+', choices=choices, default=['MSL'],
         help='Retrieve model surface variables')
-    #-- retrieve the model invariant parameters
+    # retrieve the model invariant parameters
     parser.add_argument('--invariant','-I',
         default=False, action='store_true',
         help='Retrieve model invariant parameters')
-    #-- connection timeout
+    # connection timeout
     parser.add_argument('--timeout','-t',
         type=int, default=360,
         help='Timeout in seconds for blocking operations')
-    #-- permissions mode of the directories and files retrieved
+    # permissions mode of the directories and files retrieved
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permission mode of directories and files retrieved')
-    #-- return the parser
+    # return the parser
     return parser
 
-#-- This is the main part of the program that calls the individual functions
+# This is the main part of the program that calls the individual functions
 def main():
-    #-- Read the system arguments listed after the program
+    # Read the system arguments listed after the program
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    #-- open connection with CDS api server
+    # open connection with CDS api server
     server = cdsapi.Client(url=args.api_url, key=args.api_key,
         timeout=args.timeout)
-    #-- run program for ERA5
+    # run program for ERA5
     cds_mslp_retrieve(args.directory, server, args.year,
         SURFACE=args.surface,
         INVARIANT=args.invariant,
         MODE=args.mode)
-    #-- close connection with CDS api server
+    # close connection with CDS api server
     server = None
 
-#-- run main program
+# run main program
 if __name__ == '__main__':
     main()

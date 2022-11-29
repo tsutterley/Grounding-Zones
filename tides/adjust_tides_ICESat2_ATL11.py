@@ -45,14 +45,14 @@ import numpy as np
 import scipy.interpolate
 from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11, \
     read_HDF5_ATL11_pair
-#-- attempt imports
+# attempt imports
 try:
     import pyTMD.model
     import pyTMD.spatial
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("pyTMD not available")
-#-- filter warnings
+# filter warnings
 warnings.filterwarnings("ignore")
 
 def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,

@@ -65,7 +65,7 @@ import numpy as np
 from grounding_zones.utilities import get_data_path
 from icesat2_toolkit.convert_delta_time import convert_delta_time
 import icesat2_toolkit.time
-#-- attempt imports
+# attempt imports
 try:
     import fiona
 except (ImportError, ModuleNotFoundError) as e:
@@ -81,14 +81,14 @@ try:
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("shapely not available")
-#-- ignore warnings
+# ignore warnings
 warnings.filterwarnings("ignore")
 
-#-- buffered shapefile
+# buffered shapefile
 buffer_shapefile = {}
 buffer_shapefile['N'] = 'grn_ice_sheet_buffer_{0:0.0f}km.shp'
 buffer_shapefile['S'] = 'ant_ice_sheet_islands_v2_buffer_{0:0.0f}km.shp'
-#-- description and reference for each grounded ice file
+# description and reference for each grounded ice file
 grounded_description = {}
 grounded_description['N'] = 'Greenland Mapping Project (GIMP) Ice & Ocean Mask'
 grounded_description['S'] = ('MEaSUREs Antarctic Boundaries for IPY 2007-2009 '
@@ -97,7 +97,7 @@ grounded_reference = {}
 grounded_reference['N'] = 'https://doi.org/10.5194/tc-8-1509-2014'
 grounded_reference['S'] = 'https://doi.org/10.5067/IKBWW4RYHF1Q'
 
-#-- PURPOSE: keep track of MPI threads
+# PURPOSE: keep track of MPI threads
 def info(rank, size):
     logging.info(f'Rank {rank+1:d} of {size:d}')
     logging.info(f'module name: {__name__}')
@@ -105,7 +105,7 @@ def info(rank, size):
         logging.info(f'parent process: {os.getppid():d}')
     logging.info(f'process id: {os.getpid():d}')
 
-#-- PURPOSE: create argument parser
+# PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
         description="""Create masks for reducing ICESat-2 annual
@@ -113,32 +113,32 @@ def arguments():
             the ice sheet grounding zone
             """
     )
-    #-- command line parameters
+    # command line parameters
     parser.add_argument('file',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         help='ICESat-2 ATL11 file to run')
-    #-- working data directory for shapefiles
+    # working data directory for shapefiles
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         default=get_data_path('data'),
         help='Working data directory')
-    #-- buffer in kilometers for extracting grounding zone
+    # buffer in kilometers for extracting grounding zone
     parser.add_argument('--buffer','-B',
         type=float, default=20.0,
         help='Distance in kilometers to buffer grounding zone')
-    #-- verbosity settings
-    #-- verbose will output information about each output file
+    # verbosity settings
+    # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
         help='Verbose output of run')
-    #-- permissions mode of the local files (number in octal)
+    # permissions mode of the local files (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='permissions mode of output files')
-    #-- return the parser
+    # return the parser
     return parser
 
-#-- PURPOSE: set the hemisphere of interest based on the granule
+# PURPOSE: set the hemisphere of interest based on the granule
 def set_hemisphere(GRANULE):
     if GRANULE in ('10','11','12'):
         projection_flag = 'S'
@@ -146,75 +146,75 @@ def set_hemisphere(GRANULE):
         projection_flag = 'N'
     return projection_flag
 
-#-- PURPOSE: load the polygon object for the buffered estimated grounding zone
+# PURPOSE: load the polygon object for the buffered estimated grounding zone
 def load_grounding_zone(base_dir, HEM, BUFFER):
-    #-- buffered shapefile for region
+    # buffered shapefile for region
     buffered_shapefile = buffer_shapefile[HEM].format(BUFFER)
     logging.info(os.path.join(base_dir,buffered_shapefile))
-    #-- read buffered shapefile
+    # read buffered shapefile
     shape_input = fiona.open(os.path.join(base_dir,buffered_shapefile))
-    #-- extract coordinate reference system
+    # extract coordinate reference system
     if ('init' in shape_input.crs.keys()):
         epsg = pyproj.CRS(shape_input.crs['init']).to_epsg()
     else:
         epsg = pyproj.CRS(shape_input.crs).to_epsg()
-    #-- create list of polygons
+    # create list of polygons
     polygons = []
-    #-- extract the entities and assign by tile name
+    # extract the entities and assign by tile name
     for i,ent in enumerate(shape_input.values()):
-        #-- list of coordinates
+        # list of coordinates
         poly_list = []
-        #-- extract coordinates for entity
+        # extract coordinates for entity
         for coords in ent['geometry']['coordinates']:
-            #-- extract Polar-Stereographic coordinates for record
+            # extract Polar-Stereographic coordinates for record
             x,y = np.transpose(coords)
             poly_list.append(list(zip(x,y)))
-        #-- convert poly_list into Polygon object with holes
+        # convert poly_list into Polygon object with holes
         poly_obj = shapely.geometry.Polygon(poly_list[0],holes=poly_list[1:])
-        #-- Valid Polygon cannot have overlapping exterior or interior rings
+        # Valid Polygon cannot have overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
         polygons.append(poly_obj)
-    #-- create shapely multipolygon object
+    # create shapely multipolygon object
     mpoly_obj = shapely.geometry.MultiPolygon(polygons)
-    #-- close the shapefile
+    # close the shapefile
     shape_input.close()
-    #-- return the polygon object for the ice sheet
+    # return the polygon object for the ice sheet
     return (mpoly_obj,buffered_shapefile,epsg)
 
-#-- PURPOSE: read ICESat-2 annual land ice height data (ATL11)
-#-- reduce data to within buffer of grounding zone
+# PURPOSE: read ICESat-2 annual land ice height data (ATL11)
+# reduce data to within buffer of grounding zone
 def main():
-    #-- start MPI communicator
+    # start MPI communicator
     comm = MPI.COMM_WORLD
 
-    #-- Read the system arguments listed after the program
+    # Read the system arguments listed after the program
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    #-- create logger
+    # create logger
     loglevel = logging.INFO if args.verbose else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
-    #-- output module information for process
+    # output module information for process
     info(comm.rank,comm.size)
     if (comm.rank == 0):
         logging.info(r'{args.file} -->')
 
-    #-- Open the HDF5 file for reading
+    # Open the HDF5 file for reading
     fileID = h5py.File(args.file, 'r', driver='mpio', comm=comm)
     DIRECTORY = os.path.dirname(args.file)
-    #-- extract parameters from ICESat-2 ATLAS HDF5 file name
+    # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$')
     SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(args.file).pop()
-    #-- set the hemisphere flag based on ICESat-2 granule
+    # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRAN)
 
-    #-- read each input beam pair within the file
+    # read each input beam pair within the file
     IS2_atl11_pairs = []
     for ptx in [k for k in fileID.keys() if bool(re.match(r'pt\d',k))]:
-        #-- check if subsetted beam contains reference points
+        # check if subsetted beam contains reference points
         try:
             fileID[ptx]['ref_pt']
         except KeyError:
@@ -222,93 +222,93 @@ def main():
         else:
             IS2_atl11_pairs.append(ptx)
 
-    #-- read data on rank 0
+    # read data on rank 0
     if (comm.rank == 0):
-        #-- read shapefile and create shapely multipolygon objects
+        # read shapefile and create shapely multipolygon objects
         mpoly_obj,_,epsg = load_grounding_zone(args.directory,HEM,args.buffer)
     else:
-        #-- create empty object for list of shapely objects
+        # create empty object for list of shapely objects
         mpoly_obj = None
         epsg = None
 
-    #-- Broadcast Shapely multipolygon objects and projection
+    # Broadcast Shapely multipolygon objects and projection
     mpoly_obj = comm.bcast(mpoly_obj, root=0)
     epsg = comm.bcast(epsg, root=0)
 
-    #-- pyproj transformer for converting lat/lon to polar stereographic
+    # pyproj transformer for converting lat/lon to polar stereographic
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(epsg)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
-    #-- copy variables for outputting to HDF5 file
+    # copy variables for outputting to HDF5 file
     IS2_atl11_mask = {}
     IS2_atl11_fill = {}
     IS2_atl11_dims = {}
     IS2_atl11_mask_attrs = {}
-    #-- combined validity check for all beams
+    # combined validity check for all beams
     valid_check = False
-    #-- number of GPS seconds between the GPS epoch (1980-01-06T00:00:00Z UTC)
-    #-- and ATLAS Standard Data Product (SDP) epoch (2018-01-01T00:00:00Z UTC)
-    #-- Add this value to delta time parameters to compute full gps_seconds
+    # number of GPS seconds between the GPS epoch (1980-01-06T00:00:00Z UTC)
+    # and ATLAS Standard Data Product (SDP) epoch (2018-01-01T00:00:00Z UTC)
+    # Add this value to delta time parameters to compute full gps_seconds
     IS2_atl11_mask['ancillary_data'] = {}
     IS2_atl11_mask_attrs['ancillary_data'] = {}
     for key in ['atlas_sdp_gps_epoch']:
-        #-- get each HDF5 variable
+        # get each HDF5 variable
         IS2_atl11_mask['ancillary_data'][key] = fileID['ancillary_data'][key][:]
-        #-- Getting attributes of group and included variables
+        # Getting attributes of group and included variables
         IS2_atl11_mask_attrs['ancillary_data'][key] = {}
         for att_name,att_val in fileID['ancillary_data'][key].attrs.items():
             IS2_atl11_mask_attrs['ancillary_data'][key][att_name] = att_val
 
-    #-- for each input beam pair within the file
+    # for each input beam pair within the file
     for ptx in sorted(IS2_atl11_pairs):
-        #-- output data dictionaries for beam pair
+        # output data dictionaries for beam pair
         IS2_atl11_mask[ptx] = dict(subsetting={})
         IS2_atl11_fill[ptx] = dict(subsetting={})
         IS2_atl11_dims[ptx] = dict(subsetting={})
         IS2_atl11_mask_attrs[ptx] = dict(subsetting={})
 
-        #-- number of average segments and number of included cycles
+        # number of average segments and number of included cycles
         delta_time = fileID[ptx]['delta_time'][:].copy()
         n_points,n_cycles = np.shape(delta_time)
-        #-- check if there are less segments than processes
+        # check if there are less segments than processes
         if (n_points < comm.Get_size()):
             continue
 
-        #-- define indices to run for specific process
+        # define indices to run for specific process
         ind = np.arange(comm.Get_rank(),n_points,comm.Get_size(),dtype=int)
 
-        #-- convert lat/lon to polar stereographic
+        # convert lat/lon to polar stereographic
         X,Y = transformer.transform(fileID[ptx]['longitude'][:],
             fileID[ptx]['latitude'][:])
-        #-- convert reduced x and y to shapely multipoint object
+        # convert reduced x and y to shapely multipoint object
         xy_point = shapely.geometry.MultiPoint(list(zip(X[ind], Y[ind])))
 
-        #-- create distributed intersection map for calculation
+        # create distributed intersection map for calculation
         distributed_map = np.zeros((n_points),dtype=bool)
-        #-- create empty intersection map array for receiving
+        # create empty intersection map array for receiving
         associated_map = np.zeros((n_points),dtype=bool)
-        #-- for each polygon
+        # for each polygon
         for poly_obj in mpoly_obj:
-            #-- finds if points are encapsulated (in grounding zone)
+            # finds if points are encapsulated (in grounding zone)
             int_test = poly_obj.intersects(xy_point)
             if int_test:
-                #-- extract intersected points
+                # extract intersected points
                 int_map = list(map(poly_obj.intersects,xy_point))
                 int_indices, = np.nonzero(int_map)
-                #-- set distributed_map indices to True for intersected points
+                # set distributed_map indices to True for intersected points
                 distributed_map[ind[int_indices]] = True
-        #-- communicate output MPI matrices between ranks
-        #-- operation is a logical "or" across the elements.
+        # communicate output MPI matrices between ranks
+        # operation is a logical "or" across the elements.
         comm.Allreduce(sendbuf=[distributed_map, MPI.BOOL], \
             recvbuf=[associated_map, MPI.BOOL], op=MPI.LOR)
         distributed_map = None
-        #-- wait for all processes to finish calculation
+        # wait for all processes to finish calculation
         comm.Barrier()
-        #-- add to validity check
+        # add to validity check
         valid_check |= np.any(associated_map)
 
-        #-- group attributes for beam pair
+        # group attributes for beam pair
         IS2_atl11_mask_attrs[ptx]['description'] = ('Contains the primary science parameters for this '
             'data set')
         IS2_atl11_mask_attrs[ptx]['beam_pair'] = fileID[ptx].attrs['beam_pair']
@@ -318,8 +318,8 @@ def main():
         IS2_atl11_mask_attrs[ptx]['equatorial_radius'] = fileID[ptx].attrs['equatorial_radius']
         IS2_atl11_mask_attrs[ptx]['polar_radius'] = fileID[ptx].attrs['polar_radius']
 
-        #-- geolocation, time and reference point
-        #-- cycle_number
+        # geolocation, time and reference point
+        # cycle_number
         IS2_atl11_mask[ptx]['cycle_number'] = fileID[ptx]['cycle_number'][:].copy()
         IS2_atl11_fill[ptx]['cycle_number'] = None
         IS2_atl11_dims[ptx]['cycle_number'] = None
@@ -331,7 +331,7 @@ def main():
             "that have elapsed since ICESat-2 entered the science orbit. Each of the 1,387 "
             "reference ground track (RGTs) is targeted in the polar regions once "
             "every 91 days.")
-        #-- delta time
+        # delta time
         IS2_atl11_mask[ptx]['delta_time'] = fileID[ptx]['delta_time'][:].copy()
         IS2_atl11_fill[ptx]['delta_time'] = fileID[ptx]['delta_time'].attrs['_FillValue']
         IS2_atl11_dims[ptx]['delta_time'] = ['ref_pt','cycle_number']
@@ -349,7 +349,7 @@ def main():
             "time in gps_seconds relative to the GPS epoch can be computed.")
         IS2_atl11_mask_attrs[ptx]['delta_time']['coordinates'] = \
             "ref_pt cycle_number latitude longitude"
-        #-- latitude
+        # latitude
         IS2_atl11_mask[ptx]['latitude'] = fileID[ptx]['latitude'][:].copy()
         IS2_atl11_fill[ptx]['latitude'] = fileID[ptx]['latitude'].attrs['_FillValue']
         IS2_atl11_dims[ptx]['latitude'] = ['ref_pt']
@@ -365,7 +365,7 @@ def main():
         IS2_atl11_mask_attrs[ptx]['latitude']['valid_max'] = 90.0
         IS2_atl11_mask_attrs[ptx]['latitude']['coordinates'] = \
             "ref_pt delta_time longitude"
-        #-- longitude
+        # longitude
         IS2_atl11_mask[ptx]['longitude'] = fileID[ptx]['longitude'][:].copy()
         IS2_atl11_fill[ptx]['longitude'] = fileID[ptx]['longitude'].attrs['_FillValue']
         IS2_atl11_dims[ptx]['longitude'] = ['ref_pt']
@@ -381,7 +381,7 @@ def main():
         IS2_atl11_mask_attrs[ptx]['longitude']['valid_max'] = 180.0
         IS2_atl11_mask_attrs[ptx]['longitude']['coordinates'] = \
             "ref_pt delta_time latitude"
-        #-- reference point
+        # reference point
         IS2_atl11_mask[ptx]['ref_pt'] = fileID[ptx]['ref_pt'][:].copy()
         IS2_atl11_fill[ptx]['ref_pt'] = None
         IS2_atl11_dims[ptx]['ref_pt'] = None
@@ -397,14 +397,14 @@ def main():
         IS2_atl11_mask_attrs[ptx]['ref_pt']['coordinates'] = \
             "delta_time latitude longitude"
 
-        #-- subsetting variables
+        # subsetting variables
         IS2_atl11_mask_attrs[ptx]['subsetting']['Description'] = ("The subsetting group "
             "contains parameters used to reduce annual land ice height segments to specific "
             "regions of interest.")
         IS2_atl11_mask_attrs[ptx]['subsetting']['data_rate'] = ("Data within this group "
             "are stored at the average segment rate.")
 
-        #-- output mask to HDF5
+        # output mask to HDF5
         IS2_atl11_mask[ptx]['subsetting']['ice_gz'] = associated_map
         IS2_atl11_fill[ptx]['subsetting']['ice_gz'] = None
         IS2_atl11_dims[ptx]['subsetting']['ice_gz'] = ['ref_pt']
@@ -418,71 +418,71 @@ def main():
         IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['source'] = args.buffer
         IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['coordinates'] = \
             "../ref_pt ../delta_time ../latitude ../longitude"
-        #-- wait for all processes to finish calculation
+        # wait for all processes to finish calculation
         comm.Barrier()
 
-    #-- parallel h5py I/O does not support compression filters at this time
+    # parallel h5py I/O does not support compression filters at this time
     if (comm.rank == 0) and valid_check:
-        #-- output HDF5 files with ice shelf masks
+        # output HDF5 files with ice shelf masks
         fargs = (PRD,'GROUNDING_ZONE_MASK',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_{1}_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
         output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
-        #-- print file information
+        # print file information
         logging.info(f'\t{output_file}')
-        #-- write to output HDF5 file
+        # write to output HDF5 file
         HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_mask_attrs,
             CLOBBER=True, INPUT=os.path.basename(args.file),
             FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
             FILENAME=output_file)
-        #-- change the permissions mode
+        # change the permissions mode
         os.chmod(output_file, args.mode)
-    #-- close the input file
+    # close the input file
     fileID.close()
 
-#-- PURPOSE: outputting the masks for ICESat-2 data to HDF5
+# PURPOSE: outputting the masks for ICESat-2 data to HDF5
 def HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_attrs, INPUT=None,
     FILENAME='', FILL_VALUE=None, DIMENSIONS=None, CLOBBER=True):
-    #-- setting HDF5 clobber attribute
+    # setting HDF5 clobber attribute
     if CLOBBER:
         clobber = 'w'
     else:
         clobber = 'w-'
 
-    #-- open output HDF5 file
+    # open output HDF5 file
     fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
 
-    #-- create HDF5 records
+    # create HDF5 records
     h5 = {}
 
-    #-- number of GPS seconds between the GPS epoch (1980-01-06T00:00:00Z UTC)
-    #-- and ATLAS Standard Data Product (SDP) epoch (2018-01-01T00:00:00Z UTC)
+    # number of GPS seconds between the GPS epoch (1980-01-06T00:00:00Z UTC)
+    # and ATLAS Standard Data Product (SDP) epoch (2018-01-01T00:00:00Z UTC)
     h5['ancillary_data'] = {}
     for k,v in IS2_atl11_mask['ancillary_data'].items():
-        #-- Defining the HDF5 dataset variables
+        # Defining the HDF5 dataset variables
         val = 'ancillary_data/{0}'.format(k)
         h5['ancillary_data'][k] = fileID.create_dataset(val, np.shape(v), data=v,
             dtype=v.dtype, compression='gzip')
-        #-- add HDF5 variable attributes
+        # add HDF5 variable attributes
         for att_name,att_val in IS2_atl11_attrs['ancillary_data'][k].items():
             h5['ancillary_data'][k].attrs[att_name] = att_val
 
-    #-- write each output beam pair
+    # write each output beam pair
     pairs = [k for k in IS2_atl11_mask.keys() if bool(re.match(r'pt\d',k))]
     for ptx in pairs:
         fileID.create_group(ptx)
         h5[ptx] = {}
-        #-- add HDF5 group attributes for beam pair
+        # add HDF5 group attributes for beam pair
         for att_name in ['description','beam_pair','ReferenceGroundTrack',
             'first_cycle','last_cycle','equatorial_radius','polar_radius']:
             fileID[ptx].attrs[att_name] = IS2_atl11_attrs[ptx][att_name]
 
-        #-- ref_pt, cycle number, geolocation and delta_time variables
+        # ref_pt, cycle number, geolocation and delta_time variables
         for k in ['ref_pt','cycle_number','delta_time','latitude','longitude']:
-            #-- values and attributes
+            # values and attributes
             v = IS2_atl11_mask[ptx][k]
             attrs = IS2_atl11_attrs[ptx][k]
             fillvalue = FILL_VALUE[ptx][k]
-            #-- Defining the HDF5 dataset variables
+            # Defining the HDF5 dataset variables
             val = '{0}/{1}'.format(ptx,k)
             if fillvalue:
                 h5[ptx][k] = fileID.create_dataset(val, np.shape(v), data=v,
@@ -490,29 +490,29 @@ def HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_attrs, INPUT=None,
             else:
                 h5[ptx][k] = fileID.create_dataset(val, np.shape(v), data=v,
                     dtype=v.dtype, compression='gzip')
-            #-- create or attach dimensions for HDF5 variable
+            # create or attach dimensions for HDF5 variable
             if DIMENSIONS[ptx][k]:
-                #-- attach dimensions
+                # attach dimensions
                 for i,dim in enumerate(DIMENSIONS[ptx][k]):
                     h5[ptx][k].dims[i].attach_scale(h5[ptx][dim])
             else:
-                #-- make dimension
+                # make dimension
                 h5[ptx][k].make_scale(k)
-            #-- add HDF5 variable attributes
+            # add HDF5 variable attributes
             for att_name,att_val in attrs.items():
                 h5[ptx][k].attrs[att_name] = att_val
 
-        #-- add to subsetting variables
+        # add to subsetting variables
         fileID[ptx].create_group('subsetting')
         h5[ptx]['subsetting'] = {}
         for att_name in ['Description','data_rate']:
             att_val=IS2_atl11_attrs[ptx]['subsetting'][att_name]
             fileID[ptx]['subsetting'].attrs[att_name] = att_val
         for k,v in IS2_atl11_mask[ptx]['subsetting'].items():
-            #-- attributes
+            # attributes
             attrs = IS2_atl11_attrs[ptx]['subsetting'][k]
             fillvalue = FILL_VALUE[ptx]['subsetting'][k]
-            #-- Defining the HDF5 dataset variables
+            # Defining the HDF5 dataset variables
             val = '{0}/{1}/{2}'.format(ptx,'subsetting',k)
             if fillvalue:
                 h5[ptx]['subsetting'][k] = fileID.create_dataset(val,
@@ -521,14 +521,14 @@ def HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_attrs, INPUT=None,
             else:
                 h5[ptx]['subsetting'][k] = fileID.create_dataset(val,
                     np.shape(v), data=v, dtype=v.dtype, compression='gzip')
-            #-- attach dimensions
+            # attach dimensions
             for i,dim in enumerate(DIMENSIONS[ptx]['subsetting'][k]):
                 h5[ptx]['subsetting'][k].dims[i].attach_scale(h5[ptx][dim])
-            #-- add HDF5 variable attributes
+            # add HDF5 variable attributes
             for att_name,att_val in attrs.items():
                 h5[ptx]['subsetting'][k].attrs[att_name] = att_val
 
-    #-- HDF5 file title
+    # HDF5 file title
     fileID.attrs['featureType'] = 'trajectory'
     fileID.attrs['title'] = 'ATLAS/ICESat-2 Land Ice Height'
     fileID.attrs['summary'] = ('Subsetting masks and geophysical parameters '
@@ -543,29 +543,29 @@ def HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['project'] = project
     platform = 'ICESat-2 > Ice, Cloud, and land Elevation Satellite-2'
     fileID.attrs['project'] = platform
-    #-- add attribute for elevation instrument and designated processing level
+    # add attribute for elevation instrument and designated processing level
     instrument = 'ATLAS > Advanced Topographic Laser Altimeter System'
     fileID.attrs['instrument'] = instrument
     fileID.attrs['source'] = 'Spacecraft'
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
-    #-- add attributes for input ATL11 files
+    # add attributes for input ATL11 files
     fileID.attrs['input_files'] = ','.join([os.path.basename(i) for i in INPUT])
-    #-- find geospatial and temporal ranges
+    # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for ptx in pairs:
         lon = IS2_atl11_mask[ptx]['longitude']
         lat = IS2_atl11_mask[ptx]['latitude']
         delta_time = IS2_atl11_mask[ptx]['delta_time']
         valid = np.nonzero(delta_time != FILL_VALUE[ptx]['delta_time'])
-        #-- setting the geospatial and temporal ranges
+        # setting the geospatial and temporal ranges
         lnmn = lon.min() if (lon.min() < lnmn) else lnmn
         lnmx = lon.max() if (lon.max() > lnmx) else lnmx
         ltmn = lat.min() if (lat.min() < ltmn) else ltmn
         ltmx = lat.max() if (lat.max() > ltmx) else ltmx
         tmn = delta_time[valid].min() if (delta_time[valid].min() < tmn) else tmn
         tmx = delta_time[valid].max() if (delta_time[valid].max() > tmx) else tmx
-    #-- add geospatial and temporal attributes
+    # add geospatial and temporal attributes
     fileID.attrs['geospatial_lat_min'] = ltmn
     fileID.attrs['geospatial_lat_max'] = ltmx
     fileID.attrs['geospatial_lon_min'] = lnmn
@@ -575,12 +575,12 @@ def HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['geospatial_ellipsoid'] = "WGS84"
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
-    #-- convert start and end time from ATLAS SDP seconds into UTC time
+    # convert start and end time from ATLAS SDP seconds into UTC time
     time_utc = convert_delta_time(np.array([tmn,tmx]))
-    #-- convert to calendar date
+    # convert to calendar date
     YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(time_utc['julian'],
         FORMAT='tuple')
-    #-- add attributes with measurement date start, end and duration
+    # add attributes with measurement date start, end and duration
     tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
         int(HH[0]), int(MN[0]), int(SS[0]), int(1e6*(SS[0] % 1)))
     fileID.attrs['time_coverage_start'] = tcs.isoformat()
@@ -588,9 +588,9 @@ def HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
-    #-- Closing the HDF5 file
+    # Closing the HDF5 file
     fileID.close()
 
-#-- run main program
+# run main program
 if __name__ == '__main__':
     main()

@@ -41,13 +41,13 @@ import pyproj
 import argparse
 import warnings
 import numpy as np
-#-- attempt imports
+# attempt imports
 try:
     import spatial_interpolators as spi
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("spatial_interpolators not available")
-#-- filter warnings
+# filter warnings
 warnings.filterwarnings("ignore")
 
 # PURPOSE: attempt to open an HDF5 file and wait if already open
@@ -438,11 +438,11 @@ def arguments():
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='ICESat-2 ATL11 tile file to run')
-    #-- input ICESat-2 annual land ice height file directory
+    # input ICESat-2 annual land ice height file directory
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         help='ICESat-2 ATL11 directory')
-    #-- region of interest to run
+    # region of interest to run
     parser.add_argument('--hemisphere','-H',
         type=str, default='S', choices=('N','S'),
         help='Region of interest to run')

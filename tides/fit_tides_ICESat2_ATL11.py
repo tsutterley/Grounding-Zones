@@ -73,13 +73,13 @@ import scipy.optimize
 import icesat2_toolkit.time
 from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11, \
     read_HDF5_ATL11_pair
-#-- attempt imports
+# attempt imports
 try:
     import pyTMD.model
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("pyTMD not available")
-#-- filter warnings
+# filter warnings
 warnings.filterwarnings("ignore")
 
 # PURPOSE: Find indices of common reference points between two lists
@@ -210,7 +210,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
         tide_adj_sigma['AT'] = np.ma.zeros((n_points,n_cycles),
             fill_value=tide_ocean['AT'].fill_value)
         tide_adj_sigma['AT'].mask = (tide_ocean['AT'] == tide_ocean['AT'].fill_value)
-        #-- inverse barometer correction
+        # inverse barometer correction
         IB['AT'] = np.ma.array(mds1[ptx]['cycle_stats']['dac'],fill_value=0.0)
         IB['AT'].mask = (IB['AT'] == attr1[ptx]['cycle_stats']['dac']['_FillValue'])
         # ATL11 reference surface elevations (derived from ATL06)
@@ -247,7 +247,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
         tide_adj_sigma['XT'] = np.ma.zeros((n_cross),
             fill_value=tide_ocean['XT'].fill_value)
         tide_adj_sigma['XT'].mask = (tide_ocean['XT'] == tide_ocean['XT'].fill_value)
-        #-- inverse barometer correction
+        # inverse barometer correction
         IB['XT'] = np.ma.array(mds1[ptx][XT]['dac'],fill_value=0.0)
         IB['XT'].mask = (IB['XT'] == attr1[ptx][XT]['dac']['_FillValue'])
         # find mapping between crossover and along-track reference points
@@ -336,7 +336,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
 
         # for each ATL11 segment
         for s in range(n_points):
-            #-- indices for crossover points
+            # indices for crossover points
             i2 = np.squeeze(ref_indices[s])
             # create mask for valid points
             segment_mask = np.logical_not(h_corr['AT'].mask[s,:])
@@ -355,7 +355,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
                     tide_adj_sigma['XT'].mask[i2] = True
                 # continue to next iteration
                 continue
-            #-- indices for valid points within segment
+            # indices for valid points within segment
             i1, = np.nonzero(segment_mask)
             # height referenced to geoid
             h1 = h_corr['AT'].data[s,i1] - geoid_h[s]
@@ -425,7 +425,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
                 MSE = np.sum(results['fun']**2)/nu
                 # standard error from covariance matrix
                 adj_sigma,*_ = np.sqrt(MSE*np.diag(Hinv))
-            #-- check that errors are smaller than tolerance
+            # check that errors are smaller than tolerance
             if (adj_sigma > output_tolerance):
                 continue
             # extract along-track and across-track tide

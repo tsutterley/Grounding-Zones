@@ -67,7 +67,7 @@ except (ImportError, ModuleNotFoundError) as e:
 # ignore warnings
 warnings.filterwarnings("ignore")
 
-#-- PURPOSE: keep track of threads
+# PURPOSE: keep track of threads
 def info(args):
     logging.info(os.path.basename(sys.argv[0]))
     logging.info(args)
@@ -144,7 +144,7 @@ def gee_pgc_strip_sync(model, version, resolution,
     collection = ee.ImageCollection(f'UMN/PGC/{model}/{VERSION}/{resolution}')
     # reduce image collection to temporal range
     if TIME is not None:
-        #-- verify that start and end time are in ISO format
+        # verify that start and end time are in ISO format
         start_time = dateutil.parser.parse(TIME[0]).isoformat()
         end_time = dateutil.parser.parse(TIME[1]).isoformat()
         logging.info(f'Start Time: {start_time}')
