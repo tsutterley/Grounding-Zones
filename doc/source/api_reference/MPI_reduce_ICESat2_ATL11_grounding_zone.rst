@@ -13,7 +13,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../GZ/MPI_reduce_ICESat2_ATL11_grounding_zone.py
+    :filename: MPI_reduce_ICESat2_ATL11_grounding_zone.py
     :func: arguments
     :prog: MPI_reduce_ICESat2_ATL11_grounding_zone.py
     :nodescription:

@@ -16,7 +16,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../SL/interp_sea_level_ICESat2_ATL06.py
+    :filename: interp_sea_level_ICESat2_ATL06.py
     :func: arguments
     :prog: interp_sea_level_ICESat2_ATL06.py
     :nodescription:

@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../GZ/calculate_grounding_zone.py
+    :filename: calculate_grounding_zone.py
     :func: arguments
     :prog: calculate_grounding_zone.py
     :nodescription:

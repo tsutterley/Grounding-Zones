@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interpolate_tide_adjustment.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Interpolates tidal adjustment scale factors to output grids
 
 COMMAND LINE OPTIONS:
@@ -24,6 +24,7 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
 
 UPDATE HISTORY:
+    Updated 12/2022: check that file exists within multiprocess HDF5 function
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: use argparse descriptions within documentation
         read mask files to not interpolate over grounded ice
@@ -41,23 +42,28 @@ import pyproj
 import argparse
 import warnings
 import numpy as np
-#-- attempt imports
+# attempt imports
 try:
     import spatial_interpolators as spi
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("spatial_interpolators not available")
-#-- filter warnings
+# filter warnings
 warnings.filterwarnings("ignore")
 
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
+    # check that file exists if entering with read mode
+    if kwargs['mode'] in ('r','r+') and not os.access(filename, os.F_OK):
+        raise FileNotFoundError(filename)
+    # attempt to open HDF5 file
     while True:
         try:
             fileID = h5py.File(filename, *args, **kwargs)
             break
         except (IOError, BlockingIOError, PermissionError) as e:
             time.sleep(1)
+    # return the file access object
     return fileID
 
 # PURPOSE: reduce a matrix using a selected function
@@ -112,8 +118,8 @@ def interpolate_tide_adjustment(tile_file,
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413,S=3031)[HEM]
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
-    crs2 = pyproj.CRS.from_string("epsg:{0:d}".format(EPSG))
+    crs1 = pyproj.CRS.from_epsg(4326)
+    crs2 = pyproj.CRS.from_epsg(EPSG)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
     # dictionary of coordinate reference system variables
     cs_to_cf = crs2.cs_to_cf()
@@ -132,8 +138,8 @@ def interpolate_tide_adjustment(tile_file,
         if not os.access(os.path.join(tile_directory,tile), os.F_OK):
             continue
         # read the HDF5 file
-        logging.info('Reading Buffer File: {0}'.format(tile))
-        f1 = multiprocess_h5py(os.path.join(tile_directory,tile),'r')
+        logging.info(f'Reading Buffer File: {tile}')
+        f1 = multiprocess_h5py(os.path.join(tile_directory,tile), mode='r')
         # find ATL11 files within tile
         ATL11_files = [f for f in f1.keys() if R2.match(f)]
         # read each ATL11 file and estimate errors
@@ -145,7 +151,7 @@ def interpolate_tide_adjustment(tile_file,
         # close the tile file
         f1.close()
     # log total number of points
-    logging.info('Total Points: {0:d}'.format(npts))
+    logging.info(f'Total Points: {npts:d}')
 
     # allocate for combined variables
     d = {}
@@ -169,8 +175,8 @@ def interpolate_tide_adjustment(tile_file,
         if not os.access(os.path.join(tile_directory,tile), os.F_OK):
             continue
         # read the HDF5 file
-        logging.info('Reading Buffer File: {0}'.format(tile))
-        f1 = multiprocess_h5py(os.path.join(tile_directory,tile),'r')
+        logging.info(f'Reading Buffer File: {tile}')
+        f1 = multiprocess_h5py(os.path.join(tile_directory,tile), mode='r')
         # find ATL11 files within tile
         ATL11_files = [f for f in f1.keys() if R2.match(f)]
         # read each ATL11 file and estimate errors
@@ -187,9 +193,9 @@ def interpolate_tide_adjustment(tile_file,
             if not os.access(os.path.join(DIRECTORY,FILE2), os.F_OK):
                 continue
             # open ATL11 flexure correction HDF5 file
-            f2 = multiprocess_h5py(os.path.join(DIRECTORY,FILE2), 'r')
+            f2 = multiprocess_h5py(os.path.join(DIRECTORY,FILE2), mode='r')
             # open ATL11 grounded mask HDF5 file
-            f3 = multiprocess_h5py(os.path.join(DIRECTORY,FILE3), 'r')
+            f3 = multiprocess_h5py(os.path.join(DIRECTORY,FILE3), mode='r')
             # for each ATL11 beam pairs within the tile
             for ptx in f1[ATL11].keys():
                 # reference points and indices within tile
@@ -237,7 +243,7 @@ def interpolate_tide_adjustment(tile_file,
     # combining ref_pt, rgt and pair
     global_ref_pt = 3*1387*d['ref_pt'] + 3*(d['rgt']-1) + (d['pair']-1)
     _, indices = np.unique(global_ref_pt, return_index=True)
-    logging.info('Unique Points: {0:d}'.format(len(indices)))
+    logging.info(f'Unique Points: {len(indices):d}')
     # reduce to unique indices
     for key,val in d.items():
         d[key] = val[indices]
@@ -253,7 +259,7 @@ def interpolate_tide_adjustment(tile_file,
     output['y'] = np.arange(ymin+dx/2.0,ymax+dy,dy)
     output['tide_adj_scale'] = np.zeros((ny,nx))
     output['weight'] = np.zeros((ny,nx))
-    logging.info('Grid Dimensions {0:d} {1:d}'.format(ny,nx))
+    logging.info(f'Grid Dimensions {ny:d} {nx:d}')
     # attributes for each output item
     attributes = dict(x={},y={},tide_adj_scale={},weight={})
     fill_value = {}
@@ -388,7 +394,7 @@ def interpolate_tide_adjustment(tile_file,
     output['weight'][ii,jj] = weight[ii,jj]
 
     # open original HDF5 file in append mode
-    fileID = multiprocess_h5py(tile_file, 'a')
+    fileID = multiprocess_h5py(tile_file, mode='a')
     # create geophysical group if non-existent
     group = 'geophysical'
     if group not in fileID:
@@ -403,7 +409,7 @@ def interpolate_tide_adjustment(tile_file,
     h5 = {}
     for key,val in output.items():
         # create or overwrite HDF5 variables
-        logging.info('{0}/{1}'.format(group,key))
+        logging.info(f'{group}/{key}')
         if key not in fileID[group]:
             # create HDF5 variables
             if fill_value[key]:
@@ -438,11 +444,11 @@ def arguments():
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='ICESat-2 ATL11 tile file to run')
-    #-- input ICESat-2 annual land ice height file directory
+    # input ICESat-2 annual land ice height file directory
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         help='ICESat-2 ATL11 directory')
-    #-- region of interest to run
+    # region of interest to run
     parser.add_argument('--hemisphere','-H',
         type=str, default='S', choices=('N','S'),
         help='Region of interest to run')

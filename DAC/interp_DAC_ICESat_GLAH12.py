@@ -1,19 +1,22 @@
 #!/usr/bin/env python
 u"""
-compute_geoid_ICESat_GLA12.py
-Written by Tyler Sutterley (07/2022)
-Computes geoid undulations for correcting ICESat/GLAS L2 GLA12
-    Antarctic and Greenland Ice Sheet elevation data
+interp_DAC_ICESat_GLAH12.py
+Written by Tyler Sutterley (11/2022)
+Calculates and interpolates dynamic atmospheric corrections for ICESat/GLAS
+    L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
 
-INPUTS:
-    input_file: ICESat GLA12 data file
+Data will be interpolated for all valid points
+    (masking land values will be needed for accurate assessments)
+
+https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/
+    atmospheric-corrections.html
+
+Note that the AVISO DAC data are bz2 compressed netCDF4 files
 
 COMMAND LINE OPTIONS:
-    -G X, --gravity X: Gravity model file to use (.gfc format)
-    -l X, --lmax X: maximum spherical harmonic degree (level of truncation)
-    -n X, --love X: Degree 2 load Love number (default EGM2008 value)
-    -M X, --mode X: Permission mode of directories and files created
+    -D X, --directory X: Working data directory
     -V, --verbose: Output information about each created file
+    -M X, --mode X: Permission mode of directories and files created
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -21,77 +24,55 @@ PYTHON DEPENDENCIES:
         https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     scipy: Scientific Tools for Python
         https://docs.scipy.org/doc/
-    h5py: Python interface for Hierarchal Data Format 5 (HDF5)
-        https://www.h5py.org/
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    h5py: Python interface for Hierarchal Data Format 5 (HDF5)
+        https://h5py.org
+    netCDF4: Python interface to the netCDF C library
+         https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 PROGRAM DEPENDENCIES:
+    time.py: utilities for calculating time operations
+    spatial.py: utilities for reading and writing spatial data
     utilities.py: download and management utilities for syncing files
-    geoid_undulation.py: geoidal undulation at a given latitude and longitude
-    read_ICGEM_harmonics.py: reads the coefficients for a given gravity model file
-    real_potential.py: real potential at a latitude and height for gravity model
-    norm_potential.py: normal potential of an ellipsoid at a latitude and height
-    norm_gravity.py: normal gravity of an ellipsoid at a latitude and height
-    ref_ellipsoid.py: Computes parameters for a reference ellipsoid
-    gauss_weights.py: Computes Gaussian weights as a function of degree
 
 UPDATE HISTORY:
-    Updated 07/2022: place some imports within try/except statements
-    Updated 05/2022: use argparse descriptions within documentation
+    Updated 11/2022: use f-strings for formatting verbose or ascii output
+    Updated 05/2022: use argparse descriptions within sphinx documentation
     Updated 10/2021: using python logging for handling verbose output
-        additionally output conversion between tide free and mean tide values
-    Updated 07/2021: can use prefix files to define command line arguments
-    Updated 04/2021: can use a generically named GLA12 file as input
+        added parsing for converting file lines to arguments
+    Updated 05/2021: print full path of output filename
     Updated 03/2021: replaced numpy bool/int to prevent deprecation warnings
-    Updated 12/2020: H5py deprecation warning change to use make_scale
-    Updated 10/2020: using argparse to set command line parameters
-    Updated 08/2020: using python3 compatible regular expressions
-    Updated 10/2019: changing Y/N flags to True/False
-    Written 07/2017
+    Updated 09/2017: reduce grid domains for faster processing times
+    Written 09/2017
 """
 from __future__ import print_function
 
-import sys
 import os
 import re
+import bz2
 import h5py
+import pyproj
 import logging
+import netCDF4
 import argparse
-import warnings
 import numpy as np
-from grounding_zones.utilities import convert_arg_line_to_args
-# attempt imports
-try:
-    import geoid_toolkit.spatial
-    from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
-    from geoid_toolkit.geoid_undulation import geoid_undulation
-except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("geoid_toolkit not available")
-# ignore warnings
-warnings.filterwarnings("ignore")
+import scipy.interpolate
+import icesat2_toolkit.time
+import icesat2_toolkit.spatial
+import icesat2_toolkit.utilities
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
-# and computes geoid undulation at points
-def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
-    VERBOSE=False, MODE=0o775):
+# calculate and interpolate the dynamic atmospheric correction
+def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
 
-    # create logger for verbosity level
+    # create logger
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
     # get directory from INPUT_FILE
     logging.info(f'{INPUT_FILE} -->')
     DIRECTORY = os.path.dirname(INPUT_FILE)
-
-    # read gravity model Ylms and change tide to tide free
-    Ylms = read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
-    R = np.float64(Ylms['radius'])
-    GM = np.float64(Ylms['earth_gravity_constant'])
-    LMAX = np.int64(Ylms['max_degree'])
-    # reference to WGS84 ellipsoid
-    REFERENCE = 'WGS84'
 
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
@@ -112,14 +93,14 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     try:
         PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(INPUT_FILE).pop()
     except:
-        # output geoid HDF5 file (generic)
+        # output dynamic atmospheric correction HDF5 file (generic)
         fileBasename,fileExtension = os.path.splitext(INPUT_FILE)
-        args = (fileBasename,Ylms['modelname'],fileExtension)
-        OUTPUT_FILE = '{0}_{1}_GEOID{2}'.format(*args)
+        args = (fileBasename,fileExtension)
+        OUTPUT_FILE = '{0}_DAC{1}'.format(*args)
     else:
-        # output geoid HDF5 file for NSIDC granules
-        args = (PRD,RL,Ylms['modelname'],RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
-        file_format = 'GLAH{0}_{1}_{2}_GEOID_{3}{4}{5}_{6}_{7}_{8}_{9}_{10}.h5'
+        # output dynamic atmospheric correction HDF5 file for NSIDC granules
+        args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
+        file_format = 'GLAH{0}_{1}_DAC_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
         OUTPUT_FILE = file_format.format(*args)
 
     # read GLAH12 HDF5 file
@@ -136,30 +117,66 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     elev_TPX = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'][:].copy()
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
+    # convert time from J2000 to days relative to 1950-01-01 (MJD:33282)
+    # J2000: seconds since 2000-01-01 12:00:00 UTC
+    t = DS_UTCTime_40HZ/86400.0 + 18262.5
+    # days and hours to read
+    unique_hours = np.unique([np.floor(t*24.0/6.0)*6.0, np.ceil(t*24.0/6.0)*6.0])
+    days,hours = (unique_hours // 24, unique_hours % 24)
+
     # semimajor axis (a) and flattening (f) for TP and WGS84 ellipsoids
     atop,ftop = (6378136.3,1.0/298.257)
     awgs,fwgs = (6378137.0,1.0/298.257223563)
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = geoid_toolkit.spatial.convert_ellipsoid(lat_TPX,
+    lat_40HZ,elev_40HZ = icesat2_toolkit.spatial.convert_ellipsoid(lat_TPX,
         elev_TPX, atop, ftop, awgs, fwgs, eps=1e-12, itmax=10)
-    # colatitude in radians
-    theta_40HZ = (90.0 - lat_40HZ)*np.pi/180.0
 
-    # calculate geoid at coordinates
-    N = geoid_undulation(lat_40HZ, lon_40HZ, REFERENCE,
-        Ylms['clm'], Ylms['slm'], LMAX, R, GM, GAUSS=0)
-    # calculate offset for converting from tide_free to mean_tide
-    # legendre polynomial of degree 2 (unnormalized)
-    P2 = 0.5*(3.0*np.cos(theta_40HZ)**2 - 1.0)
-    # from Rapp 1991 (Consideration of Permanent Tidal Deformation)
-    free2mean = -0.198*P2*(1.0 + LOVE)
+    # pyproj transformer for converting from input coordinates (EPSG)
+    # to model coordinates
+    crs1 = pyproj.CRS.from_epsg(4326)
+    crs2 = pyproj.CRS.from_string('+proj=longlat +ellps=WGS84 +datum=WGS84 '
+        '+no_defs lon_wrap=180')
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+
+    # calculate projected coordinates of input coordinates
+    ix,iy = transformer.transform(lon_40HZ, lat_40HZ)
+
+    # shape of pressure field
+    ny,nx = (721,1440)
+    # allocate for DAC fields
+    idac = np.ma.zeros((len(days),ny,nx))
+    icjd = np.zeros((len(days)))
+    for i,CJD in enumerate(days):
+        # convert from CNES Julians Day to calendar
+        YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(CJD + 2433282.5,
+            format='tuple')
+        # input file for 6-hour period
+        input_file = f'dac_dif_{CJD:0.0f}_{hours[i]:02.0f}.nc.bz2'
+        # read bytes from compressed file
+        fd = bz2.BZ2File(os.path.join(base_dir,f'{YY:0.0f}',input_file))
+        # read netCDF file for time
+        with netCDF4.Dataset('dac', mode='r', memory=fd.read()) as fid:
+            ilon = fid['longitude'][:]
+            ilat = fid['latitude'][:]
+            idac[i,:,:] = fid['dac'][:]
+            icjd[i] = fid['dac'].getncattr('Date_CNES_JD')
+        # close the compressed file objects
+        fd.close()
+    # create an interpolator for dynamic atmospheric correction
+    RGI = scipy.interpolate.RegularGridInterpolator((icjd,ilat,ilon), idac,
+        bounds_error=False)
+    # interpolate dynamic atmospheric correction to points
+    DAC = np.ma.zeros((rec_ndx_40HZ), fill_value=fv)
+    DAC.data = RGI.__call__(np.c_[t, iy, ix])
+    DAC.mask = np.isnan(DAC.data)
+    DAC.data[DAC.mask] = DAC.fill_value
 
     # copy variables for outputting to HDF5 file
-    IS_gla12_geoid = dict(Data_40HZ={})
+    IS_gla12_corr = dict(Data_40HZ={})
     IS_gla12_fill = dict(Data_40HZ={})
-    IS_gla12_geoid_attrs = dict(Data_40HZ={})
+    IS_gla12_corr_attrs = dict(Data_40HZ={})
 
-    # copy global file attributes of interest
+    # copy global file attributes
     global_attribute_list = ['featureType','title','comment','summary','license',
         'references','AccessConstraints','CitationforExternalPublication',
         'contributor_role','contributor_name','creator_name','creator_email',
@@ -182,95 +199,76 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
         'identifier_product_doi','identifier_file_uuid',
         'identifier_product_doi_authority']
     for att in global_attribute_list:
-        IS_gla12_geoid_attrs[att] = fileID.attrs[att]
+        IS_gla12_corr_attrs[att] = fileID.attrs[att]
     # copy ICESat campaign name from ancillary data
-    IS_gla12_geoid_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
+    IS_gla12_corr_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     # add attributes for input GLA12 file
-    IS_gla12_geoid_attrs['input_files'] = os.path.basename(INPUT_FILE)
+    IS_gla12_corr_attrs['input_files'] = os.path.basename(INPUT_FILE)
     # update geospatial ranges for ellipsoid
-    IS_gla12_geoid_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
-    IS_gla12_geoid_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
-    IS_gla12_geoid_attrs['geospatial_lon_min'] = np.min(lon_40HZ)
-    IS_gla12_geoid_attrs['geospatial_lon_max'] = np.max(lon_40HZ)
-    IS_gla12_geoid_attrs['geospatial_lat_units'] = "degrees_north"
-    IS_gla12_geoid_attrs['geospatial_lon_units'] = "degrees_east"
-    IS_gla12_geoid_attrs['geospatial_ellipsoid'] = "WGS84"
+    IS_gla12_corr_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
+    IS_gla12_corr_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
+    IS_gla12_corr_attrs['geospatial_lon_min'] = np.min(lon_40HZ)
+    IS_gla12_corr_attrs['geospatial_lon_max'] = np.max(lon_40HZ)
+    IS_gla12_corr_attrs['geospatial_lat_units'] = "degrees_north"
+    IS_gla12_corr_attrs['geospatial_lon_units'] = "degrees_east"
+    IS_gla12_corr_attrs['geospatial_ellipsoid'] = "WGS84"
 
     # copy 40Hz group attributes
     for att_name,att_val in fileID['Data_40HZ'].attrs.items():
-        IS_gla12_geoid_attrs['Data_40HZ'][att_name] = att_val
+        IS_gla12_corr_attrs['Data_40HZ'][att_name] = att_val
     # copy attributes for time, geolocation and geophysical groups
     for var in ['Time','Geolocation','Geophysical']:
-        IS_gla12_geoid['Data_40HZ'][var] = {}
+        IS_gla12_corr['Data_40HZ'][var] = {}
         IS_gla12_fill['Data_40HZ'][var] = {}
-        IS_gla12_geoid_attrs['Data_40HZ'][var] = {}
+        IS_gla12_corr_attrs['Data_40HZ'][var] = {}
         for att_name,att_val in fileID['Data_40HZ'][var].attrs.items():
-            IS_gla12_geoid_attrs['Data_40HZ'][var][att_name] = att_val
+            IS_gla12_corr_attrs['Data_40HZ'][var][att_name] = att_val
 
     # J2000 time
-    IS_gla12_geoid['Data_40HZ']['DS_UTCTime_40'] = DS_UTCTime_40HZ
+    IS_gla12_corr['Data_40HZ']['DS_UTCTime_40'] = DS_UTCTime_40HZ
     IS_gla12_fill['Data_40HZ']['DS_UTCTime_40'] = None
-    IS_gla12_geoid_attrs['Data_40HZ']['DS_UTCTime_40'] = {}
+    IS_gla12_corr_attrs['Data_40HZ']['DS_UTCTime_40'] = {}
     for att_name,att_val in fileID['Data_40HZ']['DS_UTCTime_40'].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
-            IS_gla12_geoid_attrs['Data_40HZ']['DS_UTCTime_40'][att_name] = att_val
+            IS_gla12_corr_attrs['Data_40HZ']['DS_UTCTime_40'][att_name] = att_val
     # record
-    IS_gla12_geoid['Data_40HZ']['Time']['i_rec_ndx'] = rec_ndx_40HZ
+    IS_gla12_corr['Data_40HZ']['Time']['i_rec_ndx'] = rec_ndx_40HZ
     IS_gla12_fill['Data_40HZ']['Time']['i_rec_ndx'] = None
-    IS_gla12_geoid_attrs['Data_40HZ']['Time']['i_rec_ndx'] = {}
-    IS_gla12_geoid_attrs['Data_40HZ']['Time']['i_rec_ndx']['coordinates'] = \
-        "../DS_UTCTime_40"
+    IS_gla12_corr_attrs['Data_40HZ']['Time']['i_rec_ndx'] = {}
     for att_name,att_val in fileID['Data_40HZ']['Time']['i_rec_ndx'].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
-            IS_gla12_geoid_attrs['Data_40HZ']['Time']['i_rec_ndx'][att_name] = att_val
+            IS_gla12_corr_attrs['Data_40HZ']['Time']['i_rec_ndx'][att_name] = att_val
     # latitude
-    IS_gla12_geoid['Data_40HZ']['Geolocation']['d_lat'] = lat_40HZ
+    IS_gla12_corr['Data_40HZ']['Geolocation']['d_lat'] = lat_40HZ
     IS_gla12_fill['Data_40HZ']['Geolocation']['d_lat'] = None
-    IS_gla12_geoid_attrs['Data_40HZ']['Geolocation']['d_lat'] = {}
-    IS_gla12_geoid_attrs['Data_40HZ']['Geolocation']['d_lat']['coordinates'] = \
-        "../DS_UTCTime_40"
+    IS_gla12_corr_attrs['Data_40HZ']['Geolocation']['d_lat'] = {}
     for att_name,att_val in fileID['Data_40HZ']['Geolocation']['d_lat'].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
-            IS_gla12_geoid_attrs['Data_40HZ']['Geolocation']['d_lat'][att_name] = att_val
+            IS_gla12_corr_attrs['Data_40HZ']['Geolocation']['d_lat'][att_name] = att_val
     # longitude
-    IS_gla12_geoid['Data_40HZ']['Geolocation']['d_lon'] = lon_40HZ
+    IS_gla12_corr['Data_40HZ']['Geolocation']['d_lon'] = lon_40HZ
     IS_gla12_fill['Data_40HZ']['Geolocation']['d_lon'] = None
-    IS_gla12_geoid_attrs['Data_40HZ']['Geolocation']['d_lon'] = {}
-    IS_gla12_geoid_attrs['Data_40HZ']['Geolocation']['d_lon']['coordinates'] = \
-        "../DS_UTCTime_40"
+    IS_gla12_corr_attrs['Data_40HZ']['Geolocation']['d_lon'] = {}
     for att_name,att_val in fileID['Data_40HZ']['Geolocation']['d_lon'].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
-            IS_gla12_geoid_attrs['Data_40HZ']['Geolocation']['d_lon'][att_name] = att_val
+            IS_gla12_corr_attrs['Data_40HZ']['Geolocation']['d_lon'][att_name] = att_val
 
-    # geophysical variables
-    # geoid undulation
-    IS_gla12_geoid['Data_40HZ']['Geophysical']['d_gdHt'] = N.astype(np.float64)
-    IS_gla12_fill['Data_40HZ']['Geophysical']['d_gdHt'] = None
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt'] = {}
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['units'] = "meters"
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['long_name'] = 'Geoidal_Undulation'
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['description'] = ('Geoidal '
-        f'undulation above the {REFERENCE} ellipsoid')
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['tide_system'] = Ylms['tide_system']
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['source'] = Ylms['modelname']
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['earth_gravity_constant'] = GM
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['radius'] = R
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['degree_of_truncation'] = LMAX
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['coordinates'] = \
-        "../DS_UTCTime_40"
-    # geoid conversion
-    IS_gla12_geoid['Data_40HZ']['Geophysical']['d_gdfree2mean'] = free2mean.copy()
-    IS_gla12_fill['Data_40HZ']['Geophysical']['d_gdfree2mean'] = None
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean'] = {}
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean']['units'] = "meters"
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean']['long_name'] = ('Geoid_'
-        'Free-to-Mean_conversion')
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean']['description'] = ('Additive '
-        'value to convert geoid heights from the tide-free system to the mean-tide system')
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean']['earth_gravity_constant'] = GM
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean']['radius'] = R
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean']['coordinates'] = \
+    # dynamic atmospheric correction (DAC)
+    IS_gla12_corr['Data_40HZ']['Geophysical']['d_dacElv'] = DAC.copy()
+    IS_gla12_fill['Data_40HZ']['Geophysical']['d_dacElv'] = DAC.fill_value
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv'] = {}
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['units'] = "meters"
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['long_name'] = \
+        "Dynamic_Atmosphere_Correction"
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['description'] = ("Dynamic_"
+        "atmospheric_correction_(DAC)_which_includes_inverse_barometer_(IB)_effects")
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['source'] = \
+        'Mog2D-G_High_Resolution_barotropic_model'
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['reference'] = \
+        ('https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/'
+         'atmospheric-corrections.html')
+    IS_gla12_corr_attrs['Data_40HZ']['Geophysical']['d_dacElv']['coordinates'] = \
         "../DS_UTCTime_40"
 
     # close the input HDF5 file
@@ -278,14 +276,14 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
 
     # print file information
     logging.info(f'\t{OUTPUT_FILE}')
-    HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_geoid_attrs,
+    HDF5_GLA12_corr_write(IS_gla12_corr, IS_gla12_corr_attrs,
         FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)
     # change the permissions mode
     os.chmod(os.path.join(DIRECTORY,OUTPUT_FILE), MODE)
 
-# PURPOSE: outputting the geoid values for ICESat data to HDF5
-def HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_attrs,
+# PURPOSE: outputting the correction values for ICESat data to HDF5
+def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
     FILENAME='', FILL_VALUE=None, CLOBBER=False):
     # setting HDF5 clobber attribute
     if CLOBBER:
@@ -311,7 +309,7 @@ def HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_attrs,
             fileID['Data_40HZ'].attrs[att_name] = att_val
 
     # add 40HZ time variable
-    val = IS_gla12_geoid['Data_40HZ']['DS_UTCTime_40']
+    val = IS_gla12_tide['Data_40HZ']['DS_UTCTime_40']
     attrs = IS_gla12_attrs['Data_40HZ']['DS_UTCTime_40']
     # Defining the HDF5 dataset variables
     var = '{0}/{1}'.format('Data_40HZ','DS_UTCTime_40')
@@ -334,7 +332,7 @@ def HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_attrs,
             if not isinstance(att_val,dict):
                 fileID['Data_40HZ'][group].attrs[att_name] = att_val
         # for each variable in the group
-        for key,val in IS_gla12_geoid['Data_40HZ'][group].items():
+        for key,val in IS_gla12_tide['Data_40HZ'][group].items():
             fillvalue = FILL_VALUE['Data_40HZ'][group][key]
             attrs = IS_gla12_attrs['Data_40HZ'][group][key]
             # Defining the HDF5 dataset variables
@@ -362,29 +360,23 @@ def HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_attrs,
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
-        description="""Calculates geoid undunations for correcting ICESat/GLAS
-            L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
+        description="""Calculates and interpolates dynamic atmospheric
+            corrections to ICESat/GLAS L2 GLA12 Antarctic and Greenland
+            Ice Sheet elevation data
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = convert_arg_line_to_args
+    parser.convert_arg_line_to_args = \
+        icesat2_toolkit.utilities.convert_arg_line_to_args
     # command line parameters
-    # input ICESat GLAS files
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='ICESat GLA12 file to run')
-    # set gravity model file to use
-    parser.add_argument('--gravity','-G',
+    # directory with reanalysis data
+    parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
         default=os.getcwd(),
-        help='Gravity model file to use')
-    # maximum spherical harmonic degree (level of truncation)
-    parser.add_argument('--lmax','-l',
-        type=int, help='Maximum spherical harmonic degree')
-    # load love number of degree 2 (default EGM2008 value)
-    parser.add_argument('--love','-n',
-        type=float, default=0.3,
-        help='Degree 2 load Love number')
+        help='Working data directory')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -403,10 +395,10 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    # run for each input GLA12 file
+    # run for each input GLAH12 file
     for FILE in args.infile:
-        compute_geoid_ICESat(args.gravity, FILE, LMAX=args.lmax,
-            LOVE=args.love, VERBOSE=args.verbose, MODE=args.mode)
+        interp_DAC_ICESat_GLAH12(args.directory, FILE,
+            VERBOSE=args.verbose, MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

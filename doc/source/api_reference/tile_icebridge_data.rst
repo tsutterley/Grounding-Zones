@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../scripts/tile_icebridge_data.py
+    :filename: tile_icebridge_data.py
     :func: arguments
     :prog: tile_icebridge_data.py
     :nodescription:

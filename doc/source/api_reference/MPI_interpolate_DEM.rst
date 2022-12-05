@@ -28,7 +28,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../DEM/MPI_interpolate_DEM.py
+    :filename: MPI_interpolate_DEM.py
     :func: arguments
     :prog: MPI_interpolate_DEM.py
     :nodescription:

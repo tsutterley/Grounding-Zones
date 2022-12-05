@@ -80,7 +80,7 @@ def compute_LPT_ICESat(FILE, VERBOSE=False, MODE=0o775):
     logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
 
     # get directory from FILE
-    logger.info('{0} -->'.format(FILE))
+    logger.info(f'{FILE} -->')
     DIRECTORY = os.path.dirname(FILE)
 
     # compile regular expression operator for extracting information from file
@@ -315,7 +315,7 @@ def compute_LPT_ICESat(FILE, VERBOSE=False, MODE=0o775):
     fileID.close()
 
     # print file information
-    logger.info('\t{0}'.format(OUTPUT_FILE))
+    logger.info(f'\t{OUTPUT_FILE}')
     HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_tide_attrs,
         FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)

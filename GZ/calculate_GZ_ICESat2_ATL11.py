@@ -413,7 +413,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
     rho_ice = 917.0
 
     # projections for converting lat/lon to polar stereographic
-    crs1 = pyproj.CRS.from_string("epsg:{0:d}".format(4326))
+    crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(epsg)
     # transformer object for converting projections
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
@@ -820,7 +820,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
                     if PLOT:
                         # plot height differences
                         l, = ax1.plot(ref_pt['AT'][i],dh_gz-PdH[0],'.-',ms=1.5,lw=0,
-                            label='Cycle {0}'.format(CYCLE))
+                            label=f'Cycle {CYCLE}')
                         # plot downstream tide and IB
                         hocean = tide_ocean['AT'].data[i0,c] - mean_tide
                         # hocean += IB['AT'].data[i0,c] - mean_ib
@@ -1447,7 +1447,7 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
-    fileID.attrs['time_coverage_duration'] = '{0:0.0f}'.format(tmx-tmn)
+    fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     # Closing the HDF5 file
     fileID.close()
 

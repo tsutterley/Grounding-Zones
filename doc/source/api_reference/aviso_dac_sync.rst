@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../DAC/aviso_dac_sync.py
+    :filename: aviso_dac_sync.py
     :func: arguments
     :prog: aviso_dac_sync.py
     :nodescription:

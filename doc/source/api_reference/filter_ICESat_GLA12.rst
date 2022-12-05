@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../scripts/filter_ICESat_GLA12.py
+    :filename: filter_ICESat_GLA12.py
     :func: arguments
     :prog: filter_ICESat_GLA12.py
     :nodescription:

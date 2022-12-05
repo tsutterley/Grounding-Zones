@@ -14,7 +14,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../geoid/compute_geoid_ICESat2_ATL03.py
+    :filename: compute_geoid_ICESat2_ATL03.py
     :func: arguments
     :prog: compute_geoid_ICESat2_ATL03.py
     :nodescription:

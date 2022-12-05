@@ -12,7 +12,7 @@ compute_LPET_ICESat2_ATL03.py
 .. __: https://github.com/tsutterley/Grounding-Zones/blob/main/tides/compute_LPET_ICESat2_ATL03.py
 
 .. argparse::
-    :filename: ../../tides/compute_LPET_ICESat2_ATL03.py
+    :filename: compute_LPET_ICESat2_ATL03.py
     :func: arguments
     :prog: compute_LPET_ICESat2_ATL03.py
     :nodescription:

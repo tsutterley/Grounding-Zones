@@ -160,7 +160,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             compressed=GZIP).elevation(TIDE_MODEL)
 
     # read data from input file
-    logger.info('{0} -->'.format(INPUT_FILE))
+    logger.info(f'{INPUT_FILE} -->')
     IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = read_HDF5_ATL03_main(INPUT_FILE,
         ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
@@ -400,7 +400,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             "../geolocation/reference_photon_lat ../geolocation/reference_photon_lon")
 
     # print file information
-    logger.info('\t{0}'.format(OUTPUT_FILE))
+    logger.info(f'\t{OUTPUT_FILE}')
     HDF5_ATL03_tide_write(IS2_atl03_tide, IS2_atl03_tide_attrs,
         CLOBBER=True, INPUT=os.path.basename(INPUT_FILE),
         FILL_VALUE=IS2_atl03_fill, DIMENSIONS=IS2_atl03_dims,
@@ -544,7 +544,7 @@ def HDF5_ATL03_tide_write(IS2_atl03_tide, IS2_atl03_attrs, INPUT=None,
     tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
-    fileID.attrs['time_coverage_duration'] = '{0:0.0f}'.format(tmx-tmn)
+    fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     # Closing the HDF5 file
     fileID.close()
 

@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../DEM/pgc_arcticdem_strip_sync.py
+    :filename: pgc_arcticdem_strip_sync.py
     :func: arguments
     :prog: pgc_arcticdem_strip_sync.py
     :nodescription:

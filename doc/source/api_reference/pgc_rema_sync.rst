@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../DEM/pgc_rema_sync.py
+    :filename: pgc_rema_sync.py
     :func: arguments
     :prog: pgc_rema_sync.py
     :nodescription:

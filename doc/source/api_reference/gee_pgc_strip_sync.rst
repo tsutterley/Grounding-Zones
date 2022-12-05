@@ -13,7 +13,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../DEM/gee_pgc_strip_sync.py
+    :filename: gee_pgc_strip_sync.py
     :func: arguments
     :prog: gee_pgc_strip_sync.py
     :nodescription:

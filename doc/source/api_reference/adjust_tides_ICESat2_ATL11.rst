@@ -12,7 +12,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../tides/adjust_tides_ICESat2_ATL11.py
+    :filename: adjust_tides_ICESat2_ATL11.py
     :func: arguments
     :prog: adjust_tides_ICESat2_ATL11.py
     :nodescription:

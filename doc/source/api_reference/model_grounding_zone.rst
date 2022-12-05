@@ -13,7 +13,7 @@ Calling Sequence
 ################
 
 .. argparse::
-    :filename: ../../GZ/model_grounding_zone.py
+    :filename: model_grounding_zone.py
     :func: arguments
     :prog: model_grounding_zone.py
     :nodescription:
