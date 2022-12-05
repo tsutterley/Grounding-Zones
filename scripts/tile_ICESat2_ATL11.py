@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_ICESat2_ATL11.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (12/2022)
 Creates tile index files of ICESat-2 annual land ice elevation data
 
 COMMAND LINE OPTIONS:
@@ -25,6 +25,7 @@ PROGRAM DEPENDENCIES:
     read_ICESat2_ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 12/2022: check that file exists within multiprocess HDF5 function
     Updated 06/2022: add checks if variables and groups already exist
     Updated 05/2022: use argparse descriptions within documentation
     Updated 11/2021: adjust tiling to index by center coordinates
@@ -54,12 +55,17 @@ def set_hemisphere(GRANULE):
 
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
+    # check that file exists if entering with read mode
+    if kwargs['mode'] in ('r','r+') and not os.access(filename, os.F_OK):
+        raise FileNotFoundError(filename)
+    # attempt to open HDF5 file
     while True:
         try:
             fileID = h5py.File(filename, *args, **kwargs)
             break
-        except (IOError, OSError, PermissionError) as e:
+        except (IOError, BlockingIOError, PermissionError) as e:
             time.sleep(1)
+    # return the file access object
     return fileID
 
 # PURPOSE: create tile index files of ICESat-2 elevation data
@@ -181,7 +187,7 @@ def tile_ICESat2_ATL11(FILE,
                 f'{tile_group}.h5')
             clobber = 'a' if os.access(tile_file,os.F_OK) else 'w'
             # open output merged tile file
-            f3 = multiprocess_h5py(tile_file,clobber)
+            f3 = multiprocess_h5py(tile_file, mode=clobber)
             # create group for file
             if BASENAME not in f3:
                 g3 = f3.create_group(BASENAME)

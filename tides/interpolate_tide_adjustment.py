@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interpolate_tide_adjustment.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Interpolates tidal adjustment scale factors to output grids
 
 COMMAND LINE OPTIONS:
@@ -24,6 +24,7 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
 
 UPDATE HISTORY:
+    Updated 12/2022: check that file exists within multiprocess HDF5 function
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: use argparse descriptions within documentation
         read mask files to not interpolate over grounded ice
@@ -52,12 +53,17 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
+    # check that file exists if entering with read mode
+    if kwargs['mode'] in ('r','r+') and not os.access(filename, os.F_OK):
+        raise FileNotFoundError(filename)
+    # attempt to open HDF5 file
     while True:
         try:
             fileID = h5py.File(filename, *args, **kwargs)
             break
         except (IOError, BlockingIOError, PermissionError) as e:
             time.sleep(1)
+    # return the file access object
     return fileID
 
 # PURPOSE: reduce a matrix using a selected function
@@ -133,7 +139,7 @@ def interpolate_tide_adjustment(tile_file,
             continue
         # read the HDF5 file
         logging.info(f'Reading Buffer File: {tile}')
-        f1 = multiprocess_h5py(os.path.join(tile_directory,tile),'r')
+        f1 = multiprocess_h5py(os.path.join(tile_directory,tile), mode='r')
         # find ATL11 files within tile
         ATL11_files = [f for f in f1.keys() if R2.match(f)]
         # read each ATL11 file and estimate errors
@@ -170,7 +176,7 @@ def interpolate_tide_adjustment(tile_file,
             continue
         # read the HDF5 file
         logging.info(f'Reading Buffer File: {tile}')
-        f1 = multiprocess_h5py(os.path.join(tile_directory,tile),'r')
+        f1 = multiprocess_h5py(os.path.join(tile_directory,tile), mode='r')
         # find ATL11 files within tile
         ATL11_files = [f for f in f1.keys() if R2.match(f)]
         # read each ATL11 file and estimate errors
@@ -187,9 +193,9 @@ def interpolate_tide_adjustment(tile_file,
             if not os.access(os.path.join(DIRECTORY,FILE2), os.F_OK):
                 continue
             # open ATL11 flexure correction HDF5 file
-            f2 = multiprocess_h5py(os.path.join(DIRECTORY,FILE2), 'r')
+            f2 = multiprocess_h5py(os.path.join(DIRECTORY,FILE2), mode='r')
             # open ATL11 grounded mask HDF5 file
-            f3 = multiprocess_h5py(os.path.join(DIRECTORY,FILE3), 'r')
+            f3 = multiprocess_h5py(os.path.join(DIRECTORY,FILE3), mode='r')
             # for each ATL11 beam pairs within the tile
             for ptx in f1[ATL11].keys():
                 # reference points and indices within tile
@@ -388,7 +394,7 @@ def interpolate_tide_adjustment(tile_file,
     output['weight'][ii,jj] = weight[ii,jj]
 
     # open original HDF5 file in append mode
-    fileID = multiprocess_h5py(tile_file, 'a')
+    fileID = multiprocess_h5py(tile_file, mode='a')
     # create geophysical group if non-existent
     group = 'geophysical'
     if group not in fileID:
