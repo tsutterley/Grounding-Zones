@@ -109,6 +109,7 @@ import argparse
 import warnings
 import numpy as np
 import scipy.interpolate
+
 # attempt imports
 try:
     import fiona

@@ -108,6 +108,7 @@ import argparse
 import datetime
 import warnings
 import numpy as np
+import grounding_zones as gz
 
 # attempt imports
 try:
@@ -551,6 +552,15 @@ def HDF5_ATL06_tide_write(IS2_atl06_tide, IS2_atl06_attrs, INPUT=None,
     # Closing the HDF5 file
     fileID.close()
 
+# PURPOSE: create a list of available ocean and load tide models
+def get_available_models():
+    """Create a list of available tide models
+    """
+    try:
+        return sorted(pyTMD.model.ocean_elevation() + pyTMD.model.load_elevation())
+    except (NameError, AttributeError):
+        return None
+
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
@@ -559,7 +569,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = pyTMD.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     group = parser.add_mutually_exclusive_group(required=True)
     # input ICESat-2 land ice height files
@@ -572,10 +582,9 @@ def arguments():
         default=os.getcwd(),
         help='Working data directory')
     # tide model to use
-    choices = sorted(pyTMD.model.ocean_elevation() + pyTMD.model.load_elevation())
     group.add_argument('--tide','-T',
         metavar='TIDE', type=str,
-        choices=choices,
+        choices=get_available_models(),
         help='Tide model to use in correction')
     parser.add_argument('--atlas-format',
         type=str, choices=('OTIS','netcdf'), default='netcdf',

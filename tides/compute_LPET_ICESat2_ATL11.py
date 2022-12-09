@@ -54,6 +54,7 @@ import datetime
 import warnings
 import numpy as np
 import collections
+import grounding_zones as gz
 
 # attempt imports
 try:
@@ -624,7 +625,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = pyTMD.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',

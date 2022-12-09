@@ -62,7 +62,6 @@ import os
 import re
 import pyproj
 import logging
-import netCDF4
 import argparse
 import datetime
 import warnings
@@ -81,6 +80,11 @@ try:
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("icesat2_toolkit not available")
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("netCDF4 not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 

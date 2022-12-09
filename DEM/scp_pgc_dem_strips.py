@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 scp_pgc_dem_strips.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (12/2022)
 Copies PGC REMA DEM and ArcticDEM strip data between a
     local host and a remote host
 
@@ -33,6 +33,7 @@ PYTHON DEPENDENCIES:
         https://github.com/jbardin/scp.py
 
 UPDATE HISTORY:
+    Updated 12/2022: place some imports behind try/except statements
     Written 06/2022
 """
 from __future__ import print_function, division
@@ -40,13 +41,26 @@ from __future__ import print_function, division
 import sys
 import os
 import re
-import scp
 import getpass
 import logging
 import argparse
 import builtins
-import paramiko
+import warnings
 import posixpath
+
+# attempt imports
+try:
+    import paramiko
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("paramiko not available")
+try:
+    import scp
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("scp not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: create argument parser
 def arguments():

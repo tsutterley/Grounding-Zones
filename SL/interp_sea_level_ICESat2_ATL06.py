@@ -69,12 +69,10 @@ import re
 import gzip
 import pyproj
 import logging
-import netCDF4
 import argparse
 import datetime
 import warnings
 import numpy as np
-import sklearn.neighbors
 import grounding_zones as gz
 
 # attempt imports
@@ -88,6 +86,16 @@ try:
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("icesat2_toolkit not available")
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("netCDF4 not available")
+try:
+    import sklearn.neighbors
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("scikit-learn not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 

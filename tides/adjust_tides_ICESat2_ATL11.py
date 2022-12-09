@@ -43,6 +43,7 @@ import warnings
 import collections
 import numpy as np
 import scipy.interpolate
+import grounding_zones as gz
 
 # attempt imports
 try:
@@ -686,14 +687,25 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
     # Closing the HDF5 file
     fileID.close()
 
+# PURPOSE: create a list of available ocean tide models
+def get_available_models():
+    """Create a list of available tide models
+    """
+    try:
+        return sorted(pyTMD.model.ocean_elevation())
+    except (NameError, AttributeError):
+        return None
+
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
         description="""Applies interpolated tidal adjustment scale
             factors to ICESat-2 ATL11 annual land ice height data
             within ice sheet grounding zones
-            """
+            """,
+        fromfile_prefix_chars="@"
     )
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     group = parser.add_mutually_exclusive_group(required=True)
     # input ICESat-2 annual land ice height files
@@ -708,6 +720,7 @@ def arguments():
     # tide model to use
     group.add_argument('--tide','-T',
         metavar='TIDE', type=str,
+        choices=get_available_models(),
         help='Tide model to use in correction')
     # verbosity settings
     # verbose will output information about each output file

@@ -52,14 +52,18 @@ UPDATE HISTORY:
 from __future__ import print_function
 import sys
 import os
-import argparse
 import time
-import fiona
 import logging
+import argparse
 import warnings
 import dateutil.parser
 
 # attempt imports
+try:
+    import fiona
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("mpi4py not available")
 try:
     import ee
 except (ImportError, ModuleNotFoundError) as e:

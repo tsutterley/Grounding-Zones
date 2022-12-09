@@ -55,19 +55,27 @@ from __future__ import print_function
 
 import os
 import re
-import fiona
 import pyproj
 import argparse
 import warnings
 import numpy as np
-from shapely.geometry import MultiPoint, Polygon
 
 # attempt imports
+try:
+    import fiona
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("mpi4py not available")
 try:
     import icesat2_toolkit as is2tk
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("icesat2_toolkit not available")
+try:
+    import shapely.geometry
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("shapely not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -183,7 +191,7 @@ def read_DEM_index(index_file, DEM_MODEL):
         # extract Polar Stereographic coordinates for entity
         x = [ul[0],ur[0],lr[0],ll[0],ul2[0]]
         y = [ul[1],ur[1],lr[1],ll[1],ul2[1]]
-        poly_obj = Polygon(list(zip(x,y)))
+        poly_obj = shapely.geometry.Polygon(list(zip(x,y)))
         # Valid Polygon may not possess overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
@@ -238,7 +246,7 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
         # convert projection from latitude/longitude to tile EPSG
         X,Y = transformer.transform(longitude, latitude)
         # convert reduced x and y to shapely multipoint object
-        xy_point = MultiPoint(np.c_[X, Y])
+        xy_point = shapely.geometry.MultiPoint(np.c_[X, Y])
 
         # create complete masks for each DEM tile
         intersection_map = {}

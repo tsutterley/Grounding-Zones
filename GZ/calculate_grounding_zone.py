@@ -66,7 +66,6 @@ from __future__ import print_function
 import sys
 import os
 import re
-import fiona
 import pyproj
 import argparse
 import operator
@@ -78,6 +77,11 @@ import scipy.optimize
 import matplotlib.pyplot as plt
 
 # attempt imports
+try:
+    import fiona
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("mpi4py not available")
 try:
     import pyTMD.spatial
 except (ImportError, ModuleNotFoundError) as e:

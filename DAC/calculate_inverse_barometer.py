@@ -51,11 +51,20 @@ import sys
 import os
 import re
 import logging
-import netCDF4
 import argparse
 import datetime
+import warnings
 import numpy as np
 import grounding_zones as gz
+
+# attempt imports
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("netCDF4 not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: read land sea mask to get indices of oceanic values
 def ncdf_landmask(FILENAME,MASKNAME,OCEAN):

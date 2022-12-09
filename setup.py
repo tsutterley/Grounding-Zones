@@ -30,7 +30,7 @@ with open('version.txt', 'r', encoding='utf8') as fh:
 
 # list of all scripts to be included with package
 scripts=[]
-for s in ['scripts','DAC','DEM','geoid','GZ','tides']:
+for s in ['scripts','DAC','DEM','geoid','GZ','SL','tides']:
     scripts.extend([os.path.join(s,f) for f in os.listdir(s) if f.endswith('.py')])
 
 # run cmd from the command line
@@ -47,11 +47,11 @@ except:
 else:
     log.info(f"GDAL version from via gdal-config: {gdal_output[3]}")
 # if setting GDAL version from via gdal-config
-if gdal_output[3]:
+if gdal_output[3] and ('gdal' in install_requires):
     # add version information to gdal in install_requires
     gdal_index = install_requires.index('gdal')
     install_requires[gdal_index] = f'gdal=={gdal_output[3]}'
-elif any(install_requires):
+elif any(install_requires) and ('gdal' in install_requires):
     # gdal version not found
     gdal_index = install_requires.index('gdal')
     install_requires.pop(gdal_index)
