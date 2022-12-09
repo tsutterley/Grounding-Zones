@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_ICESat2_ATL06.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates long-period equilibrium tidal elevations for correcting ICESat-2
     land ice elevation data
 Will calculate the long-period tides for all ATL06 segments and not just ocean
@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
     compute_equilibrium_tide.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 04/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
@@ -141,11 +142,11 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
             epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
         # interpolate delta times from calendar dates to tide time
         delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-        deltat = calc_delta_time(delta_file, tide_time)
+        deltat = pyTMD.calc_delta_time(delta_file, tide_time)
 
         # predict long-period equilibrium tides at latitudes and time
         tide_lpe = np.ma.zeros((n_seg), fill_value=fv)
-        tide_lpe.data[:] = compute_equilibrium_tide(tide_time + deltat, val['latitude'])
+        tide_lpe.data[:] = pyTMD.compute_equilibrium_tide(tide_time + deltat, val['latitude'])
         tide_lpe.mask = (val['latitude'] == fv) | (val['delta_time'] == fv)
 
         # group attributes for beam
@@ -427,6 +428,10 @@ def HDF5_ATL06_tide_write(IS2_atl06_tide, IS2_atl06_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = pyTMD.version.project_name
+    fileID.attrs['software_version'] = pyTMD.version.full_version
+    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_triangulate_elevation.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 
 Calculates interpolated elevations by triangulated irregular
     network meshing (TINs) to compare with an input file
@@ -44,6 +44,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: updated ATM1b read functions for distributed version
     	use argparse descriptions within documentation

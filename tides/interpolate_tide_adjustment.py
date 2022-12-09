@@ -25,6 +25,7 @@ PYTHON DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 12/2022: check that file exists within multiprocess HDF5 function
+        single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: use argparse descriptions within documentation
         read mask files to not interpolate over grounded ice

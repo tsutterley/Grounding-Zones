@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 copernicus_sea_level_sync.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (12/2022)
 
 Syncs sea surface anomalies calculated from AVISO and distributed by the EU
     ftp://my.cmems-du.eu/Core/SEALEVEL_GLO_PHY_L4_REP_OBSERVATIONS_008_047/
@@ -26,6 +26,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the directories and files synced
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 06/2022: using argparse to set command line parameters
         use logging for verbose and log output
     Updated 12/2018: using new Copernicus ftp server

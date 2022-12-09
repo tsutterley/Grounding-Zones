@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_median_elevation_filter.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (12/2022)
 
 Filters elevation change rates from triangulated Operation IceBridge data
     using an interquartile range algorithm described by Pritchard (2009)
@@ -50,6 +50,7 @@ REFERENCE:
     pp. 451-467 (2017).  https://doi.org/10.5194/tc-11-451-2017
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: updated ATM1b read functions for distributed version
         use argparse descriptions within documentation

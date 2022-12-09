@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 filter_ICESat_GLA12.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates quality summary flags for ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -48,6 +48,7 @@ L. S. Sorensen, S. B. Simonsen, K. Nielsen, P. Lucas-Picher,
     https://doi.org/10.5194/tc-5-173-2011
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 05/2022: use argparse descriptions within documentation
     Forked 02/2022 from icesat_glas_correct.py
 """

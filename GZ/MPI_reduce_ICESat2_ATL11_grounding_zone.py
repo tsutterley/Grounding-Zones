@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL11_grounding_zone.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 
 Create masks for reducing ICESat-2 annual land ice height data to within
     a buffer region near the ice sheet grounding zone
@@ -41,7 +41,8 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
-    Updated 11/2022: verify coordinate reference system attribute from shapefile
+    Updated 12/2022: single implicit import of grounding zone tools
+    Updated 11/2022: verify coordinate reference system of shapefile
     Updated 10/2022: simplied HDF5 file output to match other reduction programs
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place some imports within try/except statements

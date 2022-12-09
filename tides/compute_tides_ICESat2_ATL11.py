@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates tidal elevations for correcting ICESat-2 annual land ice height data
 
 Uses OTIS format tidal solutions provided by Ohio State University and ESR
@@ -58,6 +58,7 @@ PROGRAM DEPENDENCIES:
     predict_tide_drift.py: predict tidal elevations using harmonic constants
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: added ESR netCDF4 formats to list of model types
         updated keyword arguments to read tide model programs
@@ -241,27 +242,27 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                 scale=1.0/86400.0)
             # read tidal constants and interpolate to grid points
             if model.format in ('OTIS','ATLAS','ESR'):
-                amp,ph,D,c = extract_tidal_constants(longitude[track],
+                amp,ph,D,c = pyTMD.extract_tidal_constants(longitude[track],
                     latitude[track], model.grid_file, model.model_file,
                     model.projection, type=model.type, method=METHOD,
                     extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
                     grid=model.format, apply_flexure=APPLY_FLEXURE)
                 deltat = np.zeros_like(tide_time)
             elif (model.format == 'netcdf'):
-                amp,ph,D,c = extract_netcdf_constants(longitude[track],
+                amp,ph,D,c = pyTMD.extract_netcdf_constants(longitude[track],
                     latitude[track], model.grid_file, model.model_file,
                     type=model.type, method=METHOD, extrapolate=EXTRAPOLATE,
                     cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
                 deltat = np.zeros_like(tide_time)
             elif (model.format == 'GOT'):
-                amp,ph,c = extract_GOT_constants(longitude[track],
+                amp,ph,c = pyTMD.extract_GOT_constants(longitude[track],
                     latitude[track], model.model_file, method=METHOD,
                     extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale,
                     compressed=model.compressed)
                 # interpolate delta times from calendar dates to tide time
-                deltat = calc_delta_time(delta_file, tide_time)
+                deltat = pyTMD.calc_delta_time(delta_file, tide_time)
             elif (model.format == 'FES'):
-                amp,ph = extract_FES_constants(longitude[track],
+                amp,ph = pyTMD.extract_FES_constants(longitude[track],
                     latitude[track], model.model_file,
                     type=model.type, version=model.version, method=METHOD,
                     extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
@@ -269,7 +270,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                 # available model constituents
                 c = model.constituents
                 # interpolate delta times from calendar dates to tide time
-                deltat = calc_delta_time(delta_file, tide_time)
+                deltat = pyTMD.calc_delta_time(delta_file, tide_time)
 
             # calculate complex phase in radians for Euler's
             cph = -1j*ph*np.pi/180.0
@@ -284,10 +285,10 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                     tide[track].mask[:,cycle] |= np.any(hc.mask,axis=1)
                     valid, = np.nonzero(~tide[track].mask[:,cycle])
                     # predict tidal elevations and infer minor corrections
-                    tide[track].data[valid,cycle] = predict_tide_drift(
+                    tide[track].data[valid,cycle] = pyTMD.predict_tide_drift(
                         tide_time[valid,cycle], hc[valid,:], c,
                         deltat=deltat[valid,cycle], corrections=model.format)
-                    minor = infer_minor_corrections(tide_time[valid,cycle], hc[valid,:],
+                    minor = pyTMD.infer_minor_corrections(tide_time[valid,cycle], hc[valid,:],
                         c, deltat=deltat[valid,cycle], corrections=model.format)
                     tide[track].data[valid,cycle] += minor.data[:]
             elif (track == 'XT'):
@@ -295,10 +296,10 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                 tide[track].mask[:] |= np.any(hc.mask,axis=1)
                 valid, = np.nonzero(~tide[track].mask[:])
                 # predict tidal elevations and infer minor corrections
-                tide[track].data[valid] = predict_tide_drift(tide_time[valid],
+                tide[track].data[valid] = pyTMD.predict_tide_drift(tide_time[valid],
                     hc[valid,:], c, deltat=deltat[valid],
                     corrections=model.format)
-                minor = infer_minor_corrections(tide_time[valid], hc[valid,:],
+                minor = pyTMD.infer_minor_corrections(tide_time[valid], hc[valid,:],
                     c, deltat=deltat[valid], corrections=model.format)
                 tide[track].data[valid] += minor.data[:]
 

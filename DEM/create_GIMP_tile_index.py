@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 create_GIMP_tile_index.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 
 Reads GIMP 30m DEM tiles from the OSU Greenland Ice Mapping Project
     https://nsidc.org/data/nsidc-0645/versions/1
@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place GDAL import within try/except statement
     Updated 05/2022: use argparse descriptions within documentation
     Updated 04/2021: set a default netrc file and check access

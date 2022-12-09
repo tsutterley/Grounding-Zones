@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_icebridge_data.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates geoid undulations for correcting Operation IceBridge elevation data
 
 INPUTS:
@@ -35,6 +35,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
         place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation

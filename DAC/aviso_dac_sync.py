@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 aviso_dac_sync.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 
 Syncs the dynamic atmospheric correction (DAC) from AVISO
     https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/
@@ -26,6 +26,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the directories and files synced
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: use f-strings for formatting verbose or ascii output
     Updated 02/2022: using argparse to set command line parameters
         use logging for verbose and log output

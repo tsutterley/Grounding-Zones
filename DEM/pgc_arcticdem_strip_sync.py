@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 pgc_arcticdem_strip_sync.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 
 Syncs ArcticDEM strip tar files from the Polar Geospatial Center (PGC)
     https://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/strips
@@ -40,6 +40,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: new ArcticDEM strip version and directory structure
     Written 05/2022
 """

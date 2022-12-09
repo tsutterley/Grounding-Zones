@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_ICESat_GLA12.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates long-period equilibrium tidal elevations for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
 Will calculate the long-period tides for all GLAS elevations and not just
@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
     compute_equilibrium_tide.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 04/2022: use argparse descriptions within documentation
     Updated 02/2022: save ICESat campaign attribute to output file
@@ -132,10 +133,10 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
         epoch1=(2000,1,1,12,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
     # interpolate delta times from calendar dates to tide time
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-    deltat = calc_delta_time(delta_file, tide_time)
+    deltat = pyTMD.calc_delta_time(delta_file, tide_time)
 
     # predict long-period equilibrium tides at latitudes and time
-    tide_lpe = compute_equilibrium_tide(tide_time + deltat, lat_40HZ)
+    tide_lpe = pyTMD.compute_equilibrium_tide(tide_time + deltat, lat_40HZ)
 
     # copy variables for outputting to HDF5 file
     IS_gla12_tide = dict(Data_40HZ={})
@@ -264,6 +265,11 @@ def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
     attrs = {a:v for a,v in IS_gla12_attrs.items() if not isinstance(v,dict)}
     for att_name,att_val in attrs.items():
        fileID.attrs[att_name] = att_val
+
+    # add software information
+    fileID.attrs['software_reference'] = pyTMD.version.project_name
+    fileID.attrs['software_version'] = pyTMD.version.full_version
+    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
 
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')

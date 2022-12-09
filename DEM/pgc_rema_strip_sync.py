@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 pgc_rema_strip_sync.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 
 Syncs Reference Elevation Map of Antarctica (REMA) DEM strip tar files
     from the Polar Geospatial Center (PGC)
@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: new REMA strip version and directory structure
     Written 05/2022
 """

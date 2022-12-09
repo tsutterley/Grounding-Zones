@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
@@ -68,7 +68,8 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
-    Updated 11/2022: verify coordinate reference system attribute from shapefile
+    Updated 12/2022: single implicit import of grounding zone tools
+    Updated 11/2022: verify coordinate reference system of shapefile
         added option to remove a static mean file from heights
     Updated 10/2022: made reading mean dynamic topography an option
     Updated 08/2022: use logging for verbose output of processing run

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_IB_ICESat2_ATL07.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates and interpolates inverse-barometer responses to times and
     locations of ICESat-2 ATL07 sea ice height data
 
@@ -43,6 +43,7 @@ REFERENCES:
         Rev. A, 84 pp., (1994)
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 05/2022: use argparse descriptions within sphinx documentation
     Updated 10/2021: using python logging for handling verbose output
         added parsing for converting file lines to arguments

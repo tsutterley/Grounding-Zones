@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_ATL14_DEM_ICESat2_ATL06.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 Interpolates ATL14 elevations to locations of ICESat-2 ATL06 segments
 
 COMMAND LINE OPTIONS:
@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: check that granule intersects ATL14 DEM
     Written 11/2022
 """

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates long-period equilibrium tidal elevations for correcting ICESat-2
     annual land ice height data
 Will calculate the long-period tides for all ATL11 segments and not just ocean
@@ -31,6 +31,7 @@ PROGRAM DEPENDENCIES:
     compute_equilibrium_tide.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 04/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
@@ -182,7 +183,7 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
                 epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
             # interpolate delta times from calendar dates to tide time
             delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-            deltat = calc_delta_time(delta_file, tide_time)
+            deltat = pyTMD.calc_delta_time(delta_file, tide_time)
 
             # calculate  long-period equilibrium tides for track type
             if (track == 'AT'):
@@ -192,14 +193,14 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
                     valid, = np.nonzero(~tide_lpe[track].mask[:,cycle])
                     # predict long-period equilibrium tides at latitudes and time
                     t = tide_time[valid,cycle] + deltat[valid,cycle]
-                    tide_lpe[track].data[valid,cycle] = compute_equilibrium_tide(t,
+                    tide_lpe[track].data[valid,cycle] = pyTMD.compute_equilibrium_tide(t,
                         latitude[track][valid])
             elif (track == 'XT'):
                 # find valid time and spatial points for cycle
                 valid, = np.nonzero(~tide_lpe[track].mask[:])
                 # predict long-period equilibrium tides at latitudes and time
                 t = tide_time[valid] + deltat[valid]
-                tide_lpe[track].data[valid] = compute_equilibrium_tide(t,
+                tide_lpe[track].data[valid] = pyTMD.compute_equilibrium_tide(t,
                     latitude[track][valid])
 
             # replace masked and nan values with fill value
@@ -608,6 +609,10 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = pyTMD.version.project_name
+    fileID.attrs['software_version'] = pyTMD.version.full_version
+    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 
