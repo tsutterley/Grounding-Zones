@@ -62,19 +62,19 @@ import logging
 import argparse
 import warnings
 import numpy as np
-import pyTMD.time
-import pyTMD.spatial
-import pyTMD.utilities
 import scipy.interpolate
-from pyTMD.iers_mean_pole import iers_mean_pole
-from pyTMD.read_iers_EOP import read_iers_EOP
-from pyTMD.read_ocean_pole_tide import read_ocean_pole_tide
+
 # attempt imports
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 

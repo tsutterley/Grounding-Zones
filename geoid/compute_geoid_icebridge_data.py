@@ -58,14 +58,13 @@ import sys
 import os
 import re
 import time
-import h5py
 import logging
 import argparse
 import warnings
 import collections
 import numpy as np
-import icesat2_toolkit.time
-from grounding_zones.utilities import convert_arg_line_to_args
+import grounding_zones as gz
+
 # attempt imports
 try:
     import ATM1b_QFIT.read_ATM1b_QFIT_binary
@@ -73,11 +72,20 @@ except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("ATM1b_QFIT not available")
 try:
-    from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
-    from geoid_toolkit.geoid_undulation import geoid_undulation
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import geoid_toolkit as geoidtk
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("geoid_toolkit not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -193,13 +201,13 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         fileID.close()
     # calculate the number of leap seconds between GPS time (seconds
     # since Jan 6, 1980 00:00:00) and UTC
-    gps_seconds = icesat2_toolkit.time.convert_calendar_dates(
+    gps_seconds = is2tk.time.convert_calendar_dates(
         year,month,day,hour=hour,minute=minute,second=second,
         epoch=(1980,1,6,0,0,0),scale=86400.0)
-    leap_seconds = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
+    leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
     # calculation of Julian day taking into account leap seconds
     # converting to J2000 seconds
-    ATM_L1b_input['time'] = icesat2_toolkit.time.convert_calendar_dates(
+    ATM_L1b_input['time'] = is2tk.time.convert_calendar_dates(
         year,month,day,hour=hour,minute=minute,second=second-leap_seconds,
         epoch=(2000,1,1,12,0,0,0),scale=86400.0)
     # subset the data to indices if specified
@@ -260,15 +268,15 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     if (MISSION == 'BLATM2') or (SFX != 'csv'):
         # calculate the number of leap seconds between GPS time (seconds
         # since Jan 6, 1980 00:00:00) and UTC
-        gps_seconds = icesat2_toolkit.time.convert_calendar_dates(
+        gps_seconds = is2tk.time.convert_calendar_dates(
             year,month,day,hour=hour,minute=minute,second=second,
             epoch=(1980,1,6,0,0,0),scale=86400.0)
-        leap_seconds = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
+        leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
     else:
         leap_seconds = 0.0
     # calculation of Julian day
     # converting to J2000 seconds
-    ATM_L2_input['time'] = icesat2_toolkit.time.convert_calendar_dates(
+    ATM_L2_input['time'] = is2tk.time.convert_calendar_dates(
         year,month,day,hour=hour,minute=minute,second=second-leap_seconds,
         epoch=(2000,1,1,12,0,0,0),scale=86400.0)
     # convert RMS from centimeters to meters
@@ -398,7 +406,7 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
         input_subsetter = None
 
     # read gravity model Ylms and change tide to tide free
-    Ylms = read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
+    Ylms = geoidtk.read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
     R = np.float64(Ylms['radius'])
     GM = np.float64(Ylms['earth_gravity_constant'])
     LMAX = np.int64(Ylms['max_degree'])
@@ -518,7 +526,7 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     # colatitude in radians
     theta = (90.0 - dinput['lat'])*np.pi/180.0
     # calculate geoid at coordinates
-    dinput['geoid_h'] = geoid_undulation(dinput['lat'], dinput['lon'],
+    dinput['geoid_h'] = geoidtk.geoid_undulation(dinput['lat'], dinput['lon'],
         REFERENCE, Ylms['clm'], Ylms['slm'], LMAX, R, GM).astype(np.float64)
     # calculate offset for converting from tide_free to mean_tide
     # legendre polynomial of degree 2 (unnormalized)
@@ -566,10 +574,10 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     # convert start/end time from J2000 dates into Julian days
     # J2000: seconds since 2000-01-01 12:00:00 UTC
     time_range = np.array([np.min(dinput['time']),np.max(dinput['time'])])
-    time_julian = 2400000.5 + icesat2_toolkit.time.convert_delta_time(time_range,
+    time_julian = 2400000.5 + is2tk.time.convert_delta_time(time_range,
         epoch1=(2000,1,1,12,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date
-    cal = icesat2_toolkit.time.convert_julian(time_julian,ASTYPE=int)
+    cal = is2tk.time.convert_julian(time_julian,ASTYPE=int)
     # add attributes with measurement date start, end and duration
     args = (cal['hour'][0],cal['minute'][0],cal['second'][0])
     fid.attrs['RangeBeginningTime'] = '{0:02d}:{1:02d}:{2:02d}'.format(*args)
@@ -581,6 +589,10 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     fid.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
     duration = np.round(time_julian[-1]*86400.0 - time_julian[0]*86400.0)
     fid.attrs['DurationTimeSeconds'] = f'{duration:0.0f}'
+    # add software information
+    fid.attrs['software_reference'] = gz.version.project_name
+    fid.attrs['software_version'] = gz.version.full_version
+    fid.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE
@@ -594,7 +606,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     # input operation icebridge files
     parser.add_argument('infile',

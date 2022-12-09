@@ -68,7 +68,8 @@ import argparse
 import warnings
 import posixpath
 import lxml.etree
-import grounding_zones.utilities
+import grounding_zones as gz
+
 # attempt imports
 try:
     import osgeo.gdal, osgeo.osr, osgeo.ogr
@@ -124,7 +125,7 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
     # create a counter for shapefile id
     id = 1
     # read and parse request for remote files (columns and dates)
-    colnames,collastmod,_ = grounding_zones.utilities.nsidc_list(remote_dir,
+    colnames,collastmod,_ = gz.utilities.nsidc_list(remote_dir,
         build=False, parser=parser, pattern=rx,sort=True)
 
     # read each GIMP DEM file
@@ -140,7 +141,7 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
         CHUNK = 16 * 1024
         # copy contents to BytesIO object using chunked transfer encoding
         # transfer should work properly with ascii and binary data formats
-        fileID,_ = grounding_zones.utilities.from_nsidc(
+        fileID,_ = gz.utilities.from_nsidc(
             posixpath.join(remote_dir,colname),
             build=False, chunk=CHUNK)
         # rewind retrieved binary to start of file
@@ -289,11 +290,11 @@ def main():
 
     # build a urllib opener for NSIDC
     # Add the username and password for NASA Earthdata Login system
-    grounding_zones.utilities.build_opener(args.user,args.password)
+    gz.utilities.build_opener(args.user,args.password)
 
     # check internet connection before attempting to run program
     # check NASA earthdata credentials before attempting to run program
-    if grounding_zones.utilities.check_credentials():
+    if gz.utilities.check_credentials():
         create_GIMP_tile_index(args.directory, args.version, MODE=args.mode)
 
 # run main program

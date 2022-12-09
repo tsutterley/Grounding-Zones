@@ -57,9 +57,18 @@ import re
 import fiona
 import pyproj
 import argparse
+import warnings
 import numpy as np
 from shapely.geometry import MultiPoint, Polygon
-from icesat2_toolkit.read_ICESat2_ATL06 import read_HDF5_ATL06
+
+# attempt imports
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # digital elevation models
 elevation_dir = {}
@@ -186,7 +195,7 @@ def read_DEM_index(index_file, DEM_MODEL):
 # PURPOSE: read ICESat-2 data from NSIDC and determine which DEM tiles to read
 def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
     # read data from FILE
-    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = read_HDF5_ATL06(FILE,
+    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = is2tk.read_HDF5_ATL06(FILE,
         VERBOSE=True, ATTRIBUTES=True)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'

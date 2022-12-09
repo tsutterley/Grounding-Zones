@@ -86,21 +86,30 @@ import sys
 import os
 import re
 import time
-import h5py
 import pyproj
 import logging
 import argparse
 import warnings
 import numpy as np
 import scipy.spatial
-import icesat2_toolkit.time
-import icesat2_toolkit.spatial
+import grounding_zones as gz
+
 # attempt imports
 try:
     import ATM1b_QFIT.read_ATM1b_QFIT_binary
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("ATM1b_QFIT not available")
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
 try:
     from mpi4py import MPI
 except (ImportError, ModuleNotFoundError) as e:
@@ -446,7 +455,7 @@ def calc_GPS_to_UTC(YEAR, MONTH, DAY, HOUR, MINUTE, SECOND):
         np.floor(3.*(np.floor((YEAR + (MONTH - 9.)/7.)/100.) + 1.)/4.) + \
         np.floor(275.*MONTH/9.) + DAY + 1721028.5 - 2444244.5
     GPS_Time = GPS*86400.0 + HOUR*3600.0 + MINUTE*60.0 + SECOND
-    return icesat2_toolkit.time.count_leap_seconds(GPS_Time)
+    return is2tk.time.count_leap_seconds(GPS_Time)
 
 # Module for outputting the individual interpolated elevations
 def main():
@@ -522,7 +531,7 @@ def main():
         # early date strings omitted century and millenia (e.g. 93 for 1993)
         if (len(YYMMDD1) == 6):
             SD1 = os.path.basename(os.path.dirname(input_files[0]))
-            YY1,MM1,DD1 = re.findall('(\d+)\.(\d+)\.(\d+)',SD1).pop()
+            YY1,MM1,DD1 = re.findall(r'(\d+)\.(\d+)\.(\d+)',SD1).pop()
         elif (len(YYMMDD1) == 8):
             YY1,MM1,DD1 = YYMMDD1[:4],YYMMDD1[4:6],YYMMDD1[6:]
     elif OIB1 in ('LVIS','LVGH'):
@@ -554,7 +563,7 @@ def main():
         # early date strings omitted century and millenia (e.g. 93 for 1993)
         if (len(YYMMDD2) == 6):
             SD2 = os.path.basename(os.path.dirname(input_files[1]))
-            YY2,MM2,DD2 = re.findall('(\d+)\.(\d+)\.(\d+)',SD2).pop()
+            YY2,MM2,DD2 = re.findall(r'(\d+)\.(\d+)\.(\d+)',SD2).pop()
         elif (len(YYMMDD2) == 8):
             YY2,MM2,DD2 = YYMMDD2[:4],YYMMDD2[4:6],YYMMDD2[6:]
     elif OIB2 in ('LVIS','LVGH'):
@@ -775,7 +784,7 @@ def triangulate_elevation(X, Y, H, T, xpt, ypt, DISTANCE, RMS=None, ANGLE=120.):
         if RMS is not None:
             r0 = RMS[ind]
         # verify that original point is within triangle
-        if icesat2_toolkit.spatial.inside_polygon(xpt, ypt, x0, y0):
+        if is2tk.spatial.inside_polygon(xpt, ypt, x0, y0):
             # vertices for triangle
             # x coordinates for each vertice
             x1 = x0[0]
@@ -861,7 +870,7 @@ def triangulate_elevation(X, Y, H, T, xpt, ypt, DISTANCE, RMS=None, ANGLE=120.):
         for vert in delaunay_vertices:
             # verify that original point is within triangle
             # if not will go to next set of vertices
-            if icesat2_toolkit.spatial.inside_polygon(xpt, ypt, x0[vert], y0[vert]):
+            if is2tk.spatial.inside_polygon(xpt, ypt, x0[vert], y0[vert]):
                 # vertices for triangle
                 # x coordinates for each vertice
                 x1 = x0[vert[0]]
@@ -1009,6 +1018,7 @@ def find_valid_triangulation(x0, y0):
     # try each set of qhull_options
     points = np.concatenate((x0[:,None],y0[:,None]),axis=1)
     for i,opt in enumerate(['Qt Qbb Qc Qz','Qt Qc QbB','QJ QbB']):
+        logging.info(f'qhull option: {opt}')
         try:
             triangle = scipy.spatial.Delaunay(points, qhull_options=opt)
         except scipy.spatial.qhull.QhullError:
@@ -1182,7 +1192,7 @@ def HDF5_triangulated_data(output_data, MISSION=None, INPUT=None, FILENAME='',
     JD_start = time_start/86400. + 2451545.
     JD_end = time_end/86400. + 2451545.
     # convert from julian to calendar dates
-    cal_date = icesat2_toolkit.time.convert_julian(np.array([JD_start,JD_end]),
+    cal_date = is2tk.time.convert_julian(np.array([JD_start,JD_end]),
         ASTYPE=np.int64)
     # add attributes with measurement date start, end and duration
     args = (cal_date['hour'][0],cal_date['minute'][0],cal_date['second'][0])
@@ -1195,7 +1205,10 @@ def HDF5_triangulated_data(output_data, MISSION=None, INPUT=None, FILENAME='',
     fileID.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
     duration = np.round(time_end - time_start).astype(np.int64)
     fileID.attrs['DurationTimeSeconds'] = f'{duration:d}'
-
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 

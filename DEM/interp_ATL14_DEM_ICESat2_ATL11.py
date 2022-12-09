@@ -37,26 +37,37 @@ from __future__ import print_function
 import sys
 import os
 import re
-import h5py
 import pyproj
 import logging
 import netCDF4
-import datetime
 import argparse
+import datetime
+import warnings
 import collections
 import numpy as np
 import scipy.interpolate
-from icesat2_toolkit.convert_delta_time import convert_delta_time
-import icesat2_toolkit.time
-import icesat2_toolkit.utilities
-from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11
+import grounding_zones as gz
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11)
 # interpolate DEM data to x and y coordinates
 def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
 
     # read data from FILE
-    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = read_HDF5_ATL11(FILE,
+    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = is2tk.read_HDF5_ATL11(FILE,
         ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
@@ -447,9 +458,9 @@ def HDF5_ATL11_dem_write(IS2_atl11_dem, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into UTC time
-    time_utc = convert_delta_time(np.array([tmn,tmx]))
+    time_utc = is2tk.convert_delta_time(np.array([tmn,tmx]))
     # convert to calendar date
-    YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(time_utc['julian'],
+    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(time_utc['julian'],
         format='tuple')
     # add attributes with measurement date start, end and duration
     tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
@@ -459,6 +470,10 @@ def HDF5_ATL11_dem_write(IS2_atl11_dem, IS2_atl11_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 
@@ -470,8 +485,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = \
-        icesat2_toolkit.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('file',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),

@@ -53,17 +53,29 @@ from __future__ import print_function
 
 import os
 import re
-import h5py
 import pyproj
 import logging
 import netCDF4
 import argparse
 import datetime
+import warnings
 import numpy as np
 import scipy.interpolate
-import icesat2_toolkit.time
-import icesat2_toolkit.utilities
-from icesat2_toolkit.read_ICESat2_ATL07 import read_HDF5_ATL07
+import grounding_zones as gz
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: read land sea mask to get indices of oceanic values
 def ncdf_landmask(FILENAME,MASKNAME,OCEAN):
@@ -99,7 +111,7 @@ def find_pressure_files(ddir, MODEL, MJD):
         # append day prior, day of and day after
         JD = mjd + np.arange(-1,2) + 2400000.5
         # convert from Julian Days to calendar dates
-        Y,M,D,_,_,_ = icesat2_toolkit.time.convert_julian(JD,
+        Y,M,D,_,_,_ = is2tk.time.convert_julian(JD,
             ASTYPE=int, FORMAT='tuple')
         # append day as formatted strings
         for y,m,d in zip(Y,M,D):
@@ -137,9 +149,9 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
             # convert time to Modified Julian Days
             delta_time = np.copy(fileID.variables[TIMENAME][:])
             units = fileID.variables[TIMENAME].units
-            epoch,to_secs = icesat2_toolkit.time.parse_date_string(units)
+            epoch,to_secs = is2tk.time.parse_date_string(units)
             for t,dt in enumerate(delta_time):
-                MJD[c] = icesat2_toolkit.time.convert_delta_time(dt*to_secs,
+                MJD[c] = is2tk.time.convert_delta_time(dt*to_secs,
                     epoch1=epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
                 # check dimensions for expver slice
                 if (fileID.variables[VARNAME].ndim == 4):
@@ -242,7 +254,7 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
 
     # read data from input_file
     logging.info(f'{FILE} -->')
-    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = read_HDF5_ATL07(FILE,
+    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = is2tk.read_HDF5_ATL07(FILE,
         ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 sea ice file name
@@ -290,7 +302,7 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
     MASK = ncdf_landmask(os.path.join(ddir,input_mask_file),MASKNAME,OCEAN)
 
     # find and read each reanalysis pressure field
-    MJD = icesat2_toolkit.time.convert_calendar_dates(int(YY),int(MM),int(DD),
+    MJD = is2tk.time.convert_calendar_dates(int(YY),int(MM),int(DD),
         epoch=(1858,11,17,0,0,0), scale=1.0)
     FILENAMES = find_pressure_files(ddir,MODEL,MJD)
     # read sea level pressure and calculate anomalies
@@ -333,8 +345,8 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
 
         # convert time from ATLAS SDP to Modified Julian Days
         gps_seconds = atlas_sdp_gps_epoch + val['delta_time']
-        leap_seconds = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
-        MJD = icesat2_toolkit.time.convert_delta_time(gps_seconds-leap_seconds,
+        leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
+        MJD = is2tk.time.convert_delta_time(gps_seconds - leap_seconds,
             epoch1=(1980,1,6,0,0,0),epoch2=(1858,11,17,0,0,0),scale=1.0/86400.0)
 
         # calculate projected coordinates of input coordinates
@@ -681,12 +693,12 @@ def HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_attrs, INPUT=None,
     atlas_sdp_gps_epoch=IS2_atl07_corr['ancillary_data']['atlas_sdp_gps_epoch']
     gps_seconds = atlas_sdp_gps_epoch + np.array([tmn,tmx])
     # calculate leap seconds
-    leaps = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
+    leaps = is2tk.time.count_leap_seconds(gps_seconds)
     # convert from seconds since 1980-01-06T00:00:00 to Modified Julian days
-    MJD = icesat2_toolkit.time.convert_delta_time(gps_seconds - leaps,
+    MJD = is2tk.time.convert_delta_time(gps_seconds - leaps,
         epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date
-    YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(MJD + 2400000.5,
+    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(MJD + 2400000.5,
         FORMAT='tuple')
     # add attributes with measurement date start, end and duration
     tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
@@ -696,6 +708,10 @@ def HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 
@@ -708,8 +724,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = \
-        icesat2_toolkit.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',

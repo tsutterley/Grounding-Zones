@@ -52,10 +52,7 @@ import argparse
 import datetime
 import warnings
 import numpy as np
-import pyTMD.time
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.compute_equilibrium_tide import compute_equilibrium_tide
+
 # attempt imports
 try:
     import h5py
@@ -63,11 +60,15 @@ except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
 try:
-    from icesat2_toolkit.read_ICESat2_ATL03 import read_HDF5_ATL03_main, \
-        read_HDF5_ATL03_beam
+    import icesat2_toolkit as is2tk
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("icesat2_toolkit not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -81,8 +82,8 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
 
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
-    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = read_HDF5_ATL03_main(INPUT_FILE,
-        ATTRIBUTES=True)
+    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
+        is2tk.read_HDF5_ATL03_main(INPUT_FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
@@ -130,7 +131,7 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
         IS2_atl03_tide_attrs[gtx] = dict(geolocation={}, geophys_corr={})
 
         # read data and attributes for beam
-        val,attrs = read_HDF5_ATL03_beam(INPUT_FILE,gtx,ATTRIBUTES=True)
+        val,attrs = is2tk.read_HDF5_ATL03_beam(INPUT_FILE,gtx,ATTRIBUTES=True)
         # number of segments
         n_seg = len(val['geolocation']['segment_id'])
         # extract variables for computing equilibrium tides

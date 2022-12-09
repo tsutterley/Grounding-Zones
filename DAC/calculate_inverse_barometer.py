@@ -46,6 +46,7 @@ UPDATE HISTORY:
 """
 from __future__ import print_function
 
+import sys
 import os
 import re
 import logging
@@ -53,7 +54,7 @@ import netCDF4
 import argparse
 import datetime
 import numpy as np
-from grounding_zones.utilities import convert_arg_line_to_args
+import grounding_zones as gz
 
 # PURPOSE: read land sea mask to get indices of oceanic values
 def ncdf_landmask(FILENAME,MASKNAME,OCEAN):
@@ -284,6 +285,12 @@ def ncdf_IB_write(dinput, fill_value, FILENAME=None, IBNAME=None,
     nc[IBNAME].units = UNITS
     nc[IBNAME].density = DENSITY
 
+    # add software information
+    fileID.software_reference = gz.version.project_name
+    fileID.software_version = gz.version.full_version
+    fileID.software_revision = gz.utilities.get_git_revision_hash()
+    fileID.reference = f'Output from {os.path.basename(sys.argv[0])}'
+
     # Output NetCDF structure information
     logging.info(os.path.basename(FILENAME))
     logging.info(list(fileID.variables.keys()))
@@ -302,7 +309,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     choices = ['ERA-Interim','ERA5','MERRA-2']
     parser.add_argument('model',

@@ -107,16 +107,7 @@ import argparse
 import datetime
 import warnings
 import numpy as np
-import pyTMD.time
-import pyTMD.model
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.read_tide_model import extract_tidal_constants
-from pyTMD.read_netcdf_model import extract_netcdf_constants
-from pyTMD.read_GOT_model import extract_GOT_constants
-from pyTMD.read_FES_model import extract_FES_constants
-from pyTMD.infer_minor_corrections import infer_minor_corrections
-from pyTMD.predict_tide_drift import predict_tide_drift
+
 # attempt imports
 try:
     import h5py
@@ -124,10 +115,15 @@ except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
 try:
-    from icesat2_toolkit.read_ICESat2_ATL06 import read_HDF5_ATL06
+    import icesat2_toolkit as is2tk
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("icesat2_toolkit not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -158,7 +154,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
 
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
-    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = read_HDF5_ATL06(INPUT_FILE,
+    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = is2tk.read_HDF5_ATL06(INPUT_FILE,
         ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # flexure flag if being applied
@@ -547,6 +543,10 @@ def HDF5_ATL06_tide_write(IS2_atl06_tide, IS2_atl06_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = pyTMD.version.project_name
+    fileID.attrs['software_version'] = pyTMD.version.full_version
+    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 

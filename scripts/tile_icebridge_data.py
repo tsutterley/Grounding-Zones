@@ -39,7 +39,6 @@ UPDATE HISTORY:
 import sys
 import os
 import re
-import h5py
 import time
 import pyproj
 import logging
@@ -47,13 +46,24 @@ import argparse
 import warnings
 import collections
 import numpy as np
-import icesat2_toolkit.time
+import grounding_zones as gz
+
 # attempt imports
 try:
     import ATM1b_QFIT.read_ATM1b_QFIT_binary
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("ATM1b_QFIT not available")
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -184,13 +194,13 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         fileID.close()
     # calculate the number of leap seconds between GPS time (seconds
     # since Jan 6, 1980 00:00:00) and UTC
-    gps_seconds = icesat2_toolkit.time.convert_calendar_dates(
+    gps_seconds = is2tk.time.convert_calendar_dates(
         year,month,day,hour=hour,minute=minute,second=second,
         epoch=(1980,1,6,0,0,0),scale=86400.0)
-    leap_seconds = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
+    leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
     # calculation of Julian day taking into account leap seconds
     # converting to J2000 seconds
-    ATM_L1b_input['time'] = icesat2_toolkit.time.convert_calendar_dates(
+    ATM_L1b_input['time'] = is2tk.time.convert_calendar_dates(
         year,month,day,hour=hour,minute=minute,second=second-leap_seconds,
         epoch=(2000,1,1,12,0,0,0),scale=86400.0)
     # subset the data to indices if specified
@@ -251,15 +261,15 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     if (MISSION == 'BLATM2') or (SFX != 'csv'):
         # calculate the number of leap seconds between GPS time (seconds
         # since Jan 6, 1980 00:00:00) and UTC
-        gps_seconds = icesat2_toolkit.time.convert_calendar_dates(
+        gps_seconds = is2tk.time.convert_calendar_dates(
             year,month,day,hour=hour,minute=minute,second=second,
             epoch=(1980,1,6,0,0,0),scale=86400.0)
-        leap_seconds = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
+        leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
     else:
         leap_seconds = 0.0
     # calculation of Julian day
     # converting to J2000 seconds
-    ATM_L2_input['time'] = icesat2_toolkit.time.convert_calendar_dates(
+    ATM_L2_input['time'] = is2tk.time.convert_calendar_dates(
         year,month,day,hour=hour,minute=minute,second=second-leap_seconds,
         epoch=(2000,1,1,12,0,0,0),scale=86400.0)
     # convert RMS from centimeters to meters
@@ -494,6 +504,11 @@ def tile_icebridge_data(arg,
     f2.attrs['time_type'] = 'UTC'
     today = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     f2.attrs['date_created'] = today
+    # add software information
+    git_revision_hash = gz.utilities.get_git_revision_hash()
+    f2.attrs['software_reference'] = gz.version.project_name
+    f2.attrs['software_version'] = gz.version.full_version
+    f2.attrs['software_revision'] = git_revision_hash
     # create projection variable
     h5 = f2.create_dataset('Polar_Stereographic', (), dtype=np.byte)
     # add projection attributes
@@ -549,6 +564,10 @@ def tile_icebridge_data(arg,
             f3.attrs['GDAL_AREA_OR_POINT'] = 'Point'
             f3.attrs['time_type'] = 'UTC'
             f3.attrs['date_created'] = today
+            # add software information
+            f3.attrs['software_reference'] = gz.version.project_name
+            f3.attrs['software_version'] = gz.version.full_version
+            f3.attrs['software_revision'] = git_revision_hash
 
         # indices of points within tile
         indices, = np.nonzero((xtile == xp) & (ytile == yp))

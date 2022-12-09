@@ -48,17 +48,19 @@ import logging
 import argparse
 import warnings
 import numpy as np
-import pyTMD.time
-import pyTMD.spatial
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.compute_equilibrium_tide import compute_equilibrium_tide
+
 # attempt imports
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
+# attempt imports
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 

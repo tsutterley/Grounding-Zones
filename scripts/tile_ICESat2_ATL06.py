@@ -35,14 +35,28 @@ UPDATE HISTORY:
 import sys
 import os
 import re
-import h5py
 import time
 import pyproj
 import logging
 import argparse
+import warnings
 import collections
 import numpy as np
-from icesat2_toolkit.read_ICESat2_ATL06 import read_HDF5_ATL06
+import grounding_zones as gz
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: set the hemisphere of interest based on the granule
 def set_hemisphere(GRANULE):
@@ -80,7 +94,7 @@ def tile_ICESat2_ATL06(FILE,
 
     # read data from input file
     logging.info(FILE)
-    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = read_HDF5_ATL06(FILE,
+    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = is2tk.read_HDF5_ATL06(FILE,
         ATTRIBUTES=True)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_'
@@ -133,6 +147,11 @@ def tile_ICESat2_ATL06(FILE,
     f2.attrs['time_type'] = 'GPS'
     today = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     f2.attrs['date_created'] = today
+    # add software information
+    git_revision_hash = gz.utilities.get_git_revision_hash()
+    f2.attrs['software_reference'] = gz.version.project_name
+    f2.attrs['software_version'] = gz.version.full_version
+    f2.attrs['software_revision'] = git_revision_hash
     # create projection variable
     h5 = f2.create_dataset('Polar_Stereographic', (), dtype=np.byte)
     # add projection attributes
@@ -207,6 +226,10 @@ def tile_ICESat2_ATL06(FILE,
                 f3.attrs['GDAL_AREA_OR_POINT'] = 'Point'
                 f3.attrs['time_type'] = 'UTC'
                 f3.attrs['date_created'] = today
+                # add software information
+                f3.attrs['software_reference'] = gz.version.project_name
+                f3.attrs['software_version'] = gz.version.full_version
+                f3.attrs['software_revision'] = git_revision_hash
 
             # indices of points within tile
             indices, = np.nonzero((xtile == xp) & (ytile == yp))

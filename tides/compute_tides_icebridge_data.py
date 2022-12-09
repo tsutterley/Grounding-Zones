@@ -116,27 +116,23 @@ import argparse
 import warnings
 import collections
 import numpy as np
-import pyTMD.time
-import pyTMD.model
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.infer_minor_corrections import infer_minor_corrections
-from pyTMD.predict_tide_drift import predict_tide_drift
-from pyTMD.read_tide_model import extract_tidal_constants
-from pyTMD.read_netcdf_model import extract_netcdf_constants
-from pyTMD.read_GOT_model import extract_GOT_constants
-from pyTMD.read_FES_model import extract_FES_constants
+
 # attempt imports
+try:
+    import ATM1b_QFIT.read_ATM1b_QFIT_binary
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("ATM1b_QFIT not available")
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
 try:
-    import ATM1b_QFIT.read_ATM1b_QFIT_binary
+    import pyTMD
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
-    warnings.warn("ATM1b_QFIT not available")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -676,6 +672,10 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     fid.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
     duration = np.round(time_julian[-1]*86400.0 - time_julian[0]*86400.0)
     fid.attrs['DurationTimeSeconds'] = f'{duration:0.0f}'
+    # add software information
+    fid.attrs['software_reference'] = pyTMD.version.project_name
+    fid.attrs['software_version'] = pyTMD.version.full_version
+    fid.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE

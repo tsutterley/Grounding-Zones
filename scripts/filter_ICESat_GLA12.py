@@ -56,10 +56,20 @@ from __future__ import print_function
 import sys
 import os
 import re
-import h5py
 import logging
 import argparse
+import warnings
 import numpy as np
+import grounding_zones as gz
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: Calculates quality summary flags for ICESat/GLAS L2 GLA12
 # Antarctic and Greenland Ice Sheet elevation data
@@ -276,6 +286,11 @@ def HDF5_GLA12_mask_write(IS_gla12_tide, IS_gla12_attrs,
     attrs = {a:v for a,v in IS_gla12_attrs.items() if not isinstance(v,dict)}
     for att_name,att_val in attrs.items():
        fileID.attrs[att_name] = att_val
+
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
 
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')

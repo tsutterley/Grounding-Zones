@@ -107,23 +107,18 @@ import logging
 import argparse
 import warnings
 import numpy as np
-import pyTMD.time
-import pyTMD.model
-import pyTMD.spatial
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.read_tide_model import extract_tidal_constants
-from pyTMD.read_netcdf_model import extract_netcdf_constants
-from pyTMD.read_GOT_model import extract_GOT_constants
-from pyTMD.read_FES_model import extract_FES_constants
-from pyTMD.infer_minor_corrections import infer_minor_corrections
-from pyTMD.predict_tide_drift import predict_tide_drift
+
 # attempt imports
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -392,6 +387,11 @@ def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
     attrs = {a:v for a,v in IS_gla12_attrs.items() if not isinstance(v,dict)}
     for att_name,att_val in attrs.items():
        fileID.attrs[att_name] = att_val
+
+    # add software information
+    fileID.attrs['software_reference'] = pyTMD.version.project_name
+    fileID.attrs['software_version'] = pyTMD.version.full_version
+    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
 
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')

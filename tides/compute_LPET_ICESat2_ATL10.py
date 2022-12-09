@@ -51,10 +51,7 @@ import argparse
 import datetime
 import warnings
 import numpy as np
-import pyTMD.time
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.compute_equilibrium_tide import compute_equilibrium_tide
+
 # attempt imports
 try:
     import h5py
@@ -62,10 +59,15 @@ except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
 try:
-    from icesat2_toolkit.read_ICESat2_ATL10 import read_HDF5_ATL10
+    import icesat2_toolkit as is2tk
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("icesat2_toolkit not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -79,7 +81,7 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
 
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
-    IS2_atl10_mds,IS2_atl10_attrs,IS2_atl10_beams = read_HDF5_ATL10(INPUT_FILE,
+    IS2_atl10_mds,IS2_atl10_attrs,IS2_atl10_beams = is2tk.read_HDF5_ATL10(INPUT_FILE,
         ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 sea ice file name

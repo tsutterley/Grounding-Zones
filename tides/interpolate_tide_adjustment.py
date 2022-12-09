@@ -35,14 +35,19 @@ UPDATE HISTORY:
 
 import os
 import re
-import h5py
 import time
 import logging
 import pyproj
 import argparse
 import warnings
 import numpy as np
+
 # attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
 try:
     import spatial_interpolators as spi
 except (ImportError, ModuleNotFoundError) as e:

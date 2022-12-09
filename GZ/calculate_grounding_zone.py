@@ -76,6 +76,7 @@ import numpy as np
 import scipy.stats
 import scipy.optimize
 import matplotlib.pyplot as plt
+
 # attempt imports
 try:
     import pyTMD.spatial

@@ -57,7 +57,7 @@ import argparse
 import posixpath
 import traceback
 import lxml.etree
-import grounding_zones.utilities
+import grounding_zones as gz
 
 # PURPOSE: sync local REMA strip files with PGC public server
 def pgc_rema_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
@@ -98,7 +98,7 @@ def pgc_rema_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
     # remote directory for strip version and resolution
     remote_path = [*HOST, 'REMA', 'strips', VERSION, RESOLUTION]
     # open connection with PGC server at remote directory
-    remote_sub,collastmod,_ = grounding_zones.utilities.pgc_list(remote_path,
+    remote_sub,collastmod,_ = gz.utilities.pgc_list(remote_path,
         timeout=TIMEOUT, parser=parser, pattern=R1, sort=True)
     # for each tile subdirectory
     for sd,lmd in zip(remote_sub,collastmod):
@@ -110,7 +110,7 @@ def pgc_rema_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
         remote_path = [*HOST, 'REMA', 'strips', VERSION, RESOLUTION, sd]
         remote_dir = posixpath.join(*remote_path)
         # read and parse request for files (names and modified dates)
-        colnames,collastmod,_ = grounding_zones.utilities.pgc_list(remote_path,
+        colnames,collastmod,_ = gz.utilities.pgc_list(remote_path,
             timeout=TIMEOUT, parser=parser, pattern=R2, sort=True)
         # sync each REMA strip file
         for colname,remote_mtime in zip(colnames,collastmod):
@@ -128,7 +128,7 @@ def pgc_rema_strip_sync(base_dir, VERSION, RESOLUTION, STRIPS=None,
     remote_path = [*HOST, 'REMA', 'indexes']
     remote_dir = posixpath.join(*remote_path)
     # read and parse request for files (names and modified dates)
-    colnames,collastmod,_ = grounding_zones.utilities.pgc_list(remote_path,
+    colnames,collastmod,_ = gz.utilities.pgc_list(remote_path,
         timeout=20, parser=parser, pattern=R3, sort=True)
     # sync each REMA strip shapefile
     for colname,remote_mtime in zip(colnames,collastmod):
@@ -155,8 +155,8 @@ def retry_download(remote_file, local=None, timeout=None,
             # Create and submit request.
             # There are a range of exceptions that can be thrown here
             # including HTTPError and URLError.
-            request = grounding_zones.utilities.urllib2.Request(remote_file)
-            response = grounding_zones.utilities.urllib2.urlopen(request,
+            request = gz.utilities.urllib2.Request(remote_file)
+            response = gz.utilities.urllib2.urlopen(request,
                 context=context, timeout=timeout)
             # get the length of the remote file
             remote_length = int(response.headers['content-length'])
@@ -272,7 +272,7 @@ def main():
     # check internet connection before attempting to run program
     # attempt to connect to public http Polar Geospatial Center host
     HOST = posixpath.join('http://data.pgc.umn.edu','elev','dem')
-    if grounding_zones.utilities.check_connection(HOST):
+    if gz.utilities.check_connection(HOST):
         pgc_rema_strip_sync(args.directory, args.version, args.resolution,
             STRIPS=args.strip, TIMEOUT=args.timeout, RETRY=args.retry,
             LIST=args.list, LOG=args.log, CLOBBER=args.clobber,

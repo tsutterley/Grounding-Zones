@@ -87,7 +87,6 @@ from __future__ import print_function
 import sys
 import os
 import re
-import h5py
 import pyproj
 import logging
 import argparse
@@ -100,16 +99,24 @@ import collections
 import numpy as np
 import scipy.stats
 import scipy.optimize
-import icesat2_toolkit.time
-from icesat2_toolkit.read_ICESat2_ATL06 import read_HDF5_ATL06
-from icesat2_toolkit.convert_delta_time import convert_delta_time
-from grounding_zones.utilities import get_data_path
+import grounding_zones as gz
+
 # attempt imports
 try:
     import fiona
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("fiona not available")
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
 try:
     import matplotlib.pyplot as plt
 except (ImportError, ModuleNotFoundError) as e:
@@ -383,7 +390,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
     logging.info(os.path.basename(FILE))
 
     # read data from input_file
-    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = read_HDF5_ATL06(FILE,
+    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = is2tk.read_HDF5_ATL06(FILE,
         HISTOGRAM=False, QUALITY=False, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
@@ -965,9 +972,9 @@ def HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into UTC time
-    time_utc = convert_delta_time(np.array([tmn,tmx]))
+    time_utc = is2tk.convert_delta_time(np.array([tmn,tmx]))
     # convert to calendar date
-    YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(time_utc['julian'],
+    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(time_utc['julian'],
         FORMAT='tuple')
     # add attributes with measurement date start, end and duration
     tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
@@ -977,6 +984,10 @@ def HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 
@@ -994,7 +1005,7 @@ def arguments():
     # directory with mask data
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=get_data_path('data'),
+        default=gz.utilities.get_data_path('data'),
         help='Working data directory')
     # mean file to remove
     parser.add_argument('--mean-file',

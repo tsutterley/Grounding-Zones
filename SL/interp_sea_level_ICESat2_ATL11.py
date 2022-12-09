@@ -52,18 +52,30 @@ from __future__ import print_function
 import os
 import re
 import gzip
-import h5py
 import pyproj
 import logging
 import netCDF4
 import argparse
 import datetime
+import warnings
 import numpy as np
 import collections
 import sklearn.neighbors
-import icesat2_toolkit.time
-import icesat2_toolkit.utilities
-from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11
+import grounding_zones as gz
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: set the hemisphere of interest based on the granule
 def set_hemisphere(GRANULE):
@@ -143,7 +155,7 @@ def interpolate_sea_level(base_dir, xi, yi, CJD, HEM):
     for day in range(2):
         # convert from CNES Julians Days to calendar dates for time
         JD1 = CJD1 + day + 2433282.5
-        YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(JD1[0],
+        YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(JD1[0],
             FORMAT='tuple', ASTYPE=int)
         # sea level directory
         ddir = os.path.join(base_dir, f'{YY:0.0f}')
@@ -195,7 +207,7 @@ def interp_sea_level_ICESat2(base_dir, FILE, CROSSOVERS=False, VERBOSE=False,
 
     # read data from input file
     logging.info(f'{FILE} -->')
-    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = read_HDF5_ATL11(FILE,
+    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = is2tk.read_HDF5_ATL11(FILE,
         ATTRIBUTES=True, CROSSOVERS=CROSSOVERS)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
@@ -328,8 +340,8 @@ def interp_sea_level_ICESat2(base_dir, FILE, CROSSOVERS=False, VERBOSE=False,
             # convert time from ATLAS SDP to CNES Julian Days
             # days relative to 1950-01-01T00:00:00
             gps_seconds = atlas_sdp_gps_epoch + delta_time[track]
-            leap_seconds = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
-            cnes_time = icesat2_toolkit.time.convert_delta_time(gps_seconds-leap_seconds,
+            leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
+            cnes_time = is2tk.time.convert_delta_time(gps_seconds-leap_seconds,
                 epoch1=(1980,1,6,0,0,0), epoch2=(1950,1,1,0,0,0), scale=1.0/86400.0)
 
             # extract lat/lon and convert to polar stereographic
@@ -754,12 +766,12 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     atlas_sdp_gps_epoch=IS2_atl11_corr['ancillary_data']['atlas_sdp_gps_epoch']
     gps_seconds = atlas_sdp_gps_epoch + np.array([tmn,tmx])
     # calculate leap seconds
-    leaps = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
+    leaps = is2tk.time.count_leap_seconds(gps_seconds)
     # convert from seconds since 1980-01-06T00:00:00 to Julian days
-    MJD = icesat2_toolkit.time.convert_delta_time(gps_seconds - leaps,
+    MJD = is2tk.time.convert_delta_time(gps_seconds - leaps,
         epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date
-    YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(MJD + 2400000.5,
+    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(MJD + 2400000.5,
         FORMAT='tuple')
     # add attributes with measurement date start, end and duration
     tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
@@ -769,6 +781,10 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 
@@ -781,8 +797,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = \
-        icesat2_toolkit.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',

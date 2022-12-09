@@ -59,16 +59,28 @@ from __future__ import print_function
 
 import os
 import re
-import h5py
 import pyproj
 import logging
 import netCDF4
 import argparse
+import warnings
 import numpy as np
 import scipy.interpolate
-import icesat2_toolkit.time
-import icesat2_toolkit.spatial
-import icesat2_toolkit.utilities
+import grounding_zones as gz
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: read land sea mask to get indices of oceanic values
 def ncdf_landmask(FILENAME,MASKNAME,OCEAN):
@@ -104,7 +116,7 @@ def find_pressure_files(ddir, MODEL, MJD):
         # append day prior, day of and day after
         JD = mjd + np.arange(-1,2) + 2400000.5
         # convert from Julian Days to calendar dates
-        Y,M,D,_,_,_ = icesat2_toolkit.time.convert_julian(JD,
+        Y,M,D,_,_,_ = is2tk.time.convert_julian(JD,
             ASTYPE=int, FORMAT='tuple')
         # append day as formatted strings
         for y,m,d in zip(Y,M,D):
@@ -142,9 +154,9 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
             # convert time to Modified Julian Days
             delta_time = np.copy(fileID.variables[TIMENAME][:])
             units = fileID.variables[TIMENAME].units
-            epoch,to_secs = icesat2_toolkit.time.parse_date_string(units)
+            epoch,to_secs = is2tk.time.parse_date_string(units)
             for t,dt in enumerate(delta_time):
-                MJD[c] = icesat2_toolkit.time.convert_delta_time(dt*to_secs,
+                MJD[c] = is2tk.time.convert_delta_time(dt*to_secs,
                     epoch1=epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
                 # check dimensions for expver slice
                 if (fileID.variables[VARNAME].ndim == 4):
@@ -300,7 +312,7 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     atop,ftop = (6378136.3,1.0/298.257)
     awgs,fwgs = (6378137.0,1.0/298.257223563)
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = icesat2_toolkit.spatial.convert_ellipsoid(lat_TPX,
+    lat_40HZ,elev_40HZ = is2tk.spatial.convert_ellipsoid(lat_TPX,
         elev_TPX, atop, ftop, awgs, fwgs, eps=1e-12, itmax=10)
     # colatitude in radians
     theta_40HZ = (90.0 - lat_40HZ)*np.pi/180.0
@@ -512,6 +524,11 @@ def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
     for att_name,att_val in attrs.items():
        fileID.attrs[att_name] = att_val
 
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
+
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')
     # add HDF5 40HZ group attributes
@@ -577,8 +594,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = \
-        icesat2_toolkit.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',

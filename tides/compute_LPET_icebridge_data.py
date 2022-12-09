@@ -58,10 +58,7 @@ import argparse
 import warnings
 import collections
 import numpy as np
-import pyTMD.time
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.compute_equilibrium_tide import compute_equilibrium_tide
+
 # attempt imports
 try:
     import ATM1b_QFIT.read_ATM1b_QFIT_binary
@@ -73,6 +70,11 @@ try:
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
