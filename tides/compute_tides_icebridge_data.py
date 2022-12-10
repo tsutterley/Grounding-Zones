@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_icebridge_data.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates tidal elevations for correcting Operation IceBridge elevation data
 
 Uses OTIS format tidal solutions provided by Ohio State University and ESR
@@ -66,6 +66,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
         place some imports within try/except statements
     Updated 05/2022: added ESR netCDF4 formats to list of model types
@@ -116,27 +117,24 @@ import argparse
 import warnings
 import collections
 import numpy as np
-import pyTMD.time
-import pyTMD.model
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.infer_minor_corrections import infer_minor_corrections
-from pyTMD.predict_tide_drift import predict_tide_drift
-from pyTMD.read_tide_model import extract_tidal_constants
-from pyTMD.read_netcdf_model import extract_netcdf_constants
-from pyTMD.read_GOT_model import extract_GOT_constants
-from pyTMD.read_FES_model import extract_FES_constants
+import grounding_zones as gz
+
 # attempt imports
+try:
+    import ATM1b_QFIT.read_ATM1b_QFIT_binary
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("ATM1b_QFIT not available")
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
 try:
-    import ATM1b_QFIT.read_ATM1b_QFIT_binary
+    import pyTMD
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
-    warnings.warn("ATM1b_QFIT not available")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -555,32 +553,32 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
 
     # read tidal constants and interpolate to grid points
     if model.format in ('OTIS','ATLAS','ESR'):
-        amp,ph,D,c = extract_tidal_constants(dinput['lon'], dinput['lat'],
+        amp,ph,D,c = pyTMD.extract_tidal_constants(dinput['lon'], dinput['lat'],
             model.grid_file, model.model_file, model.projection,
             type=model.type, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, grid=model.format, apply_flexure=APPLY_FLEXURE)
         deltat = np.zeros_like(t)
     elif model.format in ('netcdf'):
-        amp,ph,D,c = extract_netcdf_constants(dinput['lon'], dinput['lat'],
+        amp,ph,D,c = pyTMD.extract_netcdf_constants(dinput['lon'], dinput['lat'],
             model.grid_file, model.model_file, type=model.type, method=METHOD,
             extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale,
             compressed=model.compressed)
         deltat = np.zeros_like(t)
     elif (model.format == 'GOT'):
-        amp,ph,c = extract_GOT_constants(dinput['lon'], dinput['lat'],
+        amp,ph,c = pyTMD.extract_GOT_constants(dinput['lon'], dinput['lat'],
             model.model_file, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
         # interpolate delta times from calendar dates to tide time
-        deltat = calc_delta_time(delta_file, t)
+        deltat = pyTMD.calc_delta_time(delta_file, t)
     elif (model.format == 'FES'):
-        amp,ph = extract_FES_constants(dinput['lon'], dinput['lat'],
+        amp,ph = pyTMD.extract_FES_constants(dinput['lon'], dinput['lat'],
             model.model_file, type=model.type, version=model.version,
             method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
             scale=model.scale, compressed=model.compressed)
         # available model constituents
         c = model.constituents
         # interpolate delta times from calendar dates to tide time
-        deltat = calc_delta_time(delta_file, t)
+        deltat = pyTMD.calc_delta_time(delta_file, t)
 
     # calculate complex phase in radians for Euler's
     cph = -1j*ph*np.pi/180.0
@@ -612,9 +610,9 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     fill_value = -9999.0
     tide = np.ma.empty((file_lines),fill_value=fill_value)
     tide.mask = np.any(hc.mask,axis=1)
-    tide.data[:] = predict_tide_drift(t, hc, c,
+    tide.data[:] = pyTMD.predict_tide_drift(t, hc, c,
         deltat=deltat, corrections=model.format)
-    minor = infer_minor_corrections(t, hc, c,
+    minor = pyTMD.infer_minor_corrections(t, hc, c,
         deltat=deltat, corrections=model.format)
     tide.data[:] += minor.data[:]
     # replace invalid values with fill value
@@ -676,10 +674,23 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     fid.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
     duration = np.round(time_julian[-1]*86400.0 - time_julian[0]*86400.0)
     fid.attrs['DurationTimeSeconds'] = f'{duration:0.0f}'
+    # add software information
+    fid.attrs['software_reference'] = pyTMD.version.project_name
+    fid.attrs['software_version'] = pyTMD.version.full_version
+    fid.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE
     os.chmod(os.path.join(DIRECTORY,FILENAME), MODE)
+
+# PURPOSE: create a list of available ocean and load tide models
+def get_available_models():
+    """Create a list of available tide models
+    """
+    try:
+        return sorted(pyTMD.model.ocean_elevation() + pyTMD.model.load_elevation())
+    except (NameError, AttributeError):
+        return None
 
 # PURPOSE: create argument parser
 def arguments():
@@ -689,7 +700,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = pyTMD.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     group = parser.add_mutually_exclusive_group(required=True)
     # input operation icebridge files
@@ -702,10 +713,9 @@ def arguments():
         default=os.getcwd(),
         help='Working data directory')
     # tide model to use
-    choices = sorted(pyTMD.model.ocean_elevation() + pyTMD.model.load_elevation())
     group.add_argument('--tide','-T',
         metavar='TIDE', type=str,
-        choices=choices,
+        choices=get_available_models(),
         help='Tide model to use in correction')
     parser.add_argument('--atlas-format',
         type=str, choices=('OTIS','netcdf'), default='netcdf',

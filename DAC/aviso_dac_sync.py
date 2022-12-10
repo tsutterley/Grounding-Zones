@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 aviso_dac_sync.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 
 Syncs the dynamic atmospheric correction (DAC) from AVISO
     https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/
@@ -26,6 +26,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the directories and files synced
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: use f-strings for formatting verbose or ascii output
     Updated 02/2022: using argparse to set command line parameters
         use logging for verbose and log output
@@ -45,7 +46,7 @@ import builtins
 import posixpath
 import calendar, time
 import ftplib
-import grounding_zones.utilities
+import grounding_zones as gz
 
 # PURPOSE: sync local AVISO DAC files with ftp server
 def aviso_dac_sync(DIRECTORY,
@@ -81,7 +82,7 @@ def aviso_dac_sync(DIRECTORY,
     R2 = re.compile(r'dac_dif_(\d+)_(\d+).nc.bz2$', re.VERBOSE)
 
     # find remote yearly directories for DAC
-    YEARS,_ = grounding_zones.utilities.ftp_list(
+    YEARS,_ = gz.utilities.ftp_list(
         [ftp.host,'auxiliary','dac','dac_delayed_global'],
         username=USER, password=PASSWORD, timeout=TIMEOUT,
         basename=True, pattern=R1, sort=True)
@@ -91,7 +92,7 @@ def aviso_dac_sync(DIRECTORY,
         # check if local directory exists and recursively create if not
         os.makedirs(local_dir,MODE) if not os.path.exists(local_dir) else None
         # get filenames from remote directory
-        remote_files,remote_mtimes = grounding_zones.utilities.ftp_list(
+        remote_files,remote_mtimes = gz.utilities.ftp_list(
             [ftp.host,'auxiliary','dac','dac_delayed_global',Y],
             username=USER, password=PASSWORD, timeout=TIMEOUT,
             basename=True, pattern=R2, sort=True)
@@ -119,8 +120,8 @@ def ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
         # check last modification time of local file
         local_mtime = os.stat(local_file).st_mtime
         # if remote file is newer: overwrite the local file
-        if (grounding_zones.utilities.even(remote_mtime) >
-            grounding_zones.utilities.even(local_mtime)):
+        if (gz.utilities.even(remote_mtime) >
+            gz.utilities.even(local_mtime)):
             TEST = True
             OVERWRITE = ' (overwrite)'
     else:
@@ -215,7 +216,7 @@ def main():
         args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
 
     # check AVISO credentials before attempting to run program
-    if grounding_zones.utilities.check_ftp_connection(HOST,
+    if gz.utilities.check_ftp_connection(HOST,
             username=args.user, password=args.password):
         # run AVISO sync program
         aviso_dac_sync(args.directory,

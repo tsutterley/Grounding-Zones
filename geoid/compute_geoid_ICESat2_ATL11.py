@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Computes geoid undulations for correcting ICESat-2 annual land ice height data
 
 COMMAND LINE OPTIONS:
@@ -35,6 +35,7 @@ PROGRAM DEPENDENCIES:
     gauss_weights.py: Computes Gaussian weights as a function of degree
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
@@ -50,24 +51,30 @@ from __future__ import print_function
 import sys
 import os
 import re
-import h5py
 import logging
 import argparse
 import datetime
 import warnings
 import numpy as np
 import collections
-import icesat2_toolkit.time
-from grounding_zones.utilities import convert_arg_line_to_args
-from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11
-from icesat2_toolkit.convert_delta_time import convert_delta_time
+import grounding_zones as gz
+
 # attempt imports
 try:
-    from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
-    from geoid_toolkit.geoid_undulation import geoid_undulation
+    import geoid_toolkit as geoidtk
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("geoid_toolkit not available")
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -82,12 +89,12 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
 
     # read data from input file
     logging.info(f'{INPUT_FILE} -->')
-    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = read_HDF5_ATL11(INPUT_FILE,
-        ATTRIBUTES=True, CROSSOVERS=True)
+    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
+        is2tk.read_HDF5_ATL11(INPUT_FILE, ATTRIBUTES=True, CROSSOVERS=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
 
     # read gravity model Ylms and change tide to tide free
-    Ylms = read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
+    Ylms = geoidtk.read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
     R = np.float64(Ylms['radius'])
     GM = np.float64(Ylms['earth_gravity_constant'])
     LMAX = np.int64(Ylms['max_degree'])
@@ -158,7 +165,7 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
         N.mask = (latitude.data == latitude.fill_value)
         valid, = np.nonzero(np.logical_not(N.mask))
         # calculate geoid at coordinates
-        N.data[valid] = geoid_undulation(latitude.data[valid],
+        N.data[valid] = geoidtk.geoid_undulation(latitude.data[valid],
             longitude.data[valid], REFERENCE,
             Ylms['clm'], Ylms['slm'],
             LMAX, R, GM).astype(np.float64)
@@ -453,9 +460,9 @@ def HDF5_ATL11_geoid_write(IS2_atl11_geoid, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into UTC time
-    time_utc = convert_delta_time(np.array([tmn,tmx]))
+    time_utc = is2tk.convert_delta_time(np.array([tmn,tmx]))
     # convert to calendar date
-    YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(time_utc['julian'],
+    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(time_utc['julian'],
         FORMAT='tuple')
     # add attributes with measurement date start, end and duration
     tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
@@ -465,6 +472,10 @@ def HDF5_ATL11_geoid_write(IS2_atl11_geoid, IS2_atl11_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 
@@ -476,7 +487,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     # input ICESat-2 annual land ice height files
     parser.add_argument('infile',

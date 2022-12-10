@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 12/2022: check that file exists within multiprocess HDF5 function
+        single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: add checks if variables and groups already exist
     Updated 05/2022: use argparse descriptions within documentation
@@ -39,7 +40,6 @@ import sys
 import os
 import re
 import copy
-import h5py
 import time
 import pyproj
 import logging
@@ -47,14 +47,20 @@ import argparse
 import warnings
 import collections
 import numpy as np
+import grounding_zones as gz
+
 # attempt imports
 try:
-    import pyTMD.time
-    import pyTMD.spatial
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import pyTMD
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("pyTMD not available")
-# filter warnings
+# ignore warnings
 warnings.filterwarnings("ignore")
 
 # PURPOSE: attempt to open an HDF5 file and wait if already open
@@ -194,6 +200,11 @@ def tile_ICESat_GLA12(input_file,
     today = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     f2.attrs['date_created'] = today
     f2.attrs['campaign'] = campaign
+    # add software information
+    git_revision_hash =  gz.utilities.get_git_revision_hash()
+    f2.attrs['software_reference'] = gz.version.project_name
+    f2.attrs['software_version'] = gz.version.full_version
+    f2.attrs['software_revision'] = git_revision_hash
     # create projection variable
     h5 = f2.create_dataset('Polar_Stereographic', (), dtype=np.byte)
     # add projection attributes
@@ -250,6 +261,10 @@ def tile_ICESat_GLA12(input_file,
             f3.attrs['GDAL_AREA_OR_POINT'] = 'Point'
             f3.attrs['time_type'] = 'UTC'
             f3.attrs['date_created'] = today
+            # add software information
+            f3.attrs['software_reference'] = gz.version.project_name
+            f3.attrs['software_version'] = gz.version.full_version
+            f3.attrs['software_revision'] = git_revision_hash
 
         # indices of points within tile
         indices, = np.nonzero((xtile == xp) & (ytile == yp))

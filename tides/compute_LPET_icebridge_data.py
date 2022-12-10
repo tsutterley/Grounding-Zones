@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_icebridge_data.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates long-period equilibrium tidal elevations for correcting Operation
     IceBridge elevation data
 
@@ -33,6 +33,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
         place some imports within try/except statements
     Updated 04/2022: include utf-8 encoding in reads to be windows compliant
@@ -58,10 +59,8 @@ import argparse
 import warnings
 import collections
 import numpy as np
-import pyTMD.time
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.compute_equilibrium_tide import compute_equilibrium_tide
+import grounding_zones as gz
+
 # attempt imports
 try:
     import ATM1b_QFIT.read_ATM1b_QFIT_binary
@@ -73,6 +72,11 @@ try:
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -472,7 +476,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
         scale=1.0/86400.0)
     # interpolate delta times from calendar dates to tide time
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-    deltat = calc_delta_time(delta_file, tide_time)
+    deltat = pyTMD.calc_delta_time(delta_file, tide_time)
 
     # output tidal HDF5 file
     # form: rg_NASA_model_EQUILIBRIUM_TIDES_WGS84_fl1yyyymmddjjjjj.H5
@@ -493,7 +497,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')
 
     # predict long-period equilibrium tides at time
-    dinput['tide_lpe'] = compute_equilibrium_tide(tide_time + deltat,
+    dinput['tide_lpe'] = pyTMD.compute_equilibrium_tide(tide_time + deltat,
         dinput['lat'])
 
     # output dictionary with HDF5 variables
@@ -550,6 +554,10 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     fid.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
     duration = np.round(time_julian[-1]*86400.0 - time_julian[0]*86400.0)
     fid.attrs['DurationTimeSeconds'] = f'{duration:0.0f}'
+    # add software information
+    fid.attrs['software_reference'] = pyTMD.version.project_name
+    fid.attrs['software_version'] = pyTMD.version.full_version
+    fid.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE
@@ -563,7 +571,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = pyTMD.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line options
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',

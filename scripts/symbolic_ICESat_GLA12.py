@@ -26,9 +26,18 @@ import sys
 import os
 import re
 import copy
-import h5py
 import logging
 import argparse
+import warnings
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: create argument parser
 def arguments():

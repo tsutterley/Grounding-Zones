@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_OPT_ICESat_GLA12.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates radial ocean pole tide displacements for correcting ICESat/GLAS
     L2 GLA12 Antarctic and Greenland Ice Sheet elevation data following
     IERS Convention (2010) guidelines
@@ -41,6 +41,7 @@ REFERENCES:
         doi: 10.1007/s00190-015-0848-7
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 04/2022: use longcomplex data format to be windows compliant
         use argparse descriptions within sphinx documentation
@@ -62,19 +63,20 @@ import logging
 import argparse
 import warnings
 import numpy as np
-import pyTMD.time
-import pyTMD.spatial
-import pyTMD.utilities
 import scipy.interpolate
-from pyTMD.iers_mean_pole import iers_mean_pole
-from pyTMD.read_iers_EOP import read_iers_EOP
-from pyTMD.read_ocean_pole_tide import read_ocean_pole_tide
+import grounding_zones as gz
+
 # attempt imports
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -138,10 +140,10 @@ def compute_OPT_ICESat(FILE, METHOD=None, VERBOSE=False, MODE=0o775):
     # J2000: seconds since 2000-01-01 12:00:00 UTC
     t = DS_UTCTime_40HZ[:]/86400.0 + 51544.5
     # convert from MJD to calendar dates
-    YY,MM,DD,HH,MN,SS = pyTMD.time.convert_julian(t + 2400000.5,format='tuple')
+    YY,MM,DD,HH,MN,SS = pyTMD.time.convert_julian(t + 2400000.5, format='tuple')
     # convert calendar dates into year decimal
-    tdec = pyTMD.time.convert_calendar_decimal(YY,MM,day=DD,
-        hour=HH,minute=MN,second=SS)
+    tdec = pyTMD.time.convert_calendar_decimal(YY, MM, day=DD,
+        hour=HH, minute=MN, second=SS)
 
     # semimajor axis (a) and flattening (f) for TP and WGS84 ellipsoids
     atop,ftop = (6378136.3,1.0/298.257)
@@ -183,14 +185,14 @@ def compute_OPT_ICESat(FILE, METHOD=None, VERBOSE=False, MODE=0o775):
     # read ocean pole tide map from Desai (2002)
     ocean_pole_tide_file = pyTMD.utilities.get_data_path(['data',
         'opoleloadcoefcmcor.txt.gz'])
-    iur,iun,iue,ilon,ilat = read_ocean_pole_tide(ocean_pole_tide_file)
+    iur,iun,iue,ilon,ilat = pyTMD.read_ocean_pole_tide(ocean_pole_tide_file)
 
     # pole tide files (mean and daily)
     mean_pole_file = pyTMD.utilities.get_data_path(['data','mean-pole.tab'])
     pole_tide_file = pyTMD.utilities.get_data_path(['data','finals.all'])
 
     # read IERS daily polar motion values
-    EOP = read_iers_EOP(pole_tide_file)
+    EOP = pyTMD.read_iers_EOP(pole_tide_file)
     # create cubic spline interpolations of daily polar motion values
     xSPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['x'],k=3,s=0)
     ySPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['y'],k=3,s=0)
@@ -212,7 +214,7 @@ def compute_OPT_ICESat(FILE, METHOD=None, VERBOSE=False, MODE=0o775):
         UR = r1.__call__(np.c_[lon_40HZ,latitude_geocentric])
 
     # calculate angular coordinates of mean pole at time tdec
-    mpx,mpy,fl = iers_mean_pole(mean_pole_file,tdec,'2015')
+    mpx,mpy,fl = pyTMD.iers_mean_pole(mean_pole_file, tdec, '2015')
     # interpolate daily polar motion values to t using cubic splines
     px = xSPL(t)
     py = ySPL(t)
@@ -355,6 +357,11 @@ def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
     for att_name,att_val in attrs.items():
        fileID.attrs[att_name] = att_val
 
+    # add software information
+    fileID.attrs['software_reference'] = pyTMD.version.project_name
+    fileID.attrs['software_version'] = pyTMD.version.full_version
+    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
+
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')
     # add HDF5 40HZ group attributes
@@ -420,7 +427,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = pyTMD.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',

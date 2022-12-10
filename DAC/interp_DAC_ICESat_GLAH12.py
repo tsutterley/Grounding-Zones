@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_DAC_ICESat_GLAH12.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates and interpolates dynamic atmospheric corrections for ICESat/GLAS
     L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
 
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: use f-strings for formatting verbose or ascii output
     Updated 05/2022: use argparse descriptions within sphinx documentation
     Updated 10/2021: using python logging for handling verbose output
@@ -51,16 +52,32 @@ from __future__ import print_function
 import os
 import re
 import bz2
-import h5py
 import pyproj
 import logging
-import netCDF4
 import argparse
+import warnings
 import numpy as np
 import scipy.interpolate
-import icesat2_toolkit.time
-import icesat2_toolkit.spatial
-import icesat2_toolkit.utilities
+import grounding_zones as gz
+
+# attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+try:
+    import netCDF4
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("netCDF4 not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # calculate and interpolate the dynamic atmospheric correction
@@ -128,7 +145,7 @@ def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     atop,ftop = (6378136.3,1.0/298.257)
     awgs,fwgs = (6378137.0,1.0/298.257223563)
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = icesat2_toolkit.spatial.convert_ellipsoid(lat_TPX,
+    lat_40HZ,elev_40HZ = is2tk.spatial.convert_ellipsoid(lat_TPX,
         elev_TPX, atop, ftop, awgs, fwgs, eps=1e-12, itmax=10)
 
     # pyproj transformer for converting from input coordinates (EPSG)
@@ -148,7 +165,7 @@ def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     icjd = np.zeros((len(days)))
     for i,CJD in enumerate(days):
         # convert from CNES Julians Day to calendar
-        YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(CJD + 2433282.5,
+        YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(CJD + 2433282.5,
             format='tuple')
         # input file for 6-hour period
         input_file = f'dac_dif_{CJD:0.0f}_{hours[i]:02.0f}.nc.bz2'
@@ -301,6 +318,11 @@ def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
     for att_name,att_val in attrs.items():
        fileID.attrs[att_name] = att_val
 
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
+
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')
     # add HDF5 40HZ group attributes
@@ -366,8 +388,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = \
-        icesat2_toolkit.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',

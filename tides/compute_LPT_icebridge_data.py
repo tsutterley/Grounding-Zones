@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPT_icebridge_data.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates load pole tide displacements for correcting Operation IceBridge
     elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
@@ -32,6 +32,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
         place some imports within try/except statements
     Updated 04/2022: include utf-8 encoding in reads to be windows compliant
@@ -63,23 +64,25 @@ import argparse
 import warnings
 import collections
 import numpy as np
-import pyTMD.time
-import pyTMD.spatial
-import pyTMD.utilities
 import scipy.interpolate
-from pyTMD.iers_mean_pole import iers_mean_pole
-from pyTMD.read_iers_EOP import read_iers_EOP
+import grounding_zones as gz
+
 # attempt imports
+try:
+    import ATM1b_QFIT.read_ATM1b_QFIT_binary
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("ATM1b_QFIT not available")
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
 try:
-    import ATM1b_QFIT.read_ATM1b_QFIT_binary
+    import pyTMD
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
-    warnings.warn("ATM1b_QFIT not available")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -480,10 +483,10 @@ def compute_LPT_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     # J2000: seconds since 2000-01-01 12:00:00 UTC
     t = dinput['time'][:]/86400.0 + 51544.5
     # convert from MJD to calendar dates
-    YY,MM,DD,HH,MN,SS = pyTMD.time.convert_julian(t + 2400000.5,format='tuple')
+    YY,MM,DD,HH,MN,SS = pyTMD.time.convert_julian(t + 2400000.5, format='tuple')
     # convert calendar dates into year decimal
-    tdec = pyTMD.time.convert_calendar_decimal(YY,MM,day=DD,
-        hour=HH,minute=MN,second=SS)
+    tdec = pyTMD.time.convert_calendar_decimal(YY, MM, day=DD,
+        hour=HH, minute=MN, second=SS)
     # elevation
     h1 = np.copy(dinput['data'][:])
 
@@ -536,7 +539,7 @@ def compute_LPT_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     mean_pole_file = pyTMD.utilities.get_data_path(['data','mean-pole.tab'])
     pole_tide_file = pyTMD.utilities.get_data_path(['data','finals.all'])
     # read IERS daily polar motion values
-    EOP = read_iers_EOP(pole_tide_file)
+    EOP = pyTMD.read_iers_EOP(pole_tide_file)
     # create cubic spline interpolations of daily polar motion values
     xSPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['x'],k=3,s=0)
     ySPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['y'],k=3,s=0)
@@ -562,7 +565,7 @@ def compute_LPT_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')
 
     # calculate angular coordinates of mean pole at time tdec
-    mpx,mpy,fl = iers_mean_pole(mean_pole_file,tdec,'2015')
+    mpx,mpy,fl = pyTMD.iers_mean_pole(mean_pole_file, tdec, '2015')
     # interpolate daily polar motion values to time using cubic splines
     px = xSPL(t)
     py = ySPL(t)
@@ -632,6 +635,10 @@ def compute_LPT_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     fid.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
     duration = np.round(JD_end*86400.0 - JD_start*86400.0)
     fid.attrs['DurationTimeSeconds'] =f'{duration:0.0f}'
+    # add software information
+    fid.attrs['software_reference'] = pyTMD.version.project_name
+    fid.attrs['software_version'] = pyTMD.version.full_version
+    fid.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE
@@ -646,7 +653,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = pyTMD.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line options
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',

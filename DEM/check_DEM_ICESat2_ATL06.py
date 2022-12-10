@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 check_DEM_ICESat2_ATL06.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 Determines which digital elevation model tiles to read for a given ATL06 file
 
 ArcticDEM 2m digital elevation model tiles
@@ -43,6 +43,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: new ArcticDEM and REMA mosaic index shapefiles
         verify coordinate reference system attribute from shapefile
     Updated 05/2022: use argparse descriptions within documentation
@@ -54,12 +55,29 @@ from __future__ import print_function
 
 import os
 import re
-import fiona
 import pyproj
 import argparse
+import warnings
 import numpy as np
-from shapely.geometry import MultiPoint, Polygon
-from icesat2_toolkit.read_ICESat2_ATL06 import read_HDF5_ATL06
+
+# attempt imports
+try:
+    import fiona
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("mpi4py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+try:
+    import shapely.geometry
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("shapely not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # digital elevation models
 elevation_dir = {}
@@ -173,7 +191,7 @@ def read_DEM_index(index_file, DEM_MODEL):
         # extract Polar Stereographic coordinates for entity
         x = [ul[0],ur[0],lr[0],ll[0],ul2[0]]
         y = [ul[1],ur[1],lr[1],ll[1],ul2[1]]
-        poly_obj = Polygon(list(zip(x,y)))
+        poly_obj = shapely.geometry.Polygon(list(zip(x,y)))
         # Valid Polygon may not possess overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
@@ -186,7 +204,7 @@ def read_DEM_index(index_file, DEM_MODEL):
 # PURPOSE: read ICESat-2 data from NSIDC and determine which DEM tiles to read
 def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
     # read data from FILE
-    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = read_HDF5_ATL06(FILE,
+    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = is2tk.read_HDF5_ATL06(FILE,
         VERBOSE=True, ATTRIBUTES=True)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
@@ -228,7 +246,7 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
         # convert projection from latitude/longitude to tile EPSG
         X,Y = transformer.transform(longitude, latitude)
         # convert reduced x and y to shapely multipoint object
-        xy_point = MultiPoint(np.c_[X, Y])
+        xy_point = shapely.geometry.MultiPoint(np.c_[X, Y])
 
         # create complete masks for each DEM tile
         intersection_map = {}

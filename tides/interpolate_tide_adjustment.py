@@ -25,6 +25,7 @@ PYTHON DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 12/2022: check that file exists within multiprocess HDF5 function
+        single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: use argparse descriptions within documentation
         read mask files to not interpolate over grounded ice
@@ -35,14 +36,20 @@ UPDATE HISTORY:
 
 import os
 import re
-import h5py
 import time
-import logging
 import pyproj
+import logging
 import argparse
 import warnings
 import numpy as np
+import grounding_zones as gz
+
 # attempt imports
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
 try:
     import spatial_interpolators as spi
 except (ImportError, ModuleNotFoundError) as e:
@@ -438,8 +445,10 @@ def arguments():
     parser = argparse.ArgumentParser(
         description="""Interpolates tidal adjustment scale
             factors to output grids
-            """
+            """,
+        fromfile_prefix_chars="@"
     )
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',

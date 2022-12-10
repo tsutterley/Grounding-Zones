@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_median_elevation_filter.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (12/2022)
 
 Filters elevation change rates from triangulated Operation IceBridge data
     using an interquartile range algorithm described by Pritchard (2009)
@@ -50,6 +50,7 @@ REFERENCE:
     pp. 451-467 (2017).  https://doi.org/10.5194/tc-11-451-2017
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: updated ATM1b read functions for distributed version
         use argparse descriptions within documentation
@@ -96,20 +97,29 @@ import sys
 import os
 import re
 import time
-import h5py
 import pyproj
 import logging
 import argparse
 import warnings
 import numpy as np
-import icesat2_toolkit.time
-import icesat2_toolkit.spatial
+import grounding_zones as gz
+
 # attempt imports
 try:
     import ATM1b_QFIT.read_ATM1b_QFIT_binary
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("ATM1b_QFIT not available")
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
 try:
     from mpi4py import MPI
 except (ImportError, ModuleNotFoundError) as e:
@@ -476,7 +486,7 @@ def calc_GPS_to_UTC(YEAR, MONTH, DAY, HOUR, MINUTE, SECOND):
         np.floor(3.*(np.floor((YEAR + (MONTH - 9.)/7.)/100.) + 1.)/4.) + \
         np.floor(275.*MONTH/9.) + DAY + 1721028.5 - 2444244.5
     GPS_Time = GPS*86400.0 + HOUR*3600.0 + MINUTE*60.0 + SECOND
-    return icesat2_toolkit.time.count_leap_seconds(GPS_Time)
+    return is2tk.time.count_leap_seconds(GPS_Time)
 
 # PURPOSE: convert time from delta seconds into Julian and year-decimal
 def convert_delta_time(delta_time, epoch=(2000,1,1,12,0,0)):
@@ -499,12 +509,12 @@ def convert_delta_time(delta_time, epoch=(2000,1,1,12,0,0)):
     # convert to array if single value
     delta_time = np.atleast_1d(delta_time)
     # calculate Julian time (UTC) by converting to MJD and then adding offset
-    time_julian = 2400000.5 + icesat2_toolkit.time.convert_delta_time(delta_time,
+    time_julian = 2400000.5 + is2tk.time.convert_delta_time(delta_time,
         epoch1=epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date
-    Y,M,D,h,m,s = icesat2_toolkit.time.convert_julian(time_julian,FORMAT='tuple')
+    Y,M,D,h,m,s = is2tk.time.convert_julian(time_julian,FORMAT='tuple')
     # calculate year-decimal time (UTC)
-    time_decimal = icesat2_toolkit.time.convert_calendar_decimal(Y,M,day=D,
+    time_decimal = is2tk.time.convert_calendar_decimal(Y,M,day=D,
         hour=h,minute=m,second=s)
     # return both the Julian and year-decimal formatted dates
     return dict(julian=np.squeeze(time_julian),decimal=np.squeeze(time_decimal))
@@ -826,6 +836,10 @@ def HDF5_triangulated_mask(valid_mask, DISTANCE=0, COUNT=0, FILENAME='',
     fileID.attrs['elevation_files'] = input_elevation_files
     input_triangulated_files = ','.join([os.path.basename(f) for f in INPUT])
     fileID.attrs['triangulated_files'] = input_triangulated_files
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 

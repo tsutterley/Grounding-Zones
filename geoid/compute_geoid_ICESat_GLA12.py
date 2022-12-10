@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_ICESat_GLA12.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Computes geoid undulations for correcting ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     gauss_weights.py: Computes Gaussian weights as a function of degree
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
@@ -55,20 +56,23 @@ from __future__ import print_function
 import sys
 import os
 import re
-import h5py
 import logging
 import argparse
 import warnings
 import numpy as np
-from grounding_zones.utilities import convert_arg_line_to_args
+import grounding_zones as gz
+
 # attempt imports
 try:
-    import geoid_toolkit.spatial
-    from geoid_toolkit.read_ICGEM_harmonics import read_ICGEM_harmonics
-    from geoid_toolkit.geoid_undulation import geoid_undulation
+    import geoid_toolkit as geoidtk
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("geoid_toolkit not available")
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -86,7 +90,7 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     DIRECTORY = os.path.dirname(INPUT_FILE)
 
     # read gravity model Ylms and change tide to tide free
-    Ylms = read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
+    Ylms = geoidtk.read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
     R = np.float64(Ylms['radius'])
     GM = np.float64(Ylms['earth_gravity_constant'])
     LMAX = np.int64(Ylms['max_degree'])
@@ -140,13 +144,13 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     atop,ftop = (6378136.3,1.0/298.257)
     awgs,fwgs = (6378137.0,1.0/298.257223563)
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = geoid_toolkit.spatial.convert_ellipsoid(lat_TPX,
+    lat_40HZ,elev_40HZ = geoidtk.spatial.convert_ellipsoid(lat_TPX,
         elev_TPX, atop, ftop, awgs, fwgs, eps=1e-12, itmax=10)
     # colatitude in radians
     theta_40HZ = (90.0 - lat_40HZ)*np.pi/180.0
 
     # calculate geoid at coordinates
-    N = geoid_undulation(lat_40HZ, lon_40HZ, REFERENCE,
+    N = geoidtk.geoid_undulation(lat_40HZ, lon_40HZ, REFERENCE,
         Ylms['clm'], Ylms['slm'], LMAX, R, GM, GAUSS=0)
     # calculate offset for converting from tide_free to mean_tide
     # legendre polynomial of degree 2 (unnormalized)
@@ -303,6 +307,11 @@ def HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_attrs,
     for att_name,att_val in attrs.items():
        fileID.attrs[att_name] = att_val
 
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
+
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')
     # add HDF5 40HZ group attributes
@@ -367,7 +376,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     # input ICESat GLAS files
     parser.add_argument('infile',

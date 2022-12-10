@@ -11,9 +11,14 @@ import pyTMD.time
 import pyTMD.utilities
 import pyTMD.calc_delta_time
 import pyTMD.compute_equilibrium_tide
-import icesat2_toolkit.utilities
-from icesat2_toolkit.read_ICESat2_ATL03 import read_HDF5_ATL03
-from icesat2_toolkit.read_ICESat2_ATL07 import read_HDF5_ATL07
+
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 # PURPOSE: Download an ATL03 file from NSIDC and compare equilibrium tides
 def test_ATL03_equilibrium_tides(username,password):
@@ -23,11 +28,11 @@ def test_ATL03_equilibrium_tides(username,password):
     # only download ATL03 file if not currently existing
     if not os.access(HOST[-1], os.F_OK):
         # download an ATL03 file from NSIDC
-        icesat2_toolkit.utilities.from_nsidc(HOST,username=username,
+        is2tk.utilities.from_nsidc(HOST,username=username,
             password=password,local=HOST[-1],verbose=True)
     # read ATL03 file using HDF5 reader
-    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = read_HDF5_ATL03(HOST[-1],
-        ATTRIBUTES=True, VERBOSE=True)
+    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
+        is2tk.read_HDF5_ATL03(HOST[-1], ATTRIBUTES=True, VERBOSE=True)
     # verify that data is imported correctly
     assert all(gtx in IS2_atl03_mds.keys() for gtx in IS2_atl03_beams)
     # number of GPS seconds between the GPS epoch
@@ -69,11 +74,11 @@ def test_ATL07_equilibrium_tides(username,password):
     # only download ATL07 file if not currently existing
     if not os.access(HOST[-1], os.F_OK):
         # download an ATL07 file from NSIDC
-        icesat2_toolkit.utilities.from_nsidc(HOST,username=username,
+        is2tk.utilities.from_nsidc(HOST,username=username,
             password=password,local=HOST[-1],verbose=True)
     # read ATL07 file using HDF5 reader
-    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = read_HDF5_ATL07(HOST[-1],
-        ATTRIBUTES=True, VERBOSE=True)
+    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
+        is2tk.read_HDF5_ATL07(HOST[-1], ATTRIBUTES=True, VERBOSE=True)
     # verify that data is imported correctly
     assert all(gtx in IS2_atl07_mds.keys() for gtx in IS2_atl07_beams)
     # number of GPS seconds between the GPS epoch

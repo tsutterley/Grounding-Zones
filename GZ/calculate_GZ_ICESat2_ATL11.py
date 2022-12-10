@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
@@ -68,7 +68,8 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
-    Updated 11/2022: verify coordinate reference system attribute from shapefile
+    Updated 12/2022: single implicit import of grounding zone tools
+    Updated 11/2022: verify coordinate reference system of shapefile
         added option to remove a static mean file from heights
     Updated 10/2022: made reading mean dynamic topography an option
     Updated 08/2022: use logging for verbose output of processing run
@@ -91,7 +92,6 @@ from __future__ import print_function
 import sys
 import os
 import re
-import h5py
 import pyproj
 import logging
 import datetime
@@ -104,16 +104,24 @@ import numpy as np
 import collections
 import scipy.stats
 import scipy.optimize
-import icesat2_toolkit.time
-from grounding_zones.utilities import get_data_path
-from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11, \
-    read_HDF5_ATL11_pair
+import grounding_zones as gz
+
 # attempt imports
 try:
     import fiona
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("fiona not available")
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
 try:
     import matplotlib.pyplot as plt
 except (ImportError, ModuleNotFoundError) as e:
@@ -392,7 +400,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
     # print file information
     logging.info(os.path.basename(FILE))
     # read data from FILE
-    mds1,attr1,pairs1 = read_HDF5_ATL11(FILE, REFERENCE=True,
+    mds1,attr1,pairs1 = is2tk.read_HDF5_ATL11(FILE, REFERENCE=True,
         CROSSOVERS=CROSSOVERS, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
@@ -532,7 +540,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             np.zeros((n_points),dtype=bool))
         # check that mask file exists
         try:
-            mds2,attr2 = read_HDF5_ATL11_pair(f3,ptx,
+            mds2,attr2 = is2tk.read_HDF5_ATL11_pair(f3,ptx,
                 ATTRIBUTES=True,VERBOSE=False,SUBSETTING=True)
         except Exception as e:
             logging.debug(traceback.format_exc())
@@ -547,7 +555,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
         if MEAN_FILE:
             # read DEM HDF5 file
             try:
-                mds2,attr2 = read_HDF5_ATL11_pair(MEAN_FILE, ptx,
+                mds2,attr2 = is2tk.read_HDF5_ATL11_pair(MEAN_FILE, ptx,
                     REFERENCE=True, VERBOSE=False)
                 dem_h.data[:] = mds2[ptx]['ref_surf']['dem_h'].copy()
                 fv2 = attr2[ptx]['dem']['dem_h']['_FillValue']
@@ -570,7 +578,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             f3 = os.path.join(DIRECTORY,file_format.format(*a3))
             # check that tide model file exists
             try:
-                mds3,attr3 = read_HDF5_ATL11_pair(f3,ptx,
+                mds3,attr3 = is2tk.read_HDF5_ATL11_pair(f3,ptx,
                     VERBOSE=False,CROSSOVERS=CROSSOVERS)
             except Exception as e:
                 logging.debug(traceback.format_exc())
@@ -599,7 +607,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             f4 = os.path.join(DIRECTORY,file_format.format(*a4))
             # check that inverse barometer file exists
             try:
-                mds4,attr4 = read_HDF5_ATL11_pair(f4,ptx,
+                mds4,attr4 = is2tk.read_HDF5_ATL11_pair(f4,ptx,
                     VERBOSE=False,CROSSOVERS=CROSSOVERS)
             except Exception as e:
                 logging.debug(traceback.format_exc())
@@ -623,7 +631,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             f5 = os.path.join(DIRECTORY,file_format.format(*a5))
             # check that mean dynamic topography file exists
             try:
-                mds5,attr5 = read_HDF5_ATL11_pair(f5,ptx,VERBOSE=False)
+                mds5,attr5 = is2tk.read_HDF5_ATL11_pair(f5,ptx,VERBOSE=False)
             except Exception as e:
                 logging.debug(traceback.format_exc())
                 mdt = np.zeros((n_points))
@@ -1433,12 +1441,12 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     atlas_sdp_gps_epoch=IS2_atl11_corr['ancillary_data']['atlas_sdp_gps_epoch']
     gps_seconds = atlas_sdp_gps_epoch + np.array([tmn,tmx])
     # calculate leap seconds
-    leaps = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
+    leaps = is2tk.time.count_leap_seconds(gps_seconds)
     # convert from seconds since 1980-01-06T00:00:00 to Julian days
-    MJD = icesat2_toolkit.time.convert_delta_time(gps_seconds - leaps,
+    MJD = is2tk.time.convert_delta_time(gps_seconds - leaps,
         epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date
-    YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(MJD + 2400000.5,
+    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(MJD + 2400000.5,
         FORMAT='tuple')
     # add attributes with measurement date start, end and duration
     tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
@@ -1448,6 +1456,10 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 
@@ -1466,7 +1478,7 @@ def arguments():
     # directory with mask data
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=get_data_path('data'),
+        default=gz.utilities.get_data_path('data'),
         help='Working data directory')
     # mean file to remove
     parser.add_argument('--mean-file',

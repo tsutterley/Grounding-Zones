@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -50,6 +50,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: include grounding zone adjusted DAC in HDF5 outputs
     Updated 05/2022: use argparse descriptions within documentation
@@ -61,7 +62,6 @@ from __future__ import print_function
 import sys
 import os
 import re
-import h5py
 import logging
 import argparse
 import datetime
@@ -70,16 +70,25 @@ import numpy as np
 import collections
 import scipy.stats
 import scipy.optimize
-import icesat2_toolkit.time
-from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11, \
-    read_HDF5_ATL11_pair
+import grounding_zones as gz
+
 # attempt imports
 try:
-    import pyTMD.model
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+try:
+    import pyTMD
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("pyTMD not available")
-# filter warnings
+# ignore warnings
 warnings.filterwarnings("ignore")
 
 # PURPOSE: Find indices of common reference points between two lists
@@ -109,7 +118,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
     # print file information
     logging.info(os.path.basename(FILE))
     # read data from FILE
-    mds1,attr1,pairs1 = read_HDF5_ATL11(FILE, REFERENCE=True,
+    mds1,attr1,pairs1 = is2tk.read_HDF5_ATL11(FILE, REFERENCE=True,
         CROSSOVERS=True, ATTRIBUTES=True, VERBOSE=VERBOSE)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
@@ -262,7 +271,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
             np.zeros((n_points),dtype=bool))
         # check that mask file exists
         try:
-            mds2,attr2 = read_HDF5_ATL11_pair(f3,ptx,
+            mds2,attr2 = is2tk.read_HDF5_ATL11_pair(f3,ptx,
                 ATTRIBUTES=True,VERBOSE=False,SUBSETTING=True)
         except:
             pass
@@ -278,7 +287,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
             f3 = os.path.join(DIRECTORY,file_format.format(*a3))
             # check that tide model file exists
             try:
-                mds3,attr3 = read_HDF5_ATL11_pair(f3,ptx,
+                mds3,attr3 = is2tk.read_HDF5_ATL11_pair(f3,ptx,
                     VERBOSE=False,CROSSOVERS=True)
             except:
                 # mask all values
@@ -307,7 +316,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
             f4 = os.path.join(DIRECTORY,file_format.format(*a4))
             # check that inverse barometer file exists
             try:
-                mds4,attr4 = read_HDF5_ATL11_pair(f4,ptx,
+                mds4,attr4 = is2tk.read_HDF5_ATL11_pair(f4,ptx,
                     VERBOSE=False,CROSSOVERS=True)
             except:
                 # mask all values
@@ -329,9 +338,9 @@ def fit_tides_ICESat2(tide_dir, FILE,
         for track in ['AT','XT']:
             # convert time from ATLAS SDP to days relative to Jan 1, 1992
             gps_seconds = atlas_sdp_gps_epoch + delta_time[track]
-            leap_seconds = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
+            leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
             utc_seconds = gps_seconds - leap_seconds
-            tide_time[track] = icesat2_toolkit.time.convert_delta_time(utc_seconds,
+            tide_time[track] = is2tk.time.convert_delta_time(utc_seconds,
                 epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
 
         # for each ATL11 segment
@@ -921,12 +930,12 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     atlas_sdp_gps_epoch=IS2_atl11_corr['ancillary_data']['atlas_sdp_gps_epoch']
     gps_seconds = atlas_sdp_gps_epoch + np.array([tmn,tmx])
     # calculate leap seconds
-    leaps = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
+    leaps = is2tk.time.count_leap_seconds(gps_seconds)
     # convert from seconds since 1980-01-06T00:00:00 to Julian days
-    MJD = icesat2_toolkit.time.convert_delta_time(gps_seconds - leaps,
+    MJD = is2tk.time.convert_delta_time(gps_seconds - leaps,
         epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date
-    YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(MJD + 2400000.5,
+    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(MJD + 2400000.5,
         FORMAT='tuple')
     # add attributes with measurement date start, end and duration
     tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
@@ -936,16 +945,31 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = pyTMD.version.project_name
+    fileID.attrs['software_version'] = pyTMD.version.full_version
+    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
+
+# PURPOSE: create a list of available ocean tide models
+def get_available_models():
+    """Create a list of available tide models
+    """
+    try:
+        return sorted(pyTMD.model.ocean_elevation())
+    except (NameError, AttributeError):
+        return None
 
 # PURPOSE: create arguments parser
 def arguments():
     parser = argparse.ArgumentParser(
         description="""Fits tidal amplitudes to ICESat-2 data in
             ice sheet grounding zones
-            """
+            """,
+        fromfile_prefix_chars="@"
     )
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
@@ -957,7 +981,8 @@ def arguments():
         help='Working data directory')
     # tide model to use
     parser.add_argument('--tide','-T',
-        metavar='TIDE', type=str, default='CATS2008',
+        metavar='TIDE', type=str,
+        choices=get_available_models(), default='CATS2022',
         help='Tide model to use in correction')
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,

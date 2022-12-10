@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 utilities.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (12/2022)
 Download and management utilities for syncing time and auxiliary files
 Adds additional modules to the icesat2_toolkit utilities
 
@@ -10,12 +10,25 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 12/2022: functions for managing and maintaining git repositories
     Updated 05/2022: updated docstrings to numpy documentation format
     Updated 03/2021: add data path function for this set of utilities
     Written 01/2021
 """
+import os
+import ssl
+import inspect
+import warnings
+import lxml.etree
+import subprocess
 # extend icesat2_toolkit utilities
-from icesat2_toolkit.utilities import *
+try:
+    from icesat2_toolkit.utilities import *
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+# ignore warnings
+warnings.filterwarnings("ignore")
 
 def get_data_path(relpath):
     """
@@ -34,6 +47,59 @@ def get_data_path(relpath):
         return os.path.join(filepath,*relpath)
     elif isinstance(relpath,str):
         return os.path.join(filepath,relpath)
+
+# PURPOSE: get the git hash value
+def get_git_revision_hash(refname='HEAD', short=False):
+    """
+    Get the git hash value for a particular reference
+
+    Parameters
+    ----------
+    refname: str, default HEAD
+        Symbolic reference name
+    short: bool, default False
+        Return the shorted hash value
+    """
+    # get path to .git directory from current file path
+    filename = inspect.getframeinfo(inspect.currentframe()).filename
+    basepath = os.path.dirname(os.path.dirname(os.path.abspath(filename)))
+    gitpath = os.path.join(basepath,'.git')
+    # build command
+    cmd = ['git', f'--git-dir={gitpath}', 'rev-parse']
+    cmd.append('--short') if short else None
+    cmd.append(refname)
+    # get output
+    with warnings.catch_warnings():
+        return str(subprocess.check_output(cmd), encoding='utf8').strip()
+
+# PURPOSE: get the current git status
+def get_git_status():
+    """Get the status of a git repository as a boolean value
+    """
+    # get path to .git directory from current file path
+    filename = inspect.getframeinfo(inspect.currentframe()).filename
+    basepath = os.path.dirname(os.path.dirname(os.path.abspath(filename)))
+    gitpath = os.path.join(basepath,'.git')
+    # build command
+    cmd = ['git', f'--git-dir={gitpath}', 'status', '--porcelain']
+    with warnings.catch_warnings():
+        return bool(subprocess.check_output(cmd))
+
+# PURPOSE: convert file lines to arguments
+def convert_arg_line_to_args(arg_line):
+    """
+    Convert file lines to arguments
+
+    Parameters
+    ----------
+    arg_line: str
+        line string containing a single argument and/or comments
+    """
+    # remove commented lines and after argument comments
+    for arg in re.sub(r'\#(.*?)$',r'',arg_line).split():
+        if not arg.strip():
+            continue
+        yield arg
 
 # PURPOSE: list a directory on Polar Geospatial Center https server
 def pgc_list(HOST, timeout=None, context=ssl.SSLContext(),

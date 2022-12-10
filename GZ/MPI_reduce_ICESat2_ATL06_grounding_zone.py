@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL06_grounding_zone.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 
 Create masks for reducing ICESat-2 land ice height data to within
     a buffer region near the ice sheet grounding zone
@@ -41,7 +41,8 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
-    Updated 11/2022: verify coordinate reference system attribute from shapefile
+    Updated 12/2022: single implicit import of grounding zone tools
+    Updated 11/2022: verify coordinate reference system of shapefile
     Updated 10/2022: simplied HDF5 file output to match other reduction programs
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place some imports within try/except statements
@@ -64,22 +65,30 @@ from __future__ import print_function
 import sys
 import os
 import re
-import h5py
 import pyproj
 import logging
 import argparse
 import datetime
 import warnings
 import numpy as np
-from grounding_zones.utilities import get_data_path
-from icesat2_toolkit.convert_delta_time import convert_delta_time
-import icesat2_toolkit.time
+import grounding_zones as gz
+
 # attempt imports
 try:
     import fiona
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("fiona not available")
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
 try:
     from mpi4py import MPI
 except (ImportError, ModuleNotFoundError) as e:
@@ -128,7 +137,7 @@ def arguments():
     # working data directory for shapefiles
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=get_data_path('data'),
+        default=gz.utilities.get_data_path('data'),
         help='Working data directory')
     # buffer in kilometers for extracting grounding zone
     parser.add_argument('--buffer','-B',
@@ -589,9 +598,9 @@ def HDF5_ATL06_mask_write(IS2_atl06_mask, IS2_atl06_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into UTC time
-    time_utc = convert_delta_time(np.array([tmn,tmx]))
+    time_utc = is2tk.convert_delta_time(np.array([tmn,tmx]))
     # convert to calendar date
-    YY,MM,DD,HH,MN,SS = icesat2_toolkit.time.convert_julian(time_utc['julian'],
+    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(time_utc['julian'],
         FORMAT='tuple')
     # add attributes with measurement date start, end and duration
     tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
@@ -601,6 +610,10 @@ def HDF5_ATL06_mask_write(IS2_atl06_mask, IS2_atl06_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = gz.version.project_name
+    fileID.attrs['software_version'] = gz.version.full_version
+    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 

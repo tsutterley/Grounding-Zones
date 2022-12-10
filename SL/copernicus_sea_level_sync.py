@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 copernicus_sea_level_sync.py
-Written by Tyler Sutterley (06/2022)
+Written by Tyler Sutterley (12/2022)
 
 Syncs sea surface anomalies calculated from AVISO and distributed by the EU
     ftp://my.cmems-du.eu/Core/SEALEVEL_GLO_PHY_L4_REP_OBSERVATIONS_008_047/
@@ -26,6 +26,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the directories and files synced
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 06/2022: using argparse to set command line parameters
         use logging for verbose and log output
     Updated 12/2018: using new Copernicus ftp server
@@ -44,7 +45,7 @@ import builtins
 import posixpath
 import calendar, time
 import ftplib
-import grounding_zones.utilities
+import grounding_zones as gz
 
 # PURPOSE: sync local Copernicus Sea Level files with ftp server
 def copernicus_sea_level_sync(DIRECTORY,
@@ -91,7 +92,7 @@ def copernicus_sea_level_sync(DIRECTORY,
     RD = ['Core','SEALEVEL_GLO_PHY_L4_REP_OBSERVATIONS_008_047',
         'dataset-duacs-rep-global-merged-allsat-phy-l4']
     # find remote yearly directories for sea level anomalies within YEARS
-    YEARS,_ = grounding_zones.utilities.ftp_list([ftp.host,RD[0],RD[1],RD[2]],
+    YEARS,_ = gz.utilities.ftp_list([ftp.host,RD[0],RD[1],RD[2]],
         username=USER, password=PASSWORD, timeout=TIMEOUT,
         basename=True, pattern=R1, sort=True)
     for Y in YEARS:
@@ -100,7 +101,7 @@ def copernicus_sea_level_sync(DIRECTORY,
         # check if local directory exists and recursively create if not
         os.makedirs(local_dir,MODE) if not os.path.exists(local_dir) else None
         # get filenames from remote directory
-        remote_files,remote_mtimes = grounding_zones.utilities.ftp_list(
+        remote_files,remote_mtimes = gz.utilities.ftp_list(
             [ftp.host,RD[0],RD[1],RD[2],Y],
             username=USER, password=PASSWORD, timeout=TIMEOUT,
             basename=True, pattern=R2, sort=True)
@@ -128,8 +129,8 @@ def ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
         # check last modification time of local file
         local_mtime = os.stat(local_file).st_mtime
         # if remote file is newer: overwrite the local file
-        if (grounding_zones.utilities.even(remote_mtime) >
-            grounding_zones.utilities.even(local_mtime)):
+        if (gz.utilities.even(remote_mtime) >
+            gz.utilities.even(local_mtime)):
             TEST = True
             OVERWRITE = ' (overwrite)'
     else:
@@ -227,7 +228,7 @@ def main():
         args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
 
     # check AVISO credentials before attempting to run program
-    if grounding_zones.utilities.check_ftp_connection(HOST,
+    if gz.utilities.check_ftp_connection(HOST,
             username=args.user,password=args.password):
         copernicus_sea_level_sync(args.directory,
             USER=args.user,

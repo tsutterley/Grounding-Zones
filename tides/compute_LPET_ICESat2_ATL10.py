@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_ICESat2_ATL10.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates long-period equilibrium tidal elevations for correcting ICESat-2
     sea ice freeboard data
 Will calculate the long-period tides for all ATL10 segments and not just ocean
@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
     compute_equilibrium_tide.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 04/2022: use argparse descriptions within documentation
     Forked 12/2021 from compute_LPET_ICESat2_ATL07.py
@@ -51,10 +52,8 @@ import argparse
 import datetime
 import warnings
 import numpy as np
-import pyTMD.time
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.compute_equilibrium_tide import compute_equilibrium_tide
+import grounding_zones as gz
+
 # attempt imports
 try:
     import h5py
@@ -62,10 +61,15 @@ except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
 try:
-    from icesat2_toolkit.read_ICESat2_ATL10 import read_HDF5_ATL10
+    import icesat2_toolkit as is2tk
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("icesat2_toolkit not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -79,7 +83,7 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
 
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
-    IS2_atl10_mds,IS2_atl10_attrs,IS2_atl10_beams = read_HDF5_ATL10(INPUT_FILE,
+    IS2_atl10_mds,IS2_atl10_attrs,IS2_atl10_beams = is2tk.read_HDF5_ATL10(INPUT_FILE,
         ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 sea ice file name
@@ -159,10 +163,10 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
                 epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
             # interpolate delta times from calendar dates to tide time
             delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-            deltat = calc_delta_time(delta_file, tide_time)
+            deltat = pyTMD.calc_delta_time(delta_file, tide_time)
 
             # predict long-period equilibrium tides at latitudes and time
-            tide_lpe = compute_equilibrium_tide(tide_time + deltat, val['latitude'])
+            tide_lpe = pyTMD.compute_equilibrium_tide(tide_time + deltat, val['latitude'])
 
             # delta time
             IS2_atl10_tide[gtx][group]['delta_time'] = val['delta_time'].copy()
@@ -417,6 +421,10 @@ def HDF5_ATL10_tide_write(IS2_atl10_tide, IS2_atl10_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = pyTMD.version.project_name
+    fileID.attrs['software_version'] = pyTMD.version.full_version
+    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 
@@ -428,7 +436,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = pyTMD.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',

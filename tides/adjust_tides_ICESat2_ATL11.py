@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 adjust_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Applies interpolated tidal adjustment scale factors to
     ICESat-2 ATL11 annual land ice height data within
     ice sheet grounding zones
@@ -28,13 +28,13 @@ PROGRAM DEPENDENCIES:
     read_ICESat2_ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Written 06/2022
 """
 
 import os
 import re
-import h5py
 import pyproj
 import logging
 import argparse
@@ -43,16 +43,25 @@ import warnings
 import collections
 import numpy as np
 import scipy.interpolate
-from icesat2_toolkit.read_ICESat2_ATL11 import read_HDF5_ATL11, \
-    read_HDF5_ATL11_pair
+import grounding_zones as gz
+
 # attempt imports
 try:
-    import pyTMD.model
-    import pyTMD.spatial
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
+try:
+    import pyTMD
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("pyTMD not available")
-# filter warnings
+# ignore warnings
 warnings.filterwarnings("ignore")
 
 def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
@@ -72,8 +81,8 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
 
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
-    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = read_HDF5_ATL11(INPUT_FILE,
-        ATTRIBUTES=True, CROSSOVERS=True)
+    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
+        is2tk.read_HDF5_ATL11(INPUT_FILE, ATTRIBUTES=True, CROSSOVERS=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # flexure flag if being applied
     flexure_flag = '_FLEXURE'
@@ -204,7 +213,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
         print(f3)
         # check that tide file exists
         try:
-            mds3,attr3 = read_HDF5_ATL11_pair(f3, ptx,
+            mds3,attr3 = is2tk.read_HDF5_ATL11_pair(f3, ptx,
                 VERBOSE=False,CROSSOVERS=True)
         except:
             # mask all values
@@ -671,8 +680,21 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = pyTMD.version.project_name
+    fileID.attrs['software_version'] = pyTMD.version.full_version
+    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
+
+# PURPOSE: create a list of available ocean tide models
+def get_available_models():
+    """Create a list of available tide models
+    """
+    try:
+        return sorted(pyTMD.model.ocean_elevation())
+    except (NameError, AttributeError):
+        return None
 
 # PURPOSE: create argument parser
 def arguments():
@@ -680,8 +702,10 @@ def arguments():
         description="""Applies interpolated tidal adjustment scale
             factors to ICESat-2 ATL11 annual land ice height data
             within ice sheet grounding zones
-            """
+            """,
+        fromfile_prefix_chars="@"
     )
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     group = parser.add_mutually_exclusive_group(required=True)
     # input ICESat-2 annual land ice height files
@@ -696,6 +720,7 @@ def arguments():
     # tide model to use
     group.add_argument('--tide','-T',
         metavar='TIDE', type=str,
+        choices=get_available_models(),
         help='Tide model to use in correction')
     # verbosity settings
     # verbose will output information about each output file

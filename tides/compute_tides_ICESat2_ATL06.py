@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL06.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates tidal elevations for correcting ICESat-2 land ice elevation data
 
 Uses OTIS format tidal solutions provided by Ohio State University and ESR
@@ -58,6 +58,7 @@ PROGRAM DEPENDENCIES:
     predict_tide_drift.py: predict tidal elevations using harmonic constants
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: added ESR netCDF4 formats to list of model types
         updated keyword arguments to read tide model programs
@@ -107,16 +108,8 @@ import argparse
 import datetime
 import warnings
 import numpy as np
-import pyTMD.time
-import pyTMD.model
-import pyTMD.utilities
-from pyTMD.calc_delta_time import calc_delta_time
-from pyTMD.read_tide_model import extract_tidal_constants
-from pyTMD.read_netcdf_model import extract_netcdf_constants
-from pyTMD.read_GOT_model import extract_GOT_constants
-from pyTMD.read_FES_model import extract_FES_constants
-from pyTMD.infer_minor_corrections import infer_minor_corrections
-from pyTMD.predict_tide_drift import predict_tide_drift
+import grounding_zones as gz
+
 # attempt imports
 try:
     import h5py
@@ -124,10 +117,15 @@ except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("h5py not available")
 try:
-    from icesat2_toolkit.read_ICESat2_ATL06 import read_HDF5_ATL06
+    import icesat2_toolkit as is2tk
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("icesat2_toolkit not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -158,7 +156,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
 
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
-    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = read_HDF5_ATL06(INPUT_FILE,
+    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = is2tk.read_HDF5_ATL06(INPUT_FILE,
         ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # flexure flag if being applied
@@ -224,33 +222,33 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
         # read tidal constants and interpolate to grid points
         if model.format in ('OTIS','ATLAS','ESR'):
-            amp,ph,D,c = extract_tidal_constants(val['longitude'],
+            amp,ph,D,c = pyTMD.extract_tidal_constants(val['longitude'],
                 val['latitude'], model.grid_file, model.model_file,
                 model.projection, type=model.type, method=METHOD,
                 extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
                 grid=model.format, apply_flexure=APPLY_FLEXURE)
             deltat = np.zeros_like(tide_time)
         elif (model.format == 'netcdf'):
-            amp,ph,D,c = extract_netcdf_constants(val['longitude'],
+            amp,ph,D,c = pyTMD.extract_netcdf_constants(val['longitude'],
                 val['latitude'], model.grid_file, model.model_file,
                 type=model.type, method=METHOD, extrapolate=EXTRAPOLATE,
                 cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
             deltat = np.zeros_like(tide_time)
         elif (model.format == 'GOT'):
-            amp,ph,c = extract_GOT_constants(val['longitude'], val['latitude'],
+            amp,ph,c = pyTMD.extract_GOT_constants(val['longitude'], val['latitude'],
                 model.model_file, method=METHOD, extrapolate=EXTRAPOLATE,
                 cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
             # interpolate delta times from calendar dates to tide time
-            deltat = calc_delta_time(delta_file, tide_time)
+            deltat = pyTMD.calc_delta_time(delta_file, tide_time)
         elif (model.format == 'FES'):
-            amp,ph = extract_FES_constants(val['longitude'], val['latitude'],
+            amp,ph = pyTMD.extract_FES_constants(val['longitude'], val['latitude'],
                 model.model_file, type=model.type, version=model.version,
                 method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
                 scale=model.scale, compressed=model.compressed)
             # available model constituents
             c = model.constituents
             # interpolate delta times from calendar dates to tide time
-            deltat = calc_delta_time(delta_file, tide_time)
+            deltat = pyTMD.calc_delta_time(delta_file, tide_time)
 
         # calculate complex phase in radians for Euler's
         cph = -1j*ph*np.pi/180.0
@@ -260,9 +258,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         # predict tidal elevations at time and infer minor corrections
         tide = np.ma.empty((n_seg),fill_value=fv)
         tide.mask = np.any(hc.mask,axis=1)
-        tide.data[:] = predict_tide_drift(tide_time, hc, c,
+        tide.data[:] = pyTMD.predict_tide_drift(tide_time, hc, c,
             deltat=deltat, corrections=model.format)
-        minor = infer_minor_corrections(tide_time, hc, c,
+        minor = pyTMD.infer_minor_corrections(tide_time, hc, c,
             deltat=deltat, corrections=model.format)
         tide.data[:] += minor.data[:]
         # replace masked and nan values with fill value
@@ -547,8 +545,21 @@ def HDF5_ATL06_tide_write(IS2_atl06_tide, IS2_atl06_attrs, INPUT=None,
         int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
     fileID.attrs['time_coverage_end'] = tce.isoformat()
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
+    # add software information
+    fileID.attrs['software_reference'] = pyTMD.version.project_name
+    fileID.attrs['software_version'] = pyTMD.version.full_version
+    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
+
+# PURPOSE: create a list of available ocean and load tide models
+def get_available_models():
+    """Create a list of available tide models
+    """
+    try:
+        return sorted(pyTMD.model.ocean_elevation() + pyTMD.model.load_elevation())
+    except (NameError, AttributeError):
+        return None
 
 # PURPOSE: create argument parser
 def arguments():
@@ -558,7 +569,7 @@ def arguments():
             """,
         fromfile_prefix_chars="@"
     )
-    parser.convert_arg_line_to_args = pyTMD.utilities.convert_arg_line_to_args
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     group = parser.add_mutually_exclusive_group(required=True)
     # input ICESat-2 land ice height files
@@ -571,10 +582,9 @@ def arguments():
         default=os.getcwd(),
         help='Working data directory')
     # tide model to use
-    choices = sorted(pyTMD.model.ocean_elevation() + pyTMD.model.load_elevation())
     group.add_argument('--tide','-T',
         metavar='TIDE', type=str,
-        choices=choices,
+        choices=get_available_models(),
         help='Tide model to use in correction')
     parser.add_argument('--atlas-format',
         type=str, choices=('OTIS','netcdf'), default='netcdf',

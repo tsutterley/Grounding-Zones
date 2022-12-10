@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL03.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (12/2022)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: verify coordinate reference system attribute from shapefile
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place shapely within try/except statement
@@ -53,7 +54,6 @@ from __future__ import print_function
 
 import os
 import re
-import h5py
 import pyproj
 import logging
 import argparse
@@ -63,16 +63,24 @@ import itertools
 import numpy as np
 import scipy.stats
 import scipy.optimize
-import icesat2_toolkit.time
-from grounding_zones.utilities import get_data_path
-from icesat2_toolkit.read_ICESat2_ATL03 import read_HDF5_ATL03_main, \
-    read_HDF5_ATL03_beam
+import grounding_zones as gz
+
 # attempt imports
 try:
     import fiona
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("fiona not available")
+try:
+    import h5py
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("h5py not available")
+try:
+    import icesat2_toolkit as is2tk
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("icesat2_toolkit not available")
 try:
     import shapely.geometry
 except (ImportError, ModuleNotFoundError) as e:
@@ -339,8 +347,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
     logging.info(os.path.basename(FILE))
 
     # read data from input_file
-    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = read_HDF5_ATL03_main(FILE,
-        ATTRIBUTES=True)
+    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
+        is2tk.read_HDF5_ATL03_main(FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_'
@@ -401,7 +409,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
     # for each input beam within the file
     for gtx in sorted(IS2_atl03_beams):
         # data and attributes for beam gtx
-        val,attrs = read_HDF5_ATL03_beam(FILE,gtx,ATTRIBUTES=True,VERBOSE=False)
+        val,attrs = is2tk.read_HDF5_ATL03_beam(FILE,gtx,ATTRIBUTES=True,VERBOSE=False)
         # first photon in the segment (convert to 0-based indexing)
         Segment_Index_begin = val['geolocation']['ph_index_beg'] - 1
         # number of photon events in the segment
@@ -464,13 +472,13 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
             i = sorted(set(np.arange(imin,imax+1)) & set(valid))
             # convert time from ATLAS SDP to days relative into Julian days
             gps_seconds = atlas_sdp_gps_epoch + val['delta_time'][i]
-            time_leaps = icesat2_toolkit.time.count_leap_seconds(gps_seconds)
+            time_leaps = is2tk.time.count_leap_seconds(gps_seconds)
             # convert from seconds since 1980-01-06T00:00:00 to Julian days
-            time_julian = 2400000.5 + icesat2_toolkit.time.convert_delta_time(
+            time_julian = 2400000.5 + is2tk.time.convert_delta_time(
                 gps_seconds - time_leaps, epoch1=(1980,1,6,0,0,0),
                 epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
             # convert to calendar date with convert_julian.py
-            cal_date = icesat2_toolkit.time.convert_julian(time_julian)
+            cal_date = is2tk.time.convert_julian(time_julian)
             # extract lat/lon and convert to polar stereographic
             X,Y = transformer.transform(val['lon_ph'][i],val['lat_ph'][i])
             # shapely LineString object for altimetry segment
@@ -523,7 +531,7 @@ def arguments():
     # directory with mask data
     parser.add_argument('--directory','-D',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=get_data_path('data'),
+        default=gz.utilities.get_data_path('data'),
         help='Working data directory')
     # verbosity settings
     # verbose will output information about each output file
