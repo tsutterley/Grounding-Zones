@@ -46,11 +46,12 @@ PYTHON DEPENDENCIES:
         https://pytmd.readthedocs.io/en/latest/
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL11.py: reads ICESat-2 annual land ice height data files
+    io/ATL11.py: reads ICESat-2 annual land ice height data files
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: include grounding zone adjusted DAC in HDF5 outputs
     Updated 05/2022: use argparse descriptions within documentation
@@ -118,7 +119,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
     # print file information
     logging.info(os.path.basename(FILE))
     # read data from FILE
-    mds1,attr1,pairs1 = is2tk.read_HDF5_ATL11(FILE, REFERENCE=True,
+    mds1,attr1,pairs1 = is2tk.io.ATL11.read_granule(FILE, REFERENCE=True,
         CROSSOVERS=True, ATTRIBUTES=True, VERBOSE=VERBOSE)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
@@ -271,8 +272,8 @@ def fit_tides_ICESat2(tide_dir, FILE,
             np.zeros((n_points),dtype=bool))
         # check that mask file exists
         try:
-            mds2,attr2 = is2tk.read_HDF5_ATL11_pair(f3,ptx,
-                ATTRIBUTES=True,VERBOSE=False,SUBSETTING=True)
+            mds2,attr2 = is2tk.io.ATL11.read_pair(f3,ptx,
+                ATTRIBUTES=True, VERBOSE=False, SUBSETTING=True)
         except:
             pass
         else:
@@ -287,8 +288,8 @@ def fit_tides_ICESat2(tide_dir, FILE,
             f3 = os.path.join(DIRECTORY,file_format.format(*a3))
             # check that tide model file exists
             try:
-                mds3,attr3 = is2tk.read_HDF5_ATL11_pair(f3,ptx,
-                    VERBOSE=False,CROSSOVERS=True)
+                mds3,attr3 = is2tk.io.ATL11.read_pair(f3,ptx,
+                    VERBOSE=False, CROSSOVERS=True)
             except:
                 # mask all values
                 for group in groups:
@@ -316,8 +317,8 @@ def fit_tides_ICESat2(tide_dir, FILE,
             f4 = os.path.join(DIRECTORY,file_format.format(*a4))
             # check that inverse barometer file exists
             try:
-                mds4,attr4 = is2tk.read_HDF5_ATL11_pair(f4,ptx,
-                    VERBOSE=False,CROSSOVERS=True)
+                mds4,attr4 = is2tk.io.ATL11.read_pair(f4,ptx,
+                    VERBOSE=False, CROSSOVERS=True)
             except:
                 # mask all values
                 for group in groups:
@@ -341,7 +342,8 @@ def fit_tides_ICESat2(tide_dir, FILE,
             leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
             utc_seconds = gps_seconds - leap_seconds
             tide_time[track] = is2tk.time.convert_delta_time(utc_seconds,
-                epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
+                epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0),
+                scale=1.0/86400.0)
 
         # for each ATL11 segment
         for s in range(n_points):

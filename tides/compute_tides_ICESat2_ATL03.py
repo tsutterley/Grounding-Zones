@@ -44,26 +44,25 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL03.py: reads ICESat-2 global geolocated photon data files
+    io/ATL03.py: reads ICESat-2 global geolocated photon data files
     time.py: utilities for calculating time operations
     model.py: retrieves tide model parameters for named tide models
     utilities.py: download and management utilities for syncing files
     calc_astrol_longitudes.py: computes the basic astronomical mean longitudes
-    calc_delta_time.py: calculates difference between universal and dynamic time
     convert_ll_xy.py: convert lat/lon points to and from projected coordinates
-    infer_minor_corrections.py: return corrections for minor constituents
     load_constituent.py: loads parameters for a given tidal constituent
     load_nodal_corrections.py: load the nodal corrections for tidal constituents
-    read_tide_model.py: extract tidal harmonic constants from OTIS tide models
-    read_netcdf_model.py: extract tidal harmonic constants from netcdf models
-    read_GOT_model.py: extract tidal harmonic constants from GSFC GOT models
-    read_FES_model.py: extract tidal harmonic constants from FES tide models
+    io/OTIS.py: extract tidal harmonic constants from OTIS tide models
+    io/ATLAS.py: extract tidal harmonic constants from netcdf models
+    io/GOT.py: extract tidal harmonic constants from GSFC GOT models
+    io/FES.py: extract tidal harmonic constants from FES tide models
     bilinear_interp.py: bilinear interpolation of data to coordinates
     nearest_extrap.py: nearest-neighbor extrapolation of data to coordinates
-    predict_tide_drift.py: predict tidal elevations using harmonic constants
+    predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: added ESR netCDF4 formats to list of model types
         updated keyword arguments to read tide model programs
@@ -159,7 +158,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
     IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
-        is2tk.read_HDF5_ATL03_main(INPUT_FILE, ATTRIBUTES=True)
+        is2tk.io.ATL03.read_main(INPUT_FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # flexure flag if being applied
     flexure_flag = '_FLEXURE' if APPLY_FLEXURE and model.flexure else ''
@@ -212,7 +211,8 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         IS2_atl03_tide_attrs[gtx] = dict(geolocation={}, geophys_corr={})
 
         # read data and attributes for beam
-        val,attrs = is2tk.read_HDF5_ATL03_beam(INPUT_FILE,gtx,ATTRIBUTES=True)
+        val,attrs = is2tk.io.ATL03.read_beam(INPUT_FILE, gtx,
+                                             ATTRIBUTES=True)
         # number of segments
         n_seg = len(val['geolocation']['segment_id'])
         # extract variables for computing tides
@@ -230,32 +230,32 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
         # read tidal constants and interpolate to grid points
         if model.format in ('OTIS','ATLAS','ESR'):
-            amp,ph,D,c = pyTMD.extract_tidal_constants(lon, lat, model.grid_file,
+            amp,ph,D,c = pyTMD.io.OTIS.extract_constants(lon, lat, model.grid_file,
                 model.model_file, model.projection, type=model.type,
                 method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
                 grid=model.format, apply_flexure=APPLY_FLEXURE)
             deltat = np.zeros_like(tide_time)
         elif (model.format == 'netcdf'):
-            amp,ph,D,c = pyTMD.extract_netcdf_constants(lon, lat, model.grid_file,
+            amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(lon, lat, model.grid_file,
                 model.model_file, type=model.type, method=METHOD,
                 extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale,
                 compressed=model.compressed)
             deltat = np.zeros_like(tide_time)
         elif (model.format == 'GOT'):
-            amp,ph,c = pyTMD.extract_GOT_constants(lon, lat, model.model_file,
+            amp,ph,c = pyTMD.io.GOT.extract_constants(lon, lat, model.model_file,
                 method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
                 scale=model.scale, compressed=model.compressed)
             # interpolate delta times from calendar dates to tide time
-            deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+            deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
         elif (model.format == 'FES'):
-            amp,ph = pyTMD.extract_FES_constants(lon, lat, model.model_file,
+            amp,ph = pyTMD.io.FES.extract_constants(lon, lat, model.model_file,
                 type=model.type, version=model.version, method=METHOD,
                 extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale,
                 compressed=model.compressed)
             # available model constituents
             c = model.constituents
             # interpolate delta times from calendar dates to tide time
-            deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+            deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
 
         # calculate complex phase in radians for Euler's
         cph = -1j*ph*np.pi/180.0
@@ -265,9 +265,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         # predict tidal elevations at time and infer minor corrections
         tide = np.ma.empty((n_seg),fill_value=fv)
         tide.mask = np.any(hc.mask,axis=1)
-        tide.data[:] = pyTMD.predict_tide_drift(tide_time, hc, c,
+        tide.data[:] = pyTMD.predict.drift(tide_time, hc, c,
             deltat=deltat, corrections=model.format)
-        minor = pyTMD.infer_minor_corrections(tide_time, hc, c,
+        minor = pyTMD.predict.infer_minor(tide_time, hc, c,
             deltat=deltat, corrections=model.format)
         tide.data[:] += minor.data[:]
         # replace masked and nan values with fill value

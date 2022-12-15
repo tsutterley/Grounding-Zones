@@ -37,26 +37,25 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL07.py: reads ICESat-2 sea ice height data files
+    io/ATL07.py: reads ICESat-2 sea ice height data files
     time.py: utilities for calculating time operations
     model.py: retrieves tide model parameters for named tide models
     utilities.py: download and management utilities for syncing files
     calc_astrol_longitudes.py: computes the basic astronomical mean longitudes
-    calc_delta_time.py: calculates difference between universal and dynamic time
     convert_ll_xy.py: convert lat/lon points to and from projected coordinates
-    infer_minor_corrections.py: return corrections for minor constituents
     load_constituent.py: loads parameters for a given tidal constituent
     load_nodal_corrections.py: load the nodal corrections for tidal constituents
-    read_tide_model.py: extract tidal harmonic constants from OTIS tide models
-    read_netcdf_model.py: extract tidal harmonic constants from netcdf models
-    read_GOT_model.py: extract tidal harmonic constants from GSFC GOT models
-    read_FES_model.py: extract tidal harmonic constants from FES tide models
+    io/OTIS.py: extract tidal harmonic constants from OTIS tide models
+    io/ATLAS.py: extract tidal harmonic constants from netcdf models
+    io/GOT.py: extract tidal harmonic constants from GSFC GOT models
+    io/FES.py: extract tidal harmonic constants from FES tide models
     bilinear_interp.py: bilinear interpolation of data to coordinates
     nearest_extrap.py: nearest-neighbor extrapolation of data to coordinates
-    predict_tide_drift.py: predict tidal elevations using harmonic constants
+    predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: added ESR netCDF4 formats to list of model types
         updated keyword arguments to read tide model programs
@@ -144,8 +143,8 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE, TIDE_MODEL=None,
 
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
-    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = is2tk.read_HDF5_ATL07(INPUT_FILE,
-        ATTRIBUTES=True)
+    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
+        is2tk.io.ATL07.read_granule(INPUT_FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 sea ice file name
     rx = re.compile(r'(processed_)?(ATL\d{2})-(\d{2})_(\d{4})(\d{2})(\d{2})'
@@ -206,32 +205,32 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE, TIDE_MODEL=None,
             epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
         # read tidal constants and interpolate to grid points
         if model.format in ('OTIS','ATLAS','ESR'):
-            amp,ph,D,c = pyTMD.extract_tidal_constants(val['longitude'],
+            amp,ph,D,c = pyTMD.io.OTIS.extract_constants(val['longitude'],
                 val['latitude'], model.grid_file, model.model_file,
                 model.projection, type=model.type, method=METHOD,
                 extrapolate=EXTRAPOLATE, cutoff=CUTOFF, grid=model.format)
             deltat = np.zeros_like(tide_time)
         elif (model.format == 'netcdf'):
-            amp,ph,D,c = pyTMD.extract_netcdf_constants(val['longitude'],
+            amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(val['longitude'],
                 val['latitude'], model.grid_file, model.model_file,
                 type=model.type, method=METHOD, extrapolate=EXTRAPOLATE,
                 scale=model.scale, cutoff=CUTOFF, compressed=model.compressed)
             deltat = np.zeros_like(tide_time)
         elif (model.format == 'GOT'):
-            amp,ph,c = pyTMD.extract_GOT_constants(val['longitude'], val['latitude'],
+            amp,ph,c = pyTMD.io.GOT.extract_constants(val['longitude'], val['latitude'],
                 model.model_file, method=METHOD, extrapolate=EXTRAPOLATE,
                 cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
             # interpolate delta times from calendar dates to tide time
-            deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+            deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
         elif (model.format == 'FES'):
-            amp,ph = pyTMD.extract_FES_constants(val['longitude'], val['latitude'],
+            amp,ph = pyTMD.io.FES.extract_constants(val['longitude'], val['latitude'],
                 model.model_file, type=model.type, version=model.version,
                 method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
                 scale=model.scale, compressed=model.compressed)
             # available model constituents
             c = model.constituents
             # interpolate delta times from calendar dates to tide time
-            deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+            deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
 
         # calculate complex phase in radians for Euler's
         cph = -1j*ph*np.pi/180.0
@@ -241,9 +240,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE, TIDE_MODEL=None,
         # predict tidal elevations at time and infer minor corrections
         tide = np.ma.empty((n_seg))
         tide.mask = np.any(hc.mask,axis=1)
-        tide.data[:] = pyTMD.predict_tide_drift(tide_time, hc, c,
+        tide.data[:] = pyTMD.predict.drift(tide_time, hc, c,
             deltat=deltat, corrections=model.format)
-        minor = pyTMD.infer_minor_corrections(tide_time, hc, c,
+        minor = pyTMD.predict.infer_minor(tide_time, hc, c,
             deltat=deltat, corrections=model.format)
         tide.data[:] += minor.data[:]
         # replace masked and nan values with fill value

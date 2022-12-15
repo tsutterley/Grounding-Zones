@@ -23,14 +23,14 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL06.py: reads ICESat-2 land ice along-track height data files
+    io/ATL06.py: reads ICESat-2 land ice along-track height data files
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
-    calc_delta_time.py: calculates difference between universal and dynamic time
-    compute_equilibrium_tide.py: calculates long-period equilibrium ocean tides
+    predict.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
     Updated 04/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
@@ -82,8 +82,8 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
 
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
-    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = is2tk.read_HDF5_ATL06(INPUT_FILE,
-        ATTRIBUTES=True)
+    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = \
+        is2tk.io.ATL06.read_granule(INPUT_FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
@@ -143,11 +143,11 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
             epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
         # interpolate delta times from calendar dates to tide time
         delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-        deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+        deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
 
         # predict long-period equilibrium tides at latitudes and time
         tide_lpe = np.ma.zeros((n_seg), fill_value=fv)
-        tide_lpe.data[:] = pyTMD.compute_equilibrium_tide(tide_time + deltat, val['latitude'])
+        tide_lpe.data[:] = pyTMD.predict.equilibrium_tide(tide_time + deltat, val['latitude'])
         tide_lpe.mask = (val['latitude'] == fv) | (val['delta_time'] == fv)
 
         # group attributes for beam

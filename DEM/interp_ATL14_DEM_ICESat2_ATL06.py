@@ -23,13 +23,14 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL06.py: reads ICESat-2 land ice along-track height data files
+    io/ATL06.py: reads ICESat-2 land ice along-track height data files
     convert_delta_time.py: converts from delta time into Julian and year-decimal
     time.py: Utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 11/2022: check that granule intersects ATL14 DEM
     Written 11/2022
 """
@@ -71,8 +72,8 @@ warnings.filterwarnings("ignore")
 def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
 
     # read data from FILE
-    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = is2tk.read_HDF5_ATL06(FILE,
-        ATTRIBUTES=True)
+    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = \
+        is2tk.io.ATL06.read_granule(FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'

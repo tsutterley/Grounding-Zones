@@ -29,9 +29,8 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
     spatial.py: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
-    iers_mean_pole.py: provides the angular coordinates of IERS Mean Pole
-    read_iers_EOP.py: read daily earth orientation parameters from IERS
-    read_ocean_pole_tide.py: read ocean pole load tide map from IERS
+    eop.py: utilities for calculating Earth Orientation Parameters (EOP)
+    io/ocean_pole_tide.py: read ocean pole load tide map from IERS
 
 REFERENCES:
     S Desai, "Observing the pole tide with satellite altimetry", Journal of
@@ -42,6 +41,7 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored pyTMD tide model structure
     Updated 07/2022: place some imports within try/except statements
     Updated 04/2022: use longcomplex data format to be windows compliant
         use argparse descriptions within sphinx documentation
@@ -185,14 +185,14 @@ def compute_OPT_ICESat(FILE, METHOD=None, VERBOSE=False, MODE=0o775):
     # read ocean pole tide map from Desai (2002)
     ocean_pole_tide_file = pyTMD.utilities.get_data_path(['data',
         'opoleloadcoefcmcor.txt.gz'])
-    iur,iun,iue,ilon,ilat = pyTMD.read_ocean_pole_tide(ocean_pole_tide_file)
+    iur,iun,iue,ilon,ilat = pyTMD.io.ocean_pole_tide(ocean_pole_tide_file)
 
     # pole tide files (mean and daily)
     mean_pole_file = pyTMD.utilities.get_data_path(['data','mean-pole.tab'])
     pole_tide_file = pyTMD.utilities.get_data_path(['data','finals.all'])
 
     # read IERS daily polar motion values
-    EOP = pyTMD.read_iers_EOP(pole_tide_file)
+    EOP = pyTMD.eop.iers_daily_EOP(pole_tide_file)
     # create cubic spline interpolations of daily polar motion values
     xSPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['x'],k=3,s=0)
     ySPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['y'],k=3,s=0)
@@ -214,7 +214,7 @@ def compute_OPT_ICESat(FILE, METHOD=None, VERBOSE=False, MODE=0o775):
         UR = r1.__call__(np.c_[lon_40HZ,latitude_geocentric])
 
     # calculate angular coordinates of mean pole at time tdec
-    mpx,mpy,fl = pyTMD.iers_mean_pole(mean_pole_file, tdec, '2015')
+    mpx,mpy,fl = pyTMD.eop.iers_mean_pole(mean_pole_file, tdec, '2015')
     # interpolate daily polar motion values to t using cubic splines
     px = xSPL(t)
     py = ySPL(t)

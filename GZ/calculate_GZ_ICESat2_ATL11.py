@@ -63,12 +63,13 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL11.py: reads ICESat-2 annual land ice height data files
+    io/ATL11.py: reads ICESat-2 annual land ice height data files
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 11/2022: verify coordinate reference system of shapefile
         added option to remove a static mean file from heights
     Updated 10/2022: made reading mean dynamic topography an option
@@ -400,7 +401,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
     # print file information
     logging.info(os.path.basename(FILE))
     # read data from FILE
-    mds1,attr1,pairs1 = is2tk.read_HDF5_ATL11(FILE, REFERENCE=True,
+    mds1,attr1,pairs1 = is2tk.io.ATL11.read_granule(FILE, REFERENCE=True,
         CROSSOVERS=CROSSOVERS, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
@@ -540,8 +541,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             np.zeros((n_points),dtype=bool))
         # check that mask file exists
         try:
-            mds2,attr2 = is2tk.read_HDF5_ATL11_pair(f3,ptx,
-                ATTRIBUTES=True,VERBOSE=False,SUBSETTING=True)
+            mds2,attr2 = is2tk.io.ATL11.read_pair(f3, ptx,
+                ATTRIBUTES=True, VERBOSE=False, SUBSETTING=True)
         except Exception as e:
             logging.debug(traceback.format_exc())
             pass
@@ -555,7 +556,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
         if MEAN_FILE:
             # read DEM HDF5 file
             try:
-                mds2,attr2 = is2tk.read_HDF5_ATL11_pair(MEAN_FILE, ptx,
+                mds2,attr2 = is2tk.io.ATL11.read_pair(MEAN_FILE, ptx,
                     REFERENCE=True, VERBOSE=False)
                 dem_h.data[:] = mds2[ptx]['ref_surf']['dem_h'].copy()
                 fv2 = attr2[ptx]['dem']['dem_h']['_FillValue']
@@ -578,8 +579,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             f3 = os.path.join(DIRECTORY,file_format.format(*a3))
             # check that tide model file exists
             try:
-                mds3,attr3 = is2tk.read_HDF5_ATL11_pair(f3,ptx,
-                    VERBOSE=False,CROSSOVERS=CROSSOVERS)
+                mds3,attr3 = is2tk.io.ATL11.read_pair(f3, ptx,
+                    VERBOSE=False, CROSSOVERS=CROSSOVERS)
             except Exception as e:
                 logging.debug(traceback.format_exc())
                 # mask all values
@@ -607,7 +608,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             f4 = os.path.join(DIRECTORY,file_format.format(*a4))
             # check that inverse barometer file exists
             try:
-                mds4,attr4 = is2tk.read_HDF5_ATL11_pair(f4,ptx,
+                mds4,attr4 = is2tk.io.ATL11.read_pair(f4,ptx,
                     VERBOSE=False,CROSSOVERS=CROSSOVERS)
             except Exception as e:
                 logging.debug(traceback.format_exc())
@@ -631,7 +632,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             f5 = os.path.join(DIRECTORY,file_format.format(*a5))
             # check that mean dynamic topography file exists
             try:
-                mds5,attr5 = is2tk.read_HDF5_ATL11_pair(f5,ptx,VERBOSE=False)
+                mds5,attr5 = is2tk.io.ATL11.read_pair(f5, ptx,
+                    VERBOSE=False)
             except Exception as e:
                 logging.debug(traceback.format_exc())
                 mdt = np.zeros((n_points))

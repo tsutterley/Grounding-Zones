@@ -27,12 +27,12 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
     spatial.py: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
-    iers_mean_pole.py: provides the angular coordinates of IERS Mean Pole
-    read_iers_EOP.py: read daily earth orientation parameters from IERS
+    eop.py: utilities for calculating Earth Orientation Parameters (EOP)
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored pyTMD tide model structure
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
         place some imports within try/except statements
     Updated 04/2022: include utf-8 encoding in reads to be windows compliant
@@ -539,7 +539,7 @@ def compute_LPT_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     mean_pole_file = pyTMD.utilities.get_data_path(['data','mean-pole.tab'])
     pole_tide_file = pyTMD.utilities.get_data_path(['data','finals.all'])
     # read IERS daily polar motion values
-    EOP = pyTMD.read_iers_EOP(pole_tide_file)
+    EOP = pyTMD.eop.iers_daily_EOP(pole_tide_file)
     # create cubic spline interpolations of daily polar motion values
     xSPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['x'],k=3,s=0)
     ySPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['y'],k=3,s=0)
@@ -565,7 +565,7 @@ def compute_LPT_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')
 
     # calculate angular coordinates of mean pole at time tdec
-    mpx,mpy,fl = pyTMD.iers_mean_pole(mean_pole_file, tdec, '2015')
+    mpx,mpy,fl = pyTMD.eop.iers_mean_pole(mean_pole_file, tdec, '2015')
     # interpolate daily polar motion values to time using cubic splines
     px = xSPL(t)
     py = ySPL(t)

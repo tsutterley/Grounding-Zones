@@ -26,11 +26,11 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
     spatial.py: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
-    calc_delta_time.py: calculates difference between universal and dynamic time
-    compute_equilibrium_tide.py: calculates long-period equilibrium ocean tides
+    predict.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored pyTMD tide model structure
     Updated 07/2022: place some imports within try/except statements
     Updated 04/2022: use argparse descriptions within documentation
     Updated 02/2022: save ICESat campaign attribute to output file
@@ -134,10 +134,10 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
         epoch1=(2000,1,1,12,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
     # interpolate delta times from calendar dates to tide time
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-    deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+    deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
 
     # predict long-period equilibrium tides at latitudes and time
-    tide_lpe = pyTMD.compute_equilibrium_tide(tide_time + deltat, lat_40HZ)
+    tide_lpe = pyTMD.predict.equilibrium_tide(tide_time + deltat, lat_40HZ)
 
     # copy variables for outputting to HDF5 file
     IS_gla12_tide = dict(Data_40HZ={})

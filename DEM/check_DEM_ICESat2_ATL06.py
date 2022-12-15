@@ -35,7 +35,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL06.py: reads ICESat-2 land ice along-track height data files
+    io/ATL06.py: reads ICESat-2 land ice along-track height data files
 
 REFERENCES:
     https://www.pgc.umn.edu/guides/arcticdem/data-description/
@@ -44,6 +44,7 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 11/2022: new ArcticDEM and REMA mosaic index shapefiles
         verify coordinate reference system attribute from shapefile
     Updated 05/2022: use argparse descriptions within documentation
@@ -204,8 +205,8 @@ def read_DEM_index(index_file, DEM_MODEL):
 # PURPOSE: read ICESat-2 data from NSIDC and determine which DEM tiles to read
 def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
     # read data from FILE
-    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = is2tk.read_HDF5_ATL06(FILE,
-        VERBOSE=True, ATTRIBUTES=True)
+    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = \
+        is2tk.io.ATL06.read_granule(FILE, VERBOSE=True, ATTRIBUTES=True)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')

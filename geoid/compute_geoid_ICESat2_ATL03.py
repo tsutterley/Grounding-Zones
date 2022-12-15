@@ -26,7 +26,7 @@ PYTHON DEPENDENCIES:
 PROGRAM DEPENDENCIES:
     time.py: Utilities for calculating time operations
     convert_delta_time.py: converts from delta time into Julian and year-decimal
-    read_ICESat2_ATL03.py: reads ICESat-2 global geolocated photon data files
+    io/ATL03.py: reads ICESat-2 global geolocated photon data files
     utilities.py: download and management utilities for syncing files
     geoid_undulation.py: geoidal undulation at a given latitude and longitude
     read_ICGEM_harmonics.py: reads the coefficients for a given gravity model file
@@ -38,6 +38,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
@@ -95,7 +96,7 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     # read data from input file
     logging.info(f'{INPUT_FILE} -->')
     IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
-        is2tk.read_HDF5_ATL03_main(INPUT_FILE, ATTRIBUTES=True)
+        is2tk.io.ATL03.read_main(INPUT_FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
 
     # read gravity model Ylms and change tide to tide free
@@ -149,7 +150,8 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
         IS2_atl03_geoid_attrs[gtx] = dict(geolocation={}, geophys_corr={})
 
         # read data and attributes for beam
-        val,attrs = is2tk.read_HDF5_ATL03_beam(INPUT_FILE,gtx,ATTRIBUTES=True)
+        val,attrs = is2tk.io.ATL03.read_beam(INPUT_FILE, gtx,
+            ATTRIBUTES=True)
         # extract variables for computing geoid heights
         segment_id = val['geolocation']['segment_id'].copy()
         delta_time = val['geolocation']['delta_time'].copy()

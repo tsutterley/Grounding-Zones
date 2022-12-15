@@ -28,12 +28,12 @@ PYTHON DEPENDENCIES:
 PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
-    calc_delta_time.py: calculates difference between universal and dynamic time
-    compute_equilibrium_tide.py: calculates long-period equilibrium ocean tides
+    predict.py: calculates long-period equilibrium ocean tides
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored pyTMD tide model structure
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
         place some imports within try/except statements
     Updated 04/2022: include utf-8 encoding in reads to be windows compliant
@@ -476,7 +476,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
         scale=1.0/86400.0)
     # interpolate delta times from calendar dates to tide time
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-    deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+    deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
 
     # output tidal HDF5 file
     # form: rg_NASA_model_EQUILIBRIUM_TIDES_WGS84_fl1yyyymmddjjjjj.H5
@@ -497,7 +497,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')
 
     # predict long-period equilibrium tides at time
-    dinput['tide_lpe'] = pyTMD.compute_equilibrium_tide(tide_time + deltat,
+    dinput['tide_lpe'] = pyTMD.predict.equilibrium_tide(tide_time + deltat,
         dinput['lat'])
 
     # output dictionary with HDF5 variables

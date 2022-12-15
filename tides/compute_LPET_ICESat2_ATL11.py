@@ -24,14 +24,14 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL11.py: reads ICESat-2 annual land ice height data files
+    io/ATL11.py: reads ICESat-2 annual land ice height data files
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
-    calc_delta_time.py: calculates difference between universal and dynamic time
-    compute_equilibrium_tide.py: calculates long-period equilibrium ocean tides
+    predict.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
     Updated 04/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
@@ -85,8 +85,10 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
 
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
-    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = is2tk.read_HDF5_ATL11(INPUT_FILE,
-        ATTRIBUTES=True, CROSSOVERS=True)
+    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
+        is2tk.io.ATL11.read_granule(INPUT_FILE,
+                                    ATTRIBUTES=True,
+                                    CROSSOVERS=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
@@ -184,7 +186,7 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
                 epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
             # interpolate delta times from calendar dates to tide time
             delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-            deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+            deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
 
             # calculate  long-period equilibrium tides for track type
             if (track == 'AT'):
@@ -194,14 +196,14 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
                     valid, = np.nonzero(~tide_lpe[track].mask[:,cycle])
                     # predict long-period equilibrium tides at latitudes and time
                     t = tide_time[valid,cycle] + deltat[valid,cycle]
-                    tide_lpe[track].data[valid,cycle] = pyTMD.compute_equilibrium_tide(t,
+                    tide_lpe[track].data[valid,cycle] = pyTMD.predict.equilibrium_tide(t,
                         latitude[track][valid])
             elif (track == 'XT'):
                 # find valid time and spatial points for cycle
                 valid, = np.nonzero(~tide_lpe[track].mask[:])
                 # predict long-period equilibrium tides at latitudes and time
                 t = tide_time[valid] + deltat[valid]
-                tide_lpe[track].data[valid] = pyTMD.compute_equilibrium_tide(t,
+                tide_lpe[track].data[valid] = pyTMD.predict.equilibrium_tide(t,
                     latitude[track][valid])
 
             # replace masked and nan values with fill value

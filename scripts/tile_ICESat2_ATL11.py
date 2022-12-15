@@ -22,11 +22,12 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL11.py: reads ICESat-2 annual land ice height data files
+    io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 06/2022: add checks if variables and groups already exist
     Updated 05/2022: use argparse descriptions within documentation
     Updated 11/2021: adjust tiling to index by center coordinates
@@ -95,8 +96,8 @@ def tile_ICESat2_ATL11(FILE,
 
     # read data from input file
     logging.info(FILE)
-    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = is2tk.read_HDF5_ATL11(FILE,
-        ATTRIBUTES=True)
+    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
+        is2tk.io.ATL11.read_granule(FILE, ATTRIBUTES=True)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$')

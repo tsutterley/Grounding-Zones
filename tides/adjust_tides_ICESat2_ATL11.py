@@ -25,10 +25,11 @@ PYTHON DEPENDENCIES:
 PROGRAM DEPENDENCIES:
     model.py: retrieves tide model parameters for named tide models
     spatial.py: utilities for reading and writing spatial data
-    read_ICESat2_ATL11.py: reads ICESat-2 annual land ice height data files
+    io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
     Written 06/2022
 """
@@ -82,7 +83,9 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
     IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
-        is2tk.read_HDF5_ATL11(INPUT_FILE, ATTRIBUTES=True, CROSSOVERS=True)
+        is2tk.io.ATL11.read_granule(INPUT_FILE,
+                                    ATTRIBUTES=True,
+                                    CROSSOVERS=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # flexure flag if being applied
     flexure_flag = '_FLEXURE'
@@ -210,11 +213,10 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
         # read tide model HDF5 file
         a3 = (PRD,TIDE_MODEL,'',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         f3 = os.path.join(DIRECTORY,file_format.format(*a3))
-        print(f3)
         # check that tide file exists
         try:
-            mds3,attr3 = is2tk.read_HDF5_ATL11_pair(f3, ptx,
-                VERBOSE=False,CROSSOVERS=True)
+            mds3,attr3 = is2tk.io.ATL11.read_pair(f3, ptx,
+                VERBOSE=False, CROSSOVERS=True)
         except:
             # mask all values
             for group in ['AT','XT']:

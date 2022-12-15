@@ -30,10 +30,9 @@ PYTHON DEPENDENCIES:
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL07.py: reads ICESat-2 sea ice height data files
+    io/ATL07.py: reads ICESat-2 sea ice height data files
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
-    calc_delta_time.py: calculates difference between universal and dynamic time
 
 REFERENCES:
     C Wunsch and D Stammer, Atmospheric loading and the oceanic "inverted
@@ -44,6 +43,7 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 05/2022: use argparse descriptions within sphinx documentation
     Updated 10/2021: using python logging for handling verbose output
         added parsing for converting file lines to arguments
@@ -259,8 +259,8 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
 
     # read data from input_file
     logging.info(f'{FILE} -->')
-    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = is2tk.read_HDF5_ATL07(FILE,
-        ATTRIBUTES=True)
+    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
+        is2tk.io.ATL07.read_granule(FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 sea ice file name
     rx = re.compile(r'(processed_)?(ATL\d{2})-(\d{2})_(\d{4})(\d{2})(\d{2})'
