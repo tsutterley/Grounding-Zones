@@ -342,7 +342,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
             leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
             utc_seconds = gps_seconds - leap_seconds
             tide_time[track] = is2tk.time.convert_delta_time(utc_seconds,
-                epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0),
+                epoch1=pyTMD.time._gps_epoch, epoch2=pyTMD.time._tide_epoch,
                 scale=1.0/86400.0)
 
         # for each ATL11 segment
@@ -935,7 +935,7 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     leaps = is2tk.time.count_leap_seconds(gps_seconds)
     # convert from seconds since 1980-01-06T00:00:00 to Julian days
     MJD = is2tk.time.convert_delta_time(gps_seconds - leaps,
-        epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
+        epoch1=pyTMD.time._gps_epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date
     YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(MJD + 2400000.5,
         FORMAT='tuple')

@@ -240,7 +240,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             gps_seconds = atlas_sdp_gps_epoch + delta_time[track]
             leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
             tide_time = pyTMD.time.convert_delta_time(gps_seconds-leap_seconds,
-                epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0),
+                epoch1=pyTMD.time._gps_epoch, epoch2=pyTMD.time._tide_epoch,
                 scale=1.0/86400.0)
             # read tidal constants and interpolate to grid points
             if model.format in ('OTIS','ATLAS','ESR'):
@@ -696,7 +696,7 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
     leaps = pyTMD.time.count_leap_seconds(gps_seconds)
     # convert from seconds since 1980-01-06T00:00:00 to Julian days
     time_julian = 2400000.5 + pyTMD.time.convert_delta_time(gps_seconds - leaps,
-        epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
+        epoch1=pyTMD.time._gps_epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date
     YY,MM,DD,HH,MN,SS = pyTMD.time.convert_julian(time_julian,format='tuple')
     # add attributes with measurement date start, end and duration

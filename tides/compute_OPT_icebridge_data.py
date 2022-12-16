@@ -208,13 +208,13 @@ def read_ATM_qfit_file(input_file, input_subsetter):
     # since Jan 6, 1980 00:00:00) and UTC
     gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second,
-        epoch=(1980,1,6,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._gps_epoch,scale=86400.0)
     leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
     # calculation of Julian day taking into account leap seconds
     # converting to J2000 seconds
     ATM_L1b_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second-leap_seconds,
-        epoch=(2000,1,1,12,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._j2000_epoch,scale=86400.0)
     # subset the data to indices if specified
     if input_subsetter:
         for key,val in ATM_L1b_input.items():
@@ -275,7 +275,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
         # since Jan 6, 1980 00:00:00) and UTC
         gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
             hour=hour,minute=minute,second=second,
-            epoch=(1980,1,6,0,0,0),scale=86400.0)
+            epoch=pyTMD.time._gps_epoch,scale=86400.0)
         leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
     else:
         leap_seconds = 0.0
@@ -283,7 +283,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     # converting to J2000 seconds
     ATM_L2_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second-leap_seconds,
-        epoch=(2000,1,1,12,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._j2000_epoch,scale=86400.0)
     # convert RMS from centimeters to meters
     ATM_L2_input['error'] = ATM_L2_input['RMS']/100.0
     # subset the data to indices if specified

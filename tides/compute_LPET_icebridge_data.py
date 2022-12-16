@@ -194,13 +194,13 @@ def read_ATM_qfit_file(input_file, input_subsetter):
     # since Jan 6, 1980 00:00:00) and UTC
     gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second,
-        epoch=(1980,1,6,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._gps_epoch,scale=86400.0)
     leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
     # calculation of Julian day taking into account leap seconds
     # converting to J2000 seconds
     ATM_L1b_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second-leap_seconds,
-        epoch=(2000,1,1,12,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._j2000_epoch,scale=86400.0)
     # subset the data to indices if specified
     if input_subsetter:
         for key,val in ATM_L1b_input.items():
@@ -261,7 +261,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
         # since Jan 6, 1980 00:00:00) and UTC
         gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
             hour=hour,minute=minute,second=second,
-            epoch=(1980,1,6,0,0,0),scale=86400.0)
+            epoch=pyTMD.time._gps_epoch,scale=86400.0)
         leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
     else:
         leap_seconds = 0.0
@@ -269,7 +269,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     # converting to J2000 seconds
     ATM_L2_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second-leap_seconds,
-        epoch=(2000,1,1,12,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._j2000_epoch,scale=86400.0)
     # convert RMS from centimeters to meters
     ATM_L2_input['error'] = ATM_L2_input['RMS']/100.0
     # subset the data to indices if specified
@@ -472,7 +472,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
     # J2000: seconds since 2000-01-01 12:00:00 UTC
     tide_time = pyTMD.time.convert_delta_time(dinput['time'],
-        epoch1=(2000,1,1,12,0,0), epoch2=(1992,1,1,0,0,0),
+        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch,
         scale=1.0/86400.0)
     # interpolate delta times from calendar dates to tide time
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
@@ -540,7 +540,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     # convert start/end time from days since 1992-01-01 into Julian days
     time_range = np.array([np.min(tide_time),np.max(tide_time)])
     time_julian = 2400000.5 + pyTMD.time.convert_delta_time(time_range,
-        epoch1=(1992,1,1,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0)
+        epoch1=pyTMD.time._tide_epoch, epoch2=(1858,11,17,0,0,0), scale=1.0)
     # convert to calendar date
     cal = pyTMD.time.convert_julian(time_julian,astype=int)
     # add attributes with measurement date start, end and duration

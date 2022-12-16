@@ -137,7 +137,7 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
         gps_seconds = atlas_sdp_gps_epoch + val['delta_time']
         leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
         tide_time = pyTMD.time.convert_delta_time(gps_seconds-leap_seconds,
-            epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
+            epoch1=pyTMD.time._gps_epoch, epoch2=pyTMD.time._tide_epoch, scale=1.0/86400.0)
         # interpolate delta times from calendar dates to tide time
         delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
         deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
@@ -448,7 +448,7 @@ def HDF5_ATL07_tide_write(IS2_atl07_tide, IS2_atl07_attrs, INPUT=None,
     leaps = pyTMD.time.count_leap_seconds(gps_seconds)
     # convert from seconds since 1980-01-06T00:00:00 to Julian days
     time_julian = 2400000.5 + pyTMD.time.convert_delta_time(gps_seconds - leaps,
-        epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
+        epoch1=pyTMD.time._gps_epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date
     YY,MM,DD,HH,MN,SS = pyTMD.time.convert_julian(time_julian,format='tuple')
     # add attributes with measurement date start, end and duration

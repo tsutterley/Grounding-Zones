@@ -131,7 +131,7 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
     # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
     # J2000: seconds since 2000-01-01 12:00:00 UTC
     tide_time = pyTMD.time.convert_delta_time(DS_UTCTime_40HZ,
-        epoch1=(2000,1,1,12,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
+        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch, scale=1.0/86400.0)
     # interpolate delta times from calendar dates to tide time
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
     deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
