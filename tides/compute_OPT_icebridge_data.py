@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        use constants class from pyTMD for ellipsoidal parameters
         refactored pyTMD tide model structure
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
         place some imports within try/except statements
@@ -503,31 +504,26 @@ def compute_OPT_icebridge_data(arg,METHOD=None,VERBOSE=False,MODE=0o775):
     # degrees to radians and arcseconds to radians
     dtr = np.pi/180.0
     atr = np.pi/648000.0
-    # earth and physical parameters (IERS)
-    G = 6.67428e-11# universal constant of gravitation [m^3/(kg*s^2)]
-    GM = 3.986004418e14# geocentric gravitational constant [m^3/s^2]
-    ge = 9.7803278# mean equatorial gravity [m/s^2]
-    a_axis = 6378136.6# equatorial radius of the Earth [m]
-    flat = 1.0/298.257223563# flattening of the ellipsoid
-    omega = 7.292115e-5# mean rotation rate of the Earth [radians/s]
-    rho_w = 1025.0# density of sea water [kg/m^3]
-    ge = 9.7803278# mean equatorial gravitational acceleration [m/s^2]
-    # Linear eccentricity and first numerical eccentricity
-    lin_ecc = np.sqrt((2.0*flat - flat**2)*a_axis**2)
-    ecc1 = lin_ecc/a_axis
+    # earth and physical parameters for ellipsoid
+    units = pyTMD.constants('WGS84')
+    # mean equatorial gravitational acceleration [m/s^2]
+    ge = 9.7803278
+    # density of sea water [kg/m^3]
+    rho_w = 1025.0
     # tidal love number differential (1 + kl - hl) for pole tide frequencies
     gamma = 0.6870 + 0.0036j
 
     # convert from geodetic latitude to geocentric latitude
     # calculate X, Y and Z from geodetic latitude and longitude
-    X,Y,Z = pyTMD.spatial.to_cartesian(lon,lat,h=h1,a_axis=a_axis,flat=flat)
+    X,Y,Z = pyTMD.spatial.to_cartesian(lon, lat, h=h1,
+        a_axis=units.a_axis, flat=units.flat)
     # calculate geocentric latitude and convert to degrees
     latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))/dtr
 
     # pole tide displacement scale factor
-    Hp = np.sqrt(8.0*np.pi/15.0)*(omega**2*a_axis**4)/GM
-    K = 4.0*np.pi*G*rho_w*Hp*a_axis/(3.0*ge)
-    K1 = 4.0*np.pi*G*rho_w*Hp*a_axis**3/(3.0*GM)
+    Hp = np.sqrt(8.0*np.pi/15.0)*(units.omega**2*units.a_axis**4)/units.GM
+    K = 4.0*np.pi*units.G*rho_w*Hp*units.a_axis/(3.0*ge)
+    K1 = 4.0*np.pi*units.G*rho_w*Hp*units.a_axis**3/(3.0*units.GM)
 
     # read ocean pole tide map from Desai (2002)
     ocean_pole_tide_file = pyTMD.utilities.get_data_path(['data',

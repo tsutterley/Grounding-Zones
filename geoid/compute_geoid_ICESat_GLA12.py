@@ -38,6 +38,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        use reference ellipsoid function from geoid toolkit for parameters
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
@@ -141,11 +142,12 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
     # semimajor axis (a) and flattening (f) for TP and WGS84 ellipsoids
-    atop,ftop = (6378136.3,1.0/298.257)
-    awgs,fwgs = (6378137.0,1.0/298.257223563)
+    # parameters for Topex/Poseidon and WGS84 ellipsoids
+    topex = geoidtk.ref_ellipsoid('TOPEX')
+    wgs84 = geoidtk.ref_ellipsoid('WGS84')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = geoidtk.spatial.convert_ellipsoid(lat_TPX,
-        elev_TPX, atop, ftop, awgs, fwgs, eps=1e-12, itmax=10)
+    lat_40HZ,elev_40HZ = geoidtk.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
+        topex['a'], topex['f'], wgs84['a'], wgs84['f'], eps=1e-12, itmax=10)
     # colatitude in radians
     theta_40HZ = (90.0 - lat_40HZ)*np.pi/180.0
 

@@ -47,6 +47,7 @@ REFERENCES:
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
+        use constants class from pyTMD for ellipsoidal parameters
     Updated 05/2022: use argparse descriptions within sphinx documentation
     Updated 10/2021: using python logging for handling verbose output
         added parsing for converting file lines to arguments
@@ -88,6 +89,11 @@ try:
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("netCDF4 not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -313,12 +319,10 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
     gridtheta = (90.0 - gridlat)*np.pi/180.0
 
     # ellipsoidal parameters of WGS84 ellipsoid
-    # semimajor axis of the ellipsoid [m]
-    a_axis = 6378137.0
-    # flattening of the ellipsoid
-    flat = 1.0/298.257223563
-    # semiminor axis of the ellipsoid [m]
-    b_axis = (1.0 -flat)*a_axis
+    wgs84 = pyTMD.constants('WGS84')
+    # semimajor and semiminor axes of the ellipsoid [m]
+    a_axis = wgs84.a_axis
+    b_axis = wgs84.b_axis
     # calculate grid areas globally
     AREA = dphi*dth*np.sin(gridtheta)*np.sqrt((a_axis**2)*(b_axis**2) *
         ((np.sin(gridtheta)**2)*(np.cos(gridphi)**2) +
