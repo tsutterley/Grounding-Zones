@@ -56,6 +56,7 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
+        use read and interpolation scheme for tidal constituents
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: added ESR netCDF4 formats to list of model types
         updated keyword arguments to read tide model programs
@@ -168,6 +169,29 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE, TIDE_MODEL=None,
     # delta time (TT - UT1) file
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
 
+    # read tidal constants
+    if model.format in ('OTIS','ATLAS','ESR'):
+        constituents = pyTMD.io.OTIS.read_constants(model.grid_file,
+            model.model_file, model.projection, type=model.type,
+            grid=model.format)
+        # available model constituents
+        c = constituents.fields
+    elif (model.format == 'netcdf'):
+        constituents = pyTMD.io.ATLAS.read_constants(model.grid_file,
+            model.model_file, type=model.type, compressed=model.compressed)
+        # available model constituents
+        c = constituents.fields
+    elif (model.format == 'GOT'):
+        constituents = pyTMD.io.GOT.read_constants(model.model_file,
+            compressed=model.compressed)
+        # available model constituents
+        c = constituents.fields
+    elif (model.format == 'FES'):
+        constituents = pyTMD.io.FES.read_constants(model.model_file,
+            type=model.type, version=model.version, compressed=model.compressed)
+        # available model constituents
+        c = model.constituents
+
     # copy variables for outputting to HDF5 file
     IS2_atl07_tide = {}
     IS2_atl07_fill = {}
@@ -202,33 +226,32 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE, TIDE_MODEL=None,
         gps_seconds = atlas_sdp_gps_epoch + val['delta_time']
         leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
         tide_time = pyTMD.time.convert_delta_time(gps_seconds-leap_seconds,
-            epoch1=pyTMD.time._gps_epoch, epoch2=pyTMD.time._tide_epoch, scale=1.0/86400.0)
-        # read tidal constants and interpolate to grid points
+            epoch1=pyTMD.time._gps_epoch, epoch2=pyTMD.time._tide_epoch,
+            scale=1.0/86400.0)
+
+        # interpolate tidal constants to grid points
         if model.format in ('OTIS','ATLAS','ESR'):
-            amp,ph,D,c = pyTMD.io.OTIS.extract_constants(val['longitude'],
-                val['latitude'], model.grid_file, model.model_file,
-                model.projection, type=model.type, method=METHOD,
-                extrapolate=EXTRAPOLATE, cutoff=CUTOFF, grid=model.format)
+            amp,ph,D = pyTMD.io.OTIS.interpolate_constants(val['longitude'],
+                val['latitude'], constituents, model.projection, type=model.type,
+                method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
+            # use delta time at 2000.0 to match TMD outputs
             deltat = np.zeros_like(tide_time)
         elif (model.format == 'netcdf'):
-            amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(val['longitude'],
-                val['latitude'], model.grid_file, model.model_file,
-                type=model.type, method=METHOD, extrapolate=EXTRAPOLATE,
-                scale=model.scale, cutoff=CUTOFF, compressed=model.compressed)
+            amp,ph,D = pyTMD.io.ATLAS.interpolate_constants(val['longitude'],
+                val['latitude'], constituents, type=model.type, method=METHOD,
+                extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
+            # use delta time at 2000.0 to match TMD outputs
             deltat = np.zeros_like(tide_time)
         elif (model.format == 'GOT'):
-            amp,ph,c = pyTMD.io.GOT.extract_constants(val['longitude'], val['latitude'],
-                model.model_file, method=METHOD, extrapolate=EXTRAPOLATE,
-                cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
+            amp,ph = pyTMD.io.GOT.interpolate_constants(val['longitude'],
+                val['latitude'], constituents, method=METHOD,
+                extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
             # interpolate delta times from calendar dates to tide time
             deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
         elif (model.format == 'FES'):
-            amp,ph = pyTMD.io.FES.extract_constants(val['longitude'], val['latitude'],
-                model.model_file, type=model.type, version=model.version,
-                method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
-                scale=model.scale, compressed=model.compressed)
-            # available model constituents
-            c = model.constituents
+            amp,ph = pyTMD.io.FES.interpolate_constants(val['longitude'],
+                val['latitude'], constituents, method=METHOD,
+                extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
             # interpolate delta times from calendar dates to tide time
             deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
 

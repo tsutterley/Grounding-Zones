@@ -208,7 +208,8 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
     # J2000: seconds since 2000-01-01 12:00:00 UTC
     tide_time = pyTMD.time.convert_delta_time(DS_UTCTime_40HZ,
-        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch, scale=1.0/86400.0)
+        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch,
+        scale=1.0/86400.0)
     # delta time (TT - UT1) file
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
     # read tidal constants and interpolate to grid points
