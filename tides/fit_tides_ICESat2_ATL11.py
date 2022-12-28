@@ -114,7 +114,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
     logging.basicConfig(level=loglevel)
 
     # get tide model parameters
-    model = pyTMD.model(tide_dir, verify=False).elevation(TIDE_MODEL)
+    model = pyTMD.io.model(tide_dir, verify=False).elevation(TIDE_MODEL)
 
     # print file information
     logging.info(os.path.basename(FILE))
@@ -959,7 +959,7 @@ def get_available_models():
     """Create a list of available tide models
     """
     try:
-        return sorted(pyTMD.model.ocean_elevation())
+        return sorted(pyTMD.io.model.ocean_elevation())
     except (NameError, AttributeError):
         return None
 

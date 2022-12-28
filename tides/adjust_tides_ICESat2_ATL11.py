@@ -75,7 +75,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
 
     # get tide model parameters
-    model = pyTMD.model(None, verify=False).elevation(TIDE_MODEL)
+    model = pyTMD.io.model(None, verify=False).elevation(TIDE_MODEL)
     # source of tide model
     tide_source = TIDE_MODEL
     tide_reference = model.reference
@@ -694,7 +694,7 @@ def get_available_models():
     """Create a list of available tide models
     """
     try:
-        return sorted(pyTMD.model.ocean_elevation())
+        return sorted(pyTMD.io.model.ocean_elevation())
     except (NameError, AttributeError):
         return None
 

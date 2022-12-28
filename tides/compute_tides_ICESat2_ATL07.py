@@ -39,18 +39,17 @@ PYTHON DEPENDENCIES:
 PROGRAM DEPENDENCIES:
     io/ATL07.py: reads ICESat-2 sea ice height data files
     time.py: utilities for calculating time operations
-    model.py: retrieves tide model parameters for named tide models
     utilities.py: download and management utilities for syncing files
     calc_astrol_longitudes.py: computes the basic astronomical mean longitudes
     convert_ll_xy.py: convert lat/lon points to and from projected coordinates
     load_constituent.py: loads parameters for a given tidal constituent
     load_nodal_corrections.py: load the nodal corrections for tidal constituents
+    io.model.py: retrieves tide model parameters for named tide models
     io/OTIS.py: extract tidal harmonic constants from OTIS tide models
     io/ATLAS.py: extract tidal harmonic constants from netcdf models
     io/GOT.py: extract tidal harmonic constants from GSFC GOT models
     io/FES.py: extract tidal harmonic constants from FES tide models
-    bilinear_interp.py: bilinear interpolation of data to coordinates
-    nearest_extrap.py: nearest-neighbor extrapolation of data to coordinates
+    interpolate.py: interpolation routines for spatial data
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
@@ -137,9 +136,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE, TIDE_MODEL=None,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.model(tide_dir).from_file(DEFINITION_FILE)
+        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.model(tide_dir, format=ATLAS_FORMAT,
+        model = pyTMD.io.model(tide_dir, format=ATLAS_FORMAT,
             compressed=GZIP).elevation(TIDE_MODEL)
 
     # read data from input file
@@ -597,7 +596,7 @@ def get_available_models():
     """Create a list of available tide models
     """
     try:
-        return sorted(pyTMD.model.ocean_elevation() + pyTMD.model.load_elevation())
+        return sorted(pyTMD.io.model.ocean_elevation() + pyTMD.io.model.load_elevation())
     except (NameError, AttributeError):
         return None
 
