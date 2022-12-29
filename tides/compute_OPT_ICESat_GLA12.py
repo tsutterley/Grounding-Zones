@@ -174,8 +174,8 @@ def compute_OPT_ICESat(FILE, METHOD=None, VERBOSE=False, MODE=0o775):
 
     # pole tide displacement scale factor
     Hp = np.sqrt(8.0*np.pi/15.0)*(units.omega**2*units.a_axis**4)/units.GM
-    K = 4.0*np.pi*G*rho_w*Hp*units.a_axis/(3.0*ge)
-    K1 = 4.0*np.pi*G*rho_w*Hp*units.a_axis**3/(3.0*units.GM)
+    K = 4.0*np.pi*units.G*rho_w*Hp*units.a_axis/(3.0*ge)
+    K1 = 4.0*np.pi*units.G*rho_w*Hp*units.a_axis**3/(3.0*units.GM)
 
     # read ocean pole tide map from Desai (2002)
     ocean_pole_tide_file = pyTMD.utilities.get_data_path(['data',

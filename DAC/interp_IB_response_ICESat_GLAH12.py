@@ -351,12 +351,12 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     gridtheta = (90.0 - gridlat)*np.pi/180.0
 
     # semiminor axis of the ellipsoid [m]
-    b_axis = (1.0 - fwgs)*awgs
+    b_axis = (1.0 - wgs84.flat)*wgs84.a_axis
     # calculate grid areas globally
-    AREA = dphi*dth*np.sin(gridtheta)*np.sqrt((awgs**2)*(b_axis**2) *
+    AREA = dphi*dth*np.sin(gridtheta)*np.sqrt((wgs84.a_axis**2)*(b_axis**2) *
         ((np.sin(gridtheta)**2)*(np.cos(gridphi)**2) +
         (np.sin(gridtheta)**2)*(np.sin(gridphi)**2)) +
-        (awgs**4)*(np.cos(gridtheta)**2))
+        (wgs84.a_axis**4)*(np.cos(gridtheta)**2))
     # read land-sea mask to find ocean values
     # ocean pressure points will be based on reanalysis mask
     MASK = ncdf_landmask(os.path.join(ddir,input_mask_file),MASKNAME,OCEAN)
