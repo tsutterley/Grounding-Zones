@@ -506,10 +506,8 @@ def tile_icebridge_data(arg,
     today = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     f2.attrs['date_created'] = today
     # add software information
-    git_revision_hash = gz.utilities.get_git_revision_hash()
     f2.attrs['software_reference'] = gz.version.project_name
     f2.attrs['software_version'] = gz.version.full_version
-    f2.attrs['software_revision'] = git_revision_hash
     # create projection variable
     h5 = f2.create_dataset('Polar_Stereographic', (), dtype=np.byte)
     # add projection attributes
@@ -568,7 +566,6 @@ def tile_icebridge_data(arg,
             # add software information
             f3.attrs['software_reference'] = gz.version.project_name
             f3.attrs['software_version'] = gz.version.full_version
-            f3.attrs['software_revision'] = git_revision_hash
 
         # indices of points within tile
         indices, = np.nonzero((xtile == xp) & (ytile == yp))

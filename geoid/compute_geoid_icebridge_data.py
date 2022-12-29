@@ -593,7 +593,6 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     # add software information
     fid.attrs['software_reference'] = gz.version.project_name
     fid.attrs['software_version'] = gz.version.full_version
-    fid.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE

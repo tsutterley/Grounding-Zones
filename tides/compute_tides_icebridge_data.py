@@ -53,7 +53,7 @@ PROGRAM DEPENDENCIES:
     convert_ll_xy.py: convert lat/lon points to and from projected coordinates
     load_constituent.py: loads parameters for a given tidal constituent
     load_nodal_corrections.py: load the nodal corrections for tidal constituents
-    io.model.py: retrieves tide model parameters for named tide models
+    io/model.py: retrieves tide model parameters for named tide models
     io/OTIS.py: extract tidal harmonic constants from OTIS tide models
     io/ATLAS.py: extract tidal harmonic constants from netcdf models
     io/GOT.py: extract tidal harmonic constants from GSFC GOT models
@@ -675,7 +675,6 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     # add software information
     fid.attrs['software_reference'] = pyTMD.version.project_name
     fid.attrs['software_version'] = pyTMD.version.full_version
-    fid.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE

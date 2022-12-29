@@ -451,7 +451,6 @@ def HDF5_ATL12_geoid_write(IS2_atl12_geoid, IS2_atl12_attrs, INPUT=None,
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name
     fileID.attrs['software_version'] = gz.version.full_version
-    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 

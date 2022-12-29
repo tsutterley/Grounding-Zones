@@ -424,7 +424,6 @@ def HDF5_ATL10_tide_write(IS2_atl10_tide, IS2_atl10_attrs, INPUT=None,
     # add software information
     fileID.attrs['software_reference'] = pyTMD.version.project_name
     fileID.attrs['software_version'] = pyTMD.version.full_version
-    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 

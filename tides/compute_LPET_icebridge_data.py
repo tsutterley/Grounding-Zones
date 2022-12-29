@@ -557,7 +557,6 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     # add software information
     fid.attrs['software_reference'] = pyTMD.version.project_name
     fid.attrs['software_version'] = pyTMD.version.full_version
-    fid.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE
