@@ -291,7 +291,6 @@ def HDF5_GLA12_mask_write(IS_gla12_tide, IS_gla12_attrs,
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name
     fileID.attrs['software_version'] = gz.version.full_version
-    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
 
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')

@@ -26,11 +26,12 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
     spatial.py: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
-    calc_delta_time.py: calculates difference between universal and dynamic time
-    compute_equilibrium_tide.py: calculates long-period equilibrium ocean tides
+    predict.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        use constants class from pyTMD for ellipsoidal parameters
+        refactored pyTMD tide model structure
     Updated 07/2022: place some imports within try/except statements
     Updated 04/2022: use argparse descriptions within documentation
     Updated 02/2022: save ICESat campaign attribute to output file
@@ -121,23 +122,23 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
     elev_TPX = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'][:].copy()
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
-    # semimajor axis (a) and flattening (f) for TP and WGS84 ellipsoids
-    atop,ftop = (6378136.3,1.0/298.257)
-    awgs,fwgs = (6378137.0,1.0/298.257223563)
+    # parameters for Topex/Poseidon and WGS84 ellipsoids
+    topex = pyTMD.constants('TOPEX')
+    wgs84 = pyTMD.constants('WGS84')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
     lat_40HZ,elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
-        atop, ftop, awgs, fwgs, eps=1e-12, itmax=10)
+        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
 
     # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
     # J2000: seconds since 2000-01-01 12:00:00 UTC
     tide_time = pyTMD.time.convert_delta_time(DS_UTCTime_40HZ,
-        epoch1=(2000,1,1,12,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
+        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch, scale=1.0/86400.0)
     # interpolate delta times from calendar dates to tide time
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-    deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+    deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
 
     # predict long-period equilibrium tides at latitudes and time
-    tide_lpe = pyTMD.compute_equilibrium_tide(tide_time + deltat, lat_40HZ)
+    tide_lpe = pyTMD.predict.equilibrium_tide(tide_time + deltat, lat_40HZ)
 
     # copy variables for outputting to HDF5 file
     IS_gla12_tide = dict(Data_40HZ={})
@@ -270,7 +271,6 @@ def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
     # add software information
     fileID.attrs['software_reference'] = pyTMD.version.project_name
     fileID.attrs['software_version'] = pyTMD.version.full_version
-    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
 
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')

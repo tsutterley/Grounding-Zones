@@ -23,14 +23,14 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL10.py: reads ICESat-2 sea ice freeboard data files
+    io/ATL10.py: reads ICESat-2 sea ice freeboard data files
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
-    calc_delta_time.py: calculates difference between universal and dynamic time
-    compute_equilibrium_tide.py: calculates long-period equilibrium ocean tides
+    predict.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
     Updated 04/2022: use argparse descriptions within documentation
     Forked 12/2021 from compute_LPET_ICESat2_ATL07.py
@@ -83,8 +83,8 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
 
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
-    IS2_atl10_mds,IS2_atl10_attrs,IS2_atl10_beams = is2tk.read_HDF5_ATL10(INPUT_FILE,
-        ATTRIBUTES=True)
+    IS2_atl10_mds,IS2_atl10_attrs,IS2_atl10_beams = \
+        is2tk.io.ATL10.read_granule(INPUT_FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 sea ice file name
     rx = re.compile(r'(processed_)?(ATL\d{2})-(\d{2})_(\d{4})(\d{2})(\d{2})'
@@ -160,13 +160,13 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
             gps_seconds = atlas_sdp_gps_epoch + val['delta_time']
             leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
             tide_time = pyTMD.time.convert_delta_time(gps_seconds-leap_seconds,
-                epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
+                epoch1=pyTMD.time._gps_epoch, epoch2=pyTMD.time._tide_epoch, scale=1.0/86400.0)
             # interpolate delta times from calendar dates to tide time
             delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-            deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+            deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
 
             # predict long-period equilibrium tides at latitudes and time
-            tide_lpe = pyTMD.compute_equilibrium_tide(tide_time + deltat, val['latitude'])
+            tide_lpe = pyTMD.predict.equilibrium_tide(tide_time + deltat, val['latitude'])
 
             # delta time
             IS2_atl10_tide[gtx][group]['delta_time'] = val['delta_time'].copy()
@@ -410,7 +410,7 @@ def HDF5_ATL10_tide_write(IS2_atl10_tide, IS2_atl10_attrs, INPUT=None,
     leaps = pyTMD.time.count_leap_seconds(gps_seconds)
     # convert from seconds since 1980-01-06T00:00:00 to Julian days
     time_julian = 2400000.5 + pyTMD.time.convert_delta_time(gps_seconds - leaps,
-        epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
+        epoch1=pyTMD.time._gps_epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date
     YY,MM,DD,HH,MN,SS = pyTMD.time.convert_julian(time_julian,format='tuple')
     # add attributes with measurement date start, end and duration
@@ -424,7 +424,6 @@ def HDF5_ATL10_tide_write(IS2_atl10_tide, IS2_atl10_attrs, INPUT=None,
     # add software information
     fileID.attrs['software_reference'] = pyTMD.version.project_name
     fileID.attrs['software_version'] = pyTMD.version.full_version
-    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 

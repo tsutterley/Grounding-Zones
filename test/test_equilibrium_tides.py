@@ -7,10 +7,9 @@ import os
 import pytest
 import warnings
 import numpy as np
+import pyTMD.predict
 import pyTMD.time
 import pyTMD.utilities
-import pyTMD.calc_delta_time
-import pyTMD.compute_equilibrium_tide
 
 try:
     import icesat2_toolkit as is2tk
@@ -32,7 +31,7 @@ def test_ATL03_equilibrium_tides(username,password):
             password=password,local=HOST[-1],verbose=True)
     # read ATL03 file using HDF5 reader
     IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
-        is2tk.read_HDF5_ATL03(HOST[-1], ATTRIBUTES=True, VERBOSE=True)
+        is2tk.io.ATL03.read_granule(HOST[-1], ATTRIBUTES=True, VERBOSE=True)
     # verify that data is imported correctly
     assert all(gtx in IS2_atl03_mds.keys() for gtx in IS2_atl03_beams)
     # number of GPS seconds between the GPS epoch
@@ -54,9 +53,9 @@ def test_ATL03_equilibrium_tides(username,password):
             epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
         # interpolate delta times from calendar dates to tide time
         delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-        deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+        deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
         # calculate long-period equilibrium tides
-        lpet = pyTMD.compute_equilibrium_tide(tide_time+deltat, latitude)
+        lpet = pyTMD.predict.equilibrium_tide(tide_time+deltat, latitude)
         # calculate differences between computed and data versions
         difference = np.ma.zeros((nref))
         difference.data[:] = lpet - tide_equilibrium
@@ -78,7 +77,7 @@ def test_ATL07_equilibrium_tides(username,password):
             password=password,local=HOST[-1],verbose=True)
     # read ATL07 file using HDF5 reader
     IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
-        is2tk.read_HDF5_ATL07(HOST[-1], ATTRIBUTES=True, VERBOSE=True)
+        is2tk.io.ATL07.read_granule(HOST[-1], ATTRIBUTES=True, VERBOSE=True)
     # verify that data is imported correctly
     assert all(gtx in IS2_atl07_mds.keys() for gtx in IS2_atl07_beams)
     # number of GPS seconds between the GPS epoch
@@ -102,9 +101,9 @@ def test_ATL07_equilibrium_tides(username,password):
             epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
         # interpolate delta times from calendar dates to tide time
         delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-        deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+        deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
         # calculate long-period equilibrium tides
-        lpet = pyTMD.compute_equilibrium_tide(tide_time+deltat, latitude)
+        lpet = pyTMD.predict.equilibrium_tide(tide_time+deltat, latitude)
         # calculate differences between computed and data versions
         difference = np.ma.zeros((nseg))
         difference.data[:] = lpet - tide_equilibrium

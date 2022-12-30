@@ -44,25 +44,24 @@ PYTHON DEPENDENCIES:
 
 PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
-    model.py: retrieves tide model parameters for named tide models
     spatial: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
     calc_astrol_longitudes.py: computes the basic astronomical mean longitudes
-    calc_delta_time.py: calculates difference between universal and dynamic time
     convert_ll_xy.py: convert lat/lon points to and from projected coordinates
-    infer_minor_corrections.py: return corrections for minor constituents
     load_constituent.py: loads parameters for a given tidal constituent
     load_nodal_corrections.py: load the nodal corrections for tidal constituents
-    read_tide_model.py: extract tidal harmonic constants from OTIS tide models
-    read_netcdf_model.py: extract tidal harmonic constants from netcdf models
-    read_GOT_model.py: extract tidal harmonic constants from GSFC GOT models
-    read_FES_model.py: extract tidal harmonic constants from FES tide models
-    bilinear_interp.py: bilinear interpolation of data to coordinates
-    nearest_extrap.py: nearest-neighbor extrapolation of data to coordinates
-    predict_tide_drift.py: predict tidal elevations using harmonic constants
+    io/model.py: retrieves tide model parameters for named tide models
+    io/OTIS.py: extract tidal harmonic constants from OTIS tide models
+    io/ATLAS.py: extract tidal harmonic constants from netcdf models
+    io/GOT.py: extract tidal harmonic constants from GSFC GOT models
+    io/FES.py: extract tidal harmonic constants from FES tide models
+    interpolate.py: interpolation routines for spatial data
+    predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        use constants class from pyTMD for ellipsoidal parameters
+        refactored pyTMD tide model structure
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: added ESR netCDF4 formats to list of model types
         updated keyword arguments to read tide model programs
@@ -144,9 +143,9 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.model(tide_dir).from_file(DEFINITION_FILE)
+        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.model(tide_dir, format=ATLAS_FORMAT,
+        model = pyTMD.io.model(tide_dir, format=ATLAS_FORMAT,
             compressed=GZIP).elevation(TIDE_MODEL)
 
     # get directory from INPUT_FILE
@@ -198,47 +197,48 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     elev_TPX = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'][:].copy()
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
-    # semimajor axis (a) and flattening (f) for TP and WGS84 ellipsoids
-    atop,ftop = (6378136.3,1.0/298.257)
-    awgs,fwgs = (6378137.0,1.0/298.257223563)
+    # parameters for Topex/Poseidon and WGS84 ellipsoids
+    topex = pyTMD.constants('TOPEX')
+    wgs84 = pyTMD.constants('WGS84')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
     lat_40HZ,elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
-        atop, ftop, awgs, fwgs, eps=1e-12, itmax=10)
+        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
 
     # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
     # J2000: seconds since 2000-01-01 12:00:00 UTC
     tide_time = pyTMD.time.convert_delta_time(DS_UTCTime_40HZ,
-        epoch1=(2000,1,1,12,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
+        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch,
+        scale=1.0/86400.0)
     # delta time (TT - UT1) file
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
     # read tidal constants and interpolate to grid points
     if model.format in ('OTIS','ATLAS','ESR'):
-        amp,ph,D,c = pyTMD.extract_tidal_constants(lon_40HZ, lat_40HZ,
+        amp,ph,D,c = pyTMD.io.OTIS.extract_constants(lon_40HZ, lat_40HZ,
             model.grid_file, model.model_file, model.projection,
             type=model.type, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, grid=model.format, apply_flexure=APPLY_FLEXURE)
         deltat = np.zeros_like(tide_time)
     elif (model.format == 'netcdf'):
-        amp,ph,D,c = pyTMD.extract_netcdf_constants(lon_40HZ, lat_40HZ,
+        amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(lon_40HZ, lat_40HZ,
             model.grid_file, model.model_file, type=model.type,
             method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
             scale=model.scale, compressed=model.compressed)
         deltat = np.zeros_like(tide_time)
     elif (model.format == 'GOT'):
-        amp,ph,c = pyTMD.extract_GOT_constants(lon_40HZ, lat_40HZ,
+        amp,ph,c = pyTMD.io.GOT.extract_constants(lon_40HZ, lat_40HZ,
             model.model_file, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
         # interpolate delta times from calendar dates to tide time
-        deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+        deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
     elif (model.format == 'FES'):
-        amp,ph = pyTMD.extract_FES_constants(lon_40HZ, lat_40HZ,
+        amp,ph = pyTMD.io.FES.extract_constants(lon_40HZ, lat_40HZ,
             model.model_file, type=model.type, version=model.version,
             method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
             scale=model.scale, compressed=model.compressed)
         # available model constituents
         c = model.constituents
         # interpolate delta times from calendar dates to tide time
-        deltat = pyTMD.calc_delta_time(delta_file, tide_time)
+        deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
 
     # calculate complex phase in radians for Euler's
     cph = -1j*ph*np.pi/180.0
@@ -248,9 +248,9 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     # predict tidal elevations at time and infer minor corrections
     tide = np.ma.empty((n_40HZ),fill_value=fv)
     tide.mask = np.any(hc.mask,axis=1)
-    tide.data[:] = pyTMD.predict_tide_drift(tide_time, hc, c,
+    tide.data[:] = pyTMD.predict.drift(tide_time, hc, c,
         deltat=deltat, corrections=model.format)
-    minor = pyTMD.infer_minor_corrections(tide_time, hc, c,
+    minor = pyTMD.predict.infer_minor(tide_time, hc, c,
         deltat=deltat, corrections=model.format)
     tide.data[:] += minor.data[:]
     # replace masked and nan values with fill value
@@ -393,7 +393,6 @@ def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
     # add software information
     fileID.attrs['software_reference'] = pyTMD.version.project_name
     fileID.attrs['software_version'] = pyTMD.version.full_version
-    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
 
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')
@@ -456,7 +455,7 @@ def get_available_models():
     """Create a list of available tide models
     """
     try:
-        return sorted(pyTMD.model.ocean_elevation() + pyTMD.model.load_elevation())
+        return sorted(pyTMD.io.model.ocean_elevation() + pyTMD.io.model.load_elevation())
     except (NameError, AttributeError):
         return None
 

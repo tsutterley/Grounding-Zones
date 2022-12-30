@@ -46,6 +46,7 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        use constants class from pyTMD for ellipsoidal parameters
     Updated 11/2022: use f-strings for formatting verbose or ascii output
     Updated 05/2022: use argparse descriptions within sphinx documentation
     Updated 10/2021: using python logging for handling verbose output
@@ -84,6 +85,11 @@ try:
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("netCDF4 not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -313,12 +319,12 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     # J2000: seconds since 2000-01-01 12:00:00 UTC
     MJD = DS_UTCTime_40HZ[:]/86400.0 + 51544.5
 
-    # semimajor axis (a) and flattening (f) for TP and WGS84 ellipsoids
-    atop,ftop = (6378136.3,1.0/298.257)
-    awgs,fwgs = (6378137.0,1.0/298.257223563)
+    # parameters for Topex/Poseidon and WGS84 ellipsoids
+    topex = pyTMD.constants('TOPEX')
+    wgs84 = pyTMD.constants('WGS84')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = is2tk.spatial.convert_ellipsoid(lat_TPX,
-        elev_TPX, atop, ftop, awgs, fwgs, eps=1e-12, itmax=10)
+    lat_40HZ,elev_40HZ = is2tk.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
+        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
     # colatitude in radians
     theta_40HZ = (90.0 - lat_40HZ)*np.pi/180.0
 
@@ -345,12 +351,12 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     gridtheta = (90.0 - gridlat)*np.pi/180.0
 
     # semiminor axis of the ellipsoid [m]
-    b_axis = (1.0 - fwgs)*awgs
+    b_axis = (1.0 - wgs84.flat)*wgs84.a_axis
     # calculate grid areas globally
-    AREA = dphi*dth*np.sin(gridtheta)*np.sqrt((awgs**2)*(b_axis**2) *
+    AREA = dphi*dth*np.sin(gridtheta)*np.sqrt((wgs84.a_axis**2)*(b_axis**2) *
         ((np.sin(gridtheta)**2)*(np.cos(gridphi)**2) +
         (np.sin(gridtheta)**2)*(np.sin(gridphi)**2)) +
-        (awgs**4)*(np.cos(gridtheta)**2))
+        (wgs84.a_axis**4)*(np.cos(gridtheta)**2))
     # read land-sea mask to find ocean values
     # ocean pressure points will be based on reanalysis mask
     MASK = ncdf_landmask(os.path.join(ddir,input_mask_file),MASKNAME,OCEAN)
@@ -532,7 +538,6 @@ def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name
     fileID.attrs['software_version'] = gz.version.full_version
-    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
 
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')

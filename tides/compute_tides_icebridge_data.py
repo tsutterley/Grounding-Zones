@@ -48,25 +48,23 @@ PYTHON DEPENDENCIES:
 
 PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
-    model.py: retrieves tide model parameters for named tide models
     utilities.py: download and management utilities for syncing files
     calc_astrol_longitudes.py: computes the basic astronomical mean longitudes
-    calc_delta_time.py: calculates difference between universal and dynamic time
     convert_ll_xy.py: convert lat/lon points to and from projected coordinates
-    infer_minor_corrections.py: return corrections for minor constituents
     load_constituent.py: loads parameters for a given tidal constituent
     load_nodal_corrections.py: load the nodal corrections for tidal constituents
-    read_tide_model.py: extract tidal harmonic constants from OTIS tide models
-    read_netcdf_model.py: extract tidal harmonic constants from netcdf models
-    read_GOT_model.py: extract tidal harmonic constants from GSFC GOT models
-    read_FES_model.py: extract tidal harmonic constants from FES tide models
-    bilinear_interp.py: bilinear interpolation of data to coordinates
-    nearest_extrap.py: nearest-neighbor extrapolation of data to coordinates
-    predict_tide_drift.py: predict tidal elevations using harmonic constants
+    io/model.py: retrieves tide model parameters for named tide models
+    io/OTIS.py: extract tidal harmonic constants from OTIS tide models
+    io/ATLAS.py: extract tidal harmonic constants from netcdf models
+    io/GOT.py: extract tidal harmonic constants from GSFC GOT models
+    io/FES.py: extract tidal harmonic constants from FES tide models
+    interpolate.py: interpolation routines for spatial data
+    predict.py: predict tidal values using harmonic constants
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored pyTMD tide model structure
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
         place some imports within try/except statements
     Updated 05/2022: added ESR netCDF4 formats to list of model types
@@ -252,13 +250,13 @@ def read_ATM_qfit_file(input_file, input_subsetter):
     # since Jan 6, 1980 00:00:00) and UTC
     gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second,
-        epoch=(1980,1,6,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._gps_epoch,scale=86400.0)
     leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
     # calculation of Julian day taking into account leap seconds
     # converting to J2000 seconds
     ATM_L1b_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second-leap_seconds,
-        epoch=(2000,1,1,12,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._j2000_epoch,scale=86400.0)
     # subset the data to indices if specified
     if input_subsetter:
         for key,val in ATM_L1b_input.items():
@@ -319,7 +317,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
         # since Jan 6, 1980 00:00:00) and UTC
         gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
             hour=hour,minute=minute,second=second,
-            epoch=(1980,1,6,0,0,0),scale=86400.0)
+            epoch=pyTMD.time._gps_epoch,scale=86400.0)
         leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
     else:
         leap_seconds = 0.0
@@ -327,7 +325,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     # converting to J2000 seconds
     ATM_L2_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second-leap_seconds,
-        epoch=(2000,1,1,12,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._j2000_epoch,scale=86400.0)
     # convert RMS from centimeters to meters
     ATM_L2_input['error'] = ATM_L2_input['RMS']/100.0
     # subset the data to indices if specified
@@ -451,9 +449,9 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.model(tide_dir).from_file(DEFINITION_FILE)
+        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.model(tide_dir, format=ATLAS_FORMAT,
+        model = pyTMD.io.model(tide_dir, format=ATLAS_FORMAT,
             compressed=GZIP).elevation(TIDE_MODEL)
 
     # extract file name and subsetter indices lists
@@ -546,39 +544,39 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
     # J2000: seconds since 2000-01-01 12:00:00 UTC
     t = pyTMD.time.convert_delta_time(dinput['time'],
-        epoch1=(2000,1,1,12,0,0), epoch2=(1992,1,1,0,0,0),
+        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch,
         scale=1.0/86400.0)
     # delta time (TT - UT1) file
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
 
     # read tidal constants and interpolate to grid points
     if model.format in ('OTIS','ATLAS','ESR'):
-        amp,ph,D,c = pyTMD.extract_tidal_constants(dinput['lon'], dinput['lat'],
+        amp,ph,D,c = pyTMD.io.OTIS.extract_constants(dinput['lon'], dinput['lat'],
             model.grid_file, model.model_file, model.projection,
             type=model.type, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, grid=model.format, apply_flexure=APPLY_FLEXURE)
         deltat = np.zeros_like(t)
     elif model.format in ('netcdf'):
-        amp,ph,D,c = pyTMD.extract_netcdf_constants(dinput['lon'], dinput['lat'],
+        amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(dinput['lon'], dinput['lat'],
             model.grid_file, model.model_file, type=model.type, method=METHOD,
             extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale,
             compressed=model.compressed)
         deltat = np.zeros_like(t)
     elif (model.format == 'GOT'):
-        amp,ph,c = pyTMD.extract_GOT_constants(dinput['lon'], dinput['lat'],
+        amp,ph,c = pyTMD.io.GOT.extract_constants(dinput['lon'], dinput['lat'],
             model.model_file, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
         # interpolate delta times from calendar dates to tide time
-        deltat = pyTMD.calc_delta_time(delta_file, t)
+        deltat = pyTMD.time.interpolate_delta_time(delta_file, t)
     elif (model.format == 'FES'):
-        amp,ph = pyTMD.extract_FES_constants(dinput['lon'], dinput['lat'],
+        amp,ph = pyTMD.io.FES.extract_constants(dinput['lon'], dinput['lat'],
             model.model_file, type=model.type, version=model.version,
             method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
             scale=model.scale, compressed=model.compressed)
         # available model constituents
         c = model.constituents
         # interpolate delta times from calendar dates to tide time
-        deltat = pyTMD.calc_delta_time(delta_file, t)
+        deltat = pyTMD.time.interpolate_delta_time(delta_file, t)
 
     # calculate complex phase in radians for Euler's
     cph = -1j*ph*np.pi/180.0
@@ -610,9 +608,9 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     fill_value = -9999.0
     tide = np.ma.empty((file_lines),fill_value=fill_value)
     tide.mask = np.any(hc.mask,axis=1)
-    tide.data[:] = pyTMD.predict_tide_drift(t, hc, c,
+    tide.data[:] = pyTMD.predict.drift(t, hc, c,
         deltat=deltat, corrections=model.format)
-    minor = pyTMD.infer_minor_corrections(t, hc, c,
+    minor = pyTMD.predict.infer_minor(t, hc, c,
         deltat=deltat, corrections=model.format)
     tide.data[:] += minor.data[:]
     # replace invalid values with fill value
@@ -660,7 +658,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     # convert start/end time from days since 1992-01-01 into Julian days
     time_range = np.array([np.min(t),np.max(t)])
     time_julian = 2400000.5 + pyTMD.time.convert_delta_time(time_range,
-        epoch1=(1992,1,1,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0)
+        epoch1=pyTMD.time._tide_epoch, epoch2=(1858,11,17,0,0,0), scale=1.0)
     # convert to calendar date
     cal = pyTMD.time.convert_julian(time_julian,astype=int)
     # add attributes with measurement date start, end and duration
@@ -677,7 +675,6 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     # add software information
     fid.attrs['software_reference'] = pyTMD.version.project_name
     fid.attrs['software_version'] = pyTMD.version.full_version
-    fid.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE
@@ -688,7 +685,7 @@ def get_available_models():
     """Create a list of available tide models
     """
     try:
-        return sorted(pyTMD.model.ocean_elevation() + pyTMD.model.load_elevation())
+        return sorted(pyTMD.io.model.ocean_elevation() + pyTMD.io.model.load_elevation())
     except (NameError, AttributeError):
         return None
 

@@ -32,12 +32,13 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL03.py: reads ICESat-2 ATL03 and ATL09 data files
+    io/ATL03.py: reads ICESat-2 ATL03 and ATL09 data files
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 11/2022: verify coordinate reference system attribute from shapefile
     Updated 08/2022: use logging for verbose output of processing run
     Updated 07/2022: place shapely within try/except statement
@@ -348,7 +349,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
 
     # read data from input_file
     IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
-        is2tk.read_HDF5_ATL03_main(FILE, ATTRIBUTES=True)
+        is2tk.io.ATL03.read_main(FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_'
@@ -409,7 +410,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
     # for each input beam within the file
     for gtx in sorted(IS2_atl03_beams):
         # data and attributes for beam gtx
-        val,attrs = is2tk.read_HDF5_ATL03_beam(FILE,gtx,ATTRIBUTES=True,VERBOSE=False)
+        val,attrs = is2tk.io.ATL03.read_beam(FILE, gtx,
+            ATTRIBUTES=True, VERBOSE=False)
         # first photon in the segment (convert to 0-based indexing)
         Segment_Index_begin = val['geolocation']['ph_index_beg'] - 1
         # number of photon events in the segment

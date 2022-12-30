@@ -32,12 +32,13 @@ PYTHON DEPENDENCIES:
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL07.py: reads ICESat-2 sea ice height data files
+    io/ATL07.py: reads ICESat-2 sea ice height data files
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 05/2022: use argparse descriptions within sphinx documentation
     Updated 11/2021: hemisphere flags based on ATL07 hemisphere code
     Updated 10/2021: using python logging for handling verbose output
@@ -212,8 +213,8 @@ def interp_sea_level_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
 
     # read data from input file
     logging.info(f'{FILE} -->')
-    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = is2tk.read_HDF5_ATL07(FILE,
-        ATTRIBUTES=True)
+    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
+        is2tk.io.ATL07.read_granule(FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 sea ice file name
     rx = re.compile(r'(processed_)?(ATL\d{2})-(\d{2})_(\d{4})(\d{2})(\d{2})'
@@ -626,7 +627,6 @@ def HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_attrs, INPUT=None,
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name
     fileID.attrs['software_version'] = gz.version.full_version
-    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 

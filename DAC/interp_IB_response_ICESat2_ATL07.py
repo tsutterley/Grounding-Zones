@@ -30,10 +30,9 @@ PYTHON DEPENDENCIES:
          https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 PROGRAM DEPENDENCIES:
-    read_ICESat2_ATL07.py: reads ICESat-2 sea ice height data files
+    io/ATL07.py: reads ICESat-2 sea ice height data files
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
-    calc_delta_time.py: calculates difference between universal and dynamic time
 
 REFERENCES:
     C Wunsch and D Stammer, Atmospheric loading and the oceanic "inverted
@@ -44,6 +43,8 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
+        use constants class from pyTMD for ellipsoidal parameters
     Updated 05/2022: use argparse descriptions within sphinx documentation
     Updated 10/2021: using python logging for handling verbose output
         added parsing for converting file lines to arguments
@@ -79,6 +80,11 @@ try:
 except (ImportError, ModuleNotFoundError) as e:
     warnings.filterwarnings("always")
     warnings.warn("netCDF4 not available")
+try:
+    import pyTMD
+except (ImportError, ModuleNotFoundError) as e:
+    warnings.filterwarnings("always")
+    warnings.warn("pyTMD not available")
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -259,8 +265,8 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
 
     # read data from input_file
     logging.info(f'{FILE} -->')
-    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = is2tk.read_HDF5_ATL07(FILE,
-        ATTRIBUTES=True)
+    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
+        is2tk.io.ATL07.read_granule(FILE, ATTRIBUTES=True)
     DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 sea ice file name
     rx = re.compile(r'(processed_)?(ATL\d{2})-(\d{2})_(\d{4})(\d{2})(\d{2})'
@@ -291,12 +297,10 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
     gridtheta = (90.0 - gridlat)*np.pi/180.0
 
     # ellipsoidal parameters of WGS84 ellipsoid
-    # semimajor axis of the ellipsoid [m]
-    a_axis = 6378137.0
-    # flattening of the ellipsoid
-    flat = 1.0/298.257223563
-    # semiminor axis of the ellipsoid [m]
-    b_axis = (1.0 -flat)*a_axis
+    wgs84 = pyTMD.constants('WGS84')
+    # semimajor and semiminor axes of the ellipsoid [m]
+    a_axis = wgs84.a_axis
+    b_axis = wgs84.b_axis
     # calculate grid areas globally
     AREA = dphi*dth*np.sin(gridtheta)*np.sqrt((a_axis**2)*(b_axis**2) *
         ((np.sin(gridtheta)**2)*(np.cos(gridphi)**2) +
@@ -716,7 +720,6 @@ def HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_attrs, INPUT=None,
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name
     fileID.attrs['software_version'] = gz.version.full_version
-    fileID.attrs['software_revision'] = gz.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 

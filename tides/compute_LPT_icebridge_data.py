@@ -27,12 +27,13 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
     spatial.py: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
-    iers_mean_pole.py: provides the angular coordinates of IERS Mean Pole
-    read_iers_EOP.py: read daily earth orientation parameters from IERS
+    eop.py: utilities for calculating Earth Orientation Parameters (EOP)
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        use constants class from pyTMD for ellipsoidal parameters
+        refactored pyTMD tide model structure
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
         place some imports within try/except statements
     Updated 04/2022: include utf-8 encoding in reads to be windows compliant
@@ -200,13 +201,13 @@ def read_ATM_qfit_file(input_file, input_subsetter):
     # since Jan 6, 1980 00:00:00) and UTC
     gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second,
-        epoch=(1980,1,6,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._gps_epoch,scale=86400.0)
     leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
     # calculation of Julian day taking into account leap seconds
     # converting to J2000 seconds
     ATM_L1b_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second-leap_seconds,
-        epoch=(2000,1,1,12,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._j2000_epoch,scale=86400.0)
     # subset the data to indices if specified
     if input_subsetter:
         for key,val in ATM_L1b_input.items():
@@ -267,7 +268,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
         # since Jan 6, 1980 00:00:00) and UTC
         gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
             hour=hour,minute=minute,second=second,
-            epoch=(1980,1,6,0,0,0),scale=86400.0)
+            epoch=pyTMD.time._gps_epoch,scale=86400.0)
         leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
     else:
         leap_seconds = 0.0
@@ -275,7 +276,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     # converting to J2000 seconds
     ATM_L2_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
         hour=hour,minute=minute,second=second-leap_seconds,
-        epoch=(2000,1,1,12,0,0,0),scale=86400.0)
+        epoch=pyTMD.time._j2000_epoch,scale=86400.0)
     # convert RMS from centimeters to meters
     ATM_L2_input['error'] = ATM_L2_input['RMS']/100.0
     # subset the data to indices if specified
@@ -493,30 +494,15 @@ def compute_LPT_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     # degrees to radians
     dtr = np.pi/180.0
     atr = np.pi/648000.0
-    # earth and physical parameters (IERS and WGS84)
-    G = 6.67428e-11# universal constant of gravitation [m^3/(kg*s^2)]
-    GM = 3.986004418e14# geocentric gravitational constant [m^3/s^2]
-    ge = 9.7803278# mean equatorial gravity [m/s^2]
-    a_axis = 6378136.6# semimajor axis of the WGS84 ellipsoid [m]
-    flat = 1.0/298.257223563# flattening of the WGS84 ellipsoid
-    b_axis = (1.0 -flat)*a_axis# semiminor axis of the WGS84 ellipsoid [m]
-    omega = 7.292115e-5# mean rotation rate of the Earth [radians/s]
+    # earth and physical parameters for ellipsoid
+    units = pyTMD.constants('WGS84')
     # tidal love number appropriate for the load tide
     hb2 = 0.6207
-    # Linear eccentricity, first and second numerical eccentricity
-    lin_ecc = np.sqrt((2.0*flat - flat**2)*a_axis**2)
-    ecc1 = lin_ecc/a_axis
-    ecc2 = lin_ecc/b_axis
-    # m parameter [omega^2*a^2*b/(GM)]. p. 70, Eqn.(2-137)
-    m = omega**2*((1 -flat)*a_axis**3)/GM
-    # flattening components
-    f_2 = -flat + (5.0/2.0)*m + (1.0/2.0)*flat**2.0 - (26.0/7.0)*flat*m + \
-        (15.0/4.0)*m**2.0
-    f_4 = -(1.0/2.0)*flat**2.0 + (5.0/2.0)*flat*m
 
     # convert from geodetic latitude to geocentric latitude
     # calculate X, Y and Z from geodetic latitude and longitude
-    X,Y,Z = pyTMD.spatial.to_cartesian(lon,lat,h=h1,a_axis=a_axis,flat=flat)
+    X,Y,Z = pyTMD.spatial.to_cartesian(lon, lat, h=h1,
+        a_axis=units.a_axis, flat=units.flat)
     rr = np.sqrt(X**2.0 + Y**2.0 + Z**2.0)
     # calculate geocentric latitude and convert to degrees
     latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))/dtr
@@ -525,21 +511,14 @@ def compute_LPT_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     phi = lon*dtr
 
     # compute normal gravity at spatial location and elevation of points.
-    # normal gravity at the equator. p. 79, Eqn.(2-186)
-    gamma_a = (GM/(a_axis*b_axis)) * (1.0-(3.0/2.0)*m - (3.0/14.0)*ecc2**2.0*m)
-    # Normal gravity. p. 80, Eqn.(2-199)
-    gamma_0 = gamma_a*(1.0 + f_2*np.cos(theta)**2.0 +
-        f_4*np.sin(np.pi*latitude_geocentric/180.0)**4.0)
     # Normal gravity at height h. p. 82, Eqn.(2-215)
-    gamma_h = gamma_0*(1.0 -
-        (2.0/a_axis)*(1.0+flat+m-2.0*flat*np.cos(theta)**2.0)*h1 + \
-        (3.0/a_axis**2.0)*h1**2.0)
+    gamma_h = units.gamma_h(theta, h1)
 
     # pole tide files (mean and daily)
     mean_pole_file = pyTMD.utilities.get_data_path(['data','mean-pole.tab'])
     pole_tide_file = pyTMD.utilities.get_data_path(['data','finals.all'])
     # read IERS daily polar motion values
-    EOP = pyTMD.read_iers_EOP(pole_tide_file)
+    EOP = pyTMD.eop.iers_daily_EOP(pole_tide_file)
     # create cubic spline interpolations of daily polar motion values
     xSPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['x'],k=3,s=0)
     ySPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['y'],k=3,s=0)
@@ -565,7 +544,7 @@ def compute_LPT_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')
 
     # calculate angular coordinates of mean pole at time tdec
-    mpx,mpy,fl = pyTMD.iers_mean_pole(mean_pole_file, tdec, '2015')
+    mpx,mpy,fl = pyTMD.eop.iers_mean_pole(mean_pole_file, tdec, '2015')
     # interpolate daily polar motion values to time using cubic splines
     px = xSPL(t)
     py = ySPL(t)
@@ -573,7 +552,7 @@ def compute_LPT_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     mx = px - mpx
     my = -(py - mpy)
     # calculate radial displacement at time
-    dfactor = -hb2*atr*(omega**2*rr**2)/(2.0*gamma_h)
+    dfactor = -hb2*atr*(units.omega**2*rr**2)/(2.0*gamma_h)
     Srad = np.ma.zeros((file_lines),fill_value=fill_value)
     Srad.data[:] = dfactor*np.sin(2.0*theta)*(mx*np.cos(phi) + my*np.sin(phi))
     # replace fill values
@@ -638,7 +617,6 @@ def compute_LPT_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     # add software information
     fid.attrs['software_reference'] = pyTMD.version.project_name
     fid.attrs['software_version'] = pyTMD.version.full_version
-    fid.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE

@@ -23,12 +23,13 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
 
 PROGRAM DEPENDENCIES:
-    model.py: retrieves tide model parameters for named tide models
+    io/model.py: retrieves tide model parameters for named tide models
     spatial.py: utilities for reading and writing spatial data
-    read_ICESat2_ATL11.py: reads ICESat-2 annual land ice height data files
+    io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
     Updated 12/2022: single implicit import of grounding zone tools
+        refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
     Written 06/2022
 """
@@ -74,7 +75,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
 
     # get tide model parameters
-    model = pyTMD.model(None, verify=False).elevation(TIDE_MODEL)
+    model = pyTMD.io.model(None, verify=False).elevation(TIDE_MODEL)
     # source of tide model
     tide_source = TIDE_MODEL
     tide_reference = model.reference
@@ -82,7 +83,9 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     # read data from input file
     logger.info(f'{INPUT_FILE} -->')
     IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
-        is2tk.read_HDF5_ATL11(INPUT_FILE, ATTRIBUTES=True, CROSSOVERS=True)
+        is2tk.io.ATL11.read_granule(INPUT_FILE,
+                                    ATTRIBUTES=True,
+                                    CROSSOVERS=True)
     DIRECTORY = os.path.dirname(INPUT_FILE)
     # flexure flag if being applied
     flexure_flag = '_FLEXURE'
@@ -210,11 +213,10 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
         # read tide model HDF5 file
         a3 = (PRD,TIDE_MODEL,'',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         f3 = os.path.join(DIRECTORY,file_format.format(*a3))
-        print(f3)
         # check that tide file exists
         try:
-            mds3,attr3 = is2tk.read_HDF5_ATL11_pair(f3, ptx,
-                VERBOSE=False,CROSSOVERS=True)
+            mds3,attr3 = is2tk.io.ATL11.read_pair(f3, ptx,
+                VERBOSE=False, CROSSOVERS=True)
         except:
             # mask all values
             for group in ['AT','XT']:
@@ -669,7 +671,7 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
     leaps = pyTMD.time.count_leap_seconds(gps_seconds)
     # convert from seconds since 1980-01-06T00:00:00 to Julian days
     time_julian = 2400000.5 + pyTMD.time.convert_delta_time(gps_seconds - leaps,
-        epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
+        epoch1=pyTMD.time._gps_epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
     # convert to calendar date
     YY,MM,DD,HH,MN,SS = pyTMD.time.convert_julian(time_julian,format='tuple')
     # add attributes with measurement date start, end and duration
@@ -683,7 +685,6 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
     # add software information
     fileID.attrs['software_reference'] = pyTMD.version.project_name
     fileID.attrs['software_version'] = pyTMD.version.full_version
-    fileID.attrs['software_revision'] = pyTMD.utilities.get_git_revision_hash()
     # Closing the HDF5 file
     fileID.close()
 
@@ -692,7 +693,7 @@ def get_available_models():
     """Create a list of available tide models
     """
     try:
-        return sorted(pyTMD.model.ocean_elevation())
+        return sorted(pyTMD.io.model.ocean_elevation())
     except (NameError, AttributeError):
         return None
 

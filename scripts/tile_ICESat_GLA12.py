@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 12/2022: check that file exists within multiprocess HDF5 function
+        use constants class from pyTMD for ellipsoidal parameters
         single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: add checks if variables and groups already exist
@@ -172,12 +173,12 @@ def tile_ICESat_GLA12(input_file,
     elev_TPX = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'][:].copy()
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
-    # semimajor axis (a) and flattening (f) for TP and WGS84 ellipsoids
-    atop,ftop = (6378136.3,1.0/298.257)
-    awgs,fwgs = (6378137.0,1.0/298.257223563)
+    # parameters for Topex/Poseidon and WGS84 ellipsoids
+    topex = pyTMD.constants('TOPEX')
+    wgs84 = pyTMD.constants('WGS84')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
     lat_40HZ,elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
-        atop, ftop, awgs, fwgs, eps=1e-12, itmax=10)
+        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
 
     # create index directory for hemisphere
     if not os.access(os.path.join(DIRECTORY,index_directory),os.F_OK):
@@ -201,10 +202,8 @@ def tile_ICESat_GLA12(input_file,
     f2.attrs['date_created'] = today
     f2.attrs['campaign'] = campaign
     # add software information
-    git_revision_hash =  gz.utilities.get_git_revision_hash()
     f2.attrs['software_reference'] = gz.version.project_name
     f2.attrs['software_version'] = gz.version.full_version
-    f2.attrs['software_revision'] = git_revision_hash
     # create projection variable
     h5 = f2.create_dataset('Polar_Stereographic', (), dtype=np.byte)
     # add projection attributes
@@ -264,7 +263,6 @@ def tile_ICESat_GLA12(input_file,
             # add software information
             f3.attrs['software_reference'] = gz.version.project_name
             f3.attrs['software_version'] = gz.version.full_version
-            f3.attrs['software_revision'] = git_revision_hash
 
         # indices of points within tile
         indices, = np.nonzero((xtile == xp) & (ytile == yp))
