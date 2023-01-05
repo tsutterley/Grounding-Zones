@@ -349,7 +349,7 @@ def main():
         # delta time
         IS2_atl06_mask[gtx]['land_ice_segments']['delta_time'] = delta_time
         IS2_atl06_fill[gtx]['land_ice_segments']['delta_time'] = None
-        IS2_atl06_dims[gtx]['land_ice_segments']['delta_time'] = ['segment_id']
+        IS2_atl06_dims[gtx]['land_ice_segments']['delta_time'] = None
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['delta_time'] = {}
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['delta_time']['units'] = "seconds since 2018-01-01"
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['delta_time']['long_name'] = "Elapsed GPS seconds"
@@ -366,7 +366,7 @@ def main():
         # latitude
         IS2_atl06_mask[gtx]['land_ice_segments']['latitude'] = latitude
         IS2_atl06_fill[gtx]['land_ice_segments']['latitude'] = None
-        IS2_atl06_dims[gtx]['land_ice_segments']['latitude'] = ['segment_id']
+        IS2_atl06_dims[gtx]['land_ice_segments']['latitude'] = ['delta_time']
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['latitude'] = {}
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['latitude']['units'] = "degrees_north"
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['latitude']['contentType'] = "physicalMeasurement"
@@ -381,7 +381,7 @@ def main():
         # longitude
         IS2_atl06_mask[gtx]['land_ice_segments']['longitude'] = longitude
         IS2_atl06_fill[gtx]['land_ice_segments']['longitude'] = None
-        IS2_atl06_dims[gtx]['land_ice_segments']['longitude'] = ['segment_id']
+        IS2_atl06_dims[gtx]['land_ice_segments']['longitude'] = ['delta_time']
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['longitude'] = {}
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['longitude']['units'] = "degrees_east"
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['longitude']['contentType'] = "physicalMeasurement"
@@ -396,7 +396,7 @@ def main():
         # segment ID
         IS2_atl06_mask[gtx]['land_ice_segments']['segment_id'] = segment_id
         IS2_atl06_fill[gtx]['land_ice_segments']['segment_id'] = None
-        IS2_atl06_dims[gtx]['land_ice_segments']['segment_id'] = None
+        IS2_atl06_dims[gtx]['land_ice_segments']['segment_id'] = ['delta_time']
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['segment_id'] = {}
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['segment_id']['units'] = "1"
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['segment_id']['contentType'] = "referenceInformation"
@@ -421,7 +421,7 @@ def main():
         # output mask to HDF5
         IS2_atl06_mask[gtx]['land_ice_segments']['subsetting']['ice_gz'] = associated_map
         IS2_atl06_fill[gtx]['land_ice_segments']['subsetting']['ice_gz'] = None
-        IS2_atl06_dims[gtx]['land_ice_segments']['subsetting']['ice_gz'] = ['segment_id']
+        IS2_atl06_dims[gtx]['land_ice_segments']['subsetting']['ice_gz'] = ['delta_time']
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz'] = {}
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['contentType'] = "referenceInformation"
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['long_name'] = 'Grounding Zone Mask'
@@ -496,7 +496,7 @@ def HDF5_ATL06_mask_write(IS2_atl06_mask, IS2_atl06_attrs, INPUT=None,
             fileID[gtx]['land_ice_segments'].attrs[att_name] = att_val
 
         # segment_id, geolocation, time and height variables
-        for k in ['segment_id','latitude','longitude','delta_time']:
+        for k in ['delta_time','segment_id','latitude','longitude']:
             # values and attributes
             v = IS2_atl06_mask[gtx]['land_ice_segments'][k]
             attrs = IS2_atl06_attrs[gtx]['land_ice_segments'][k]
