@@ -178,6 +178,26 @@ def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # return the line string object for the ice sheet
     return (mline_obj,epsg)
 
+# PURPOSE: attempt to read the mask variables
+def read_grounding_zone_mask(mask_file, gtx):
+    # check that mask file and variable exists
+    for mask in ['ice_gz', 'mask']:
+        try:
+            # extract mask values to create grounding zone mask
+            fileID = h5py.File(mask_file, mode='r')
+            v1 = [gtx, 'land_ice_segments', 'subsetting', mask]
+            # read buffered grounding zone mask
+            ice_gz = fileID['/'.join(v1)][:].copy()
+        except Exception as e:
+            logging.debug(traceback.format_exc())
+            pass
+        else:
+            # close the HDF5 file and return the mask variable
+            fileID.close()
+            return ice_gz
+    # raise value error
+    raise KeyError(f'Cannot retrieve mask variable for {mask_file}')
+
 # PURPOSE: compress complete list of valid indices into a set of ranges
 def compress_list(i,n):
     for a,b in itertools.groupby(enumerate(i), lambda v: ((v[1]-v[0])//n)*n):
@@ -480,16 +500,10 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
         # check that mask file exists
         try:
             # extract mask values for mask flags to create grounding zone mask
-            fid1 = h5py.File(f1,'r')
-            v1 = [gtx,'land_ice_segments','subsetting','ice_gz']
-            # read buffered grounding zone mask
-            ice_gz[:] = fid1['/'.join(v1)][:].copy()
-            B = fid1['/'.join(v1)].attrs['source']
+            ice_gz[:] = read_grounding_zone_mask(f1, gtx)
         except Exception as e:
             logging.debug(traceback.format_exc())
             continue
-        else:
-            fid1.close()
 
         # read mean elevation file (e.g. digital elevation model)
         dem_h = np.ma.zeros((n_seg), fill_value=fv)
