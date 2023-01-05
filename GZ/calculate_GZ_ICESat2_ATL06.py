@@ -745,24 +745,10 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
             "stored at the average segment rate.")
 
         # geolocation, time and segment ID
-        # segment ID
-        IS2_atl06_gz[gtx]['grounding_zone_data']['segment_id'] = np.copy(grounding_zone_data['segment_id'])
-        IS2_atl06_fill[gtx]['grounding_zone_data']['segment_id'] = None
-        IS2_atl06_dims[gtx]['grounding_zone_data']['segment_id'] = None
-        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id'] = collections.OrderedDict()
-        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['units'] = "1"
-        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['contentType'] = "referenceInformation"
-        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['long_name'] = "Along-track segment ID number"
-        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['description'] = ("A 7 digit number "
-            "identifying the along-track geolocation segment number.  These are sequential, starting with "
-            "1 for the first segment after an ascending equatorial crossing node. Equal to the segment_id for "
-            "the second of the two 20m ATL03 segments included in the 40m ATL06 segment")
-        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['coordinates'] = \
-            "delta_time latitude longitude"
         # delta time
         IS2_atl06_gz[gtx]['grounding_zone_data']['delta_time'] = np.copy(grounding_zone_data['delta_time'])
         IS2_atl06_fill[gtx]['grounding_zone_data']['delta_time'] = None
-        IS2_atl06_dims[gtx]['grounding_zone_data']['delta_time'] = ['segment_id']
+        IS2_atl06_dims[gtx]['grounding_zone_data']['delta_time'] = None
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['delta_time'] = collections.OrderedDict()
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['delta_time']['units'] = "seconds since 2018-01-01"
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['delta_time']['long_name'] = "Elapsed GPS seconds"
@@ -776,10 +762,24 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
             "time in gps_seconds relative to the GPS epoch can be computed.")
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['delta_time']['coordinates'] = \
             "segment_id latitude longitude"
+        # segment ID
+        IS2_atl06_gz[gtx]['grounding_zone_data']['segment_id'] = np.copy(grounding_zone_data['segment_id'])
+        IS2_atl06_fill[gtx]['grounding_zone_data']['segment_id'] = None
+        IS2_atl06_dims[gtx]['grounding_zone_data']['segment_id'] = ['delta_time']
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id'] = collections.OrderedDict()
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['units'] = "1"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['contentType'] = "referenceInformation"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['long_name'] = "Along-track segment ID number"
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['description'] = ("A 7 digit number "
+            "identifying the along-track geolocation segment number.  These are sequential, starting with "
+            "1 for the first segment after an ascending equatorial crossing node. Equal to the segment_id for "
+            "the second of the two 20m ATL03 segments included in the 40m ATL06 segment")
+        IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['segment_id']['coordinates'] = \
+            "delta_time latitude longitude"
         # latitude
         IS2_atl06_gz[gtx]['grounding_zone_data']['latitude'] = np.copy(grounding_zone_data['latitude'])
         IS2_atl06_fill[gtx]['grounding_zone_data']['latitude'] = None
-        IS2_atl06_dims[gtx]['grounding_zone_data']['latitude'] = ['segment_id']
+        IS2_atl06_dims[gtx]['grounding_zone_data']['latitude'] = ['delta_time']
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude'] = collections.OrderedDict()
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude']['units'] = "degrees_north"
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['latitude']['contentType'] = "physicalMeasurement"
@@ -794,7 +794,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
         # longitude
         IS2_atl06_gz[gtx]['grounding_zone_data']['longitude'] = np.copy(grounding_zone_data['longitude'])
         IS2_atl06_fill[gtx]['grounding_zone_data']['longitude'] = None
-        IS2_atl06_dims[gtx]['grounding_zone_data']['longitude'] = ['segment_id']
+        IS2_atl06_dims[gtx]['grounding_zone_data']['longitude'] = ['delta_time']
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude'] = collections.OrderedDict()
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude']['units'] = "degrees_east"
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['longitude']['contentType'] = "physicalMeasurement"
@@ -810,7 +810,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
         # uncertainty of the grounding zone
         IS2_atl06_gz[gtx]['grounding_zone_data']['gz_sigma'] = np.copy(grounding_zone_data['gz_sigma'])
         IS2_atl06_fill[gtx]['grounding_zone_data']['gz_sigma'] = 0.0
-        IS2_atl06_dims[gtx]['grounding_zone_data']['gz_sigma'] = ['segment_id']
+        IS2_atl06_dims[gtx]['grounding_zone_data']['gz_sigma'] = ['delta_time']
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['gz_sigma'] = collections.OrderedDict()
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['gz_sigma']['units'] = "meters"
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['gz_sigma']['contentType'] = "physicalMeasurement"
@@ -823,7 +823,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
         # effective elastic modulus
         IS2_atl06_gz[gtx]['grounding_zone_data']['e_mod'] = np.copy(grounding_zone_data['e_mod'])
         IS2_atl06_fill[gtx]['grounding_zone_data']['e_mod'] = 0.0
-        IS2_atl06_dims[gtx]['grounding_zone_data']['e_mod'] = ['segment_id']
+        IS2_atl06_dims[gtx]['grounding_zone_data']['e_mod'] = ['delta_time']
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod'] = collections.OrderedDict()
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod']['units'] = "GPa"
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod']['contentType'] = "physicalMeasurement"
@@ -836,7 +836,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
         # uncertainty of the elastic modulus
         IS2_atl06_gz[gtx]['grounding_zone_data']['e_mod_sigma'] = np.copy(grounding_zone_data['e_mod_sigma'])
         IS2_atl06_fill[gtx]['grounding_zone_data']['e_mod_sigma'] = 0.0
-        IS2_atl06_dims[gtx]['grounding_zone_data']['e_mod_sigma'] = ['segment_id']
+        IS2_atl06_dims[gtx]['grounding_zone_data']['e_mod_sigma'] = ['delta_time']
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod_sigma'] = collections.OrderedDict()
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod_sigma']['units'] = "GPa"
         IS2_atl06_gz_attrs[gtx]['grounding_zone_data']['e_mod_sigma']['contentType'] = "physicalMeasurement"
