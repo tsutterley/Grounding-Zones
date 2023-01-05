@@ -51,7 +51,7 @@ def get_data_path(relpath):
 # PURPOSE: get the git hash value
 def get_git_revision_hash(refname='HEAD', short=False):
     """
-    Get the git hash value for a particular reference
+    Get the ``git`` hash value for a particular reference
 
     Parameters
     ----------
@@ -74,7 +74,7 @@ def get_git_revision_hash(refname='HEAD', short=False):
 
 # PURPOSE: get the current git status
 def get_git_status():
-    """Get the status of a git repository as a boolean value
+    """Get the status of a ``git`` repository as a boolean value
     """
     # get path to .git directory from current file path
     filename = inspect.getframeinfo(inspect.currentframe()).filename
@@ -115,9 +115,9 @@ def pgc_list(HOST, timeout=None, context=ssl.SSLContext(),
     timeout: int or NoneType, default None
         timeout in seconds for blocking operations
     context: obj, default ssl.SSLContext()
-        SSL context for url opener object
+        SSL context for ``urllib`` opener object
     parser: obj, default lxml.etree.HTMLParser()
-        HTML parser for lxml
+        HTML parser for ``lxml``
     formatt: str, default '%Y-%m-%d %H:%M'
         format for input time string
     pattern: str, default ''
