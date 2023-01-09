@@ -80,23 +80,23 @@ import grounding_zones as gz
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("h5py not available")
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
 try:
     import icesat2_toolkit as is2tk
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("icesat2_toolkit not available")
+    warnings.filterwarnings("module")
+    warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
     import netCDF4
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("netCDF4 not available")
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
 try:
     import sklearn.neighbors
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("scikit-learn not available")
+    warnings.filterwarnings("module")
+    warnings.warn("scikit-learn not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 

@@ -113,13 +113,13 @@ import grounding_zones as gz
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("h5py not available")
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
 try:
     import pyTMD
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("pyTMD not available")
+    warnings.filterwarnings("module")
+    warnings.warn("pyTMD not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 

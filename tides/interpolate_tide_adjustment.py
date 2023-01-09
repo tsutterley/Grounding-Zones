@@ -48,13 +48,13 @@ import grounding_zones as gz
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("h5py not available")
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
 try:
     import spatial_interpolators as spi
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("spatial_interpolators not available")
+    warnings.filterwarnings("module")
+    warnings.warn("spatial_interpolators not available", ImportWarning)
 # filter warnings
 warnings.filterwarnings("ignore")
 

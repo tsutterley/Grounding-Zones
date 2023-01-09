@@ -76,28 +76,28 @@ import grounding_zones as gz
 try:
     import fiona
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("fiona not available")
+    warnings.filterwarnings("module")
+    warnings.warn("fiona not available", ImportWarning)
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("h5py not available")
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
 try:
     import icesat2_toolkit as is2tk
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("icesat2_toolkit not available")
+    warnings.filterwarnings("module")
+    warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
     from mpi4py import MPI
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("mpi4py not available")
+    warnings.filterwarnings("module")
+    warnings.warn("mpi4py not available", ImportWarning)
 try:
     import shapely.geometry
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("shapely not available")
+    warnings.filterwarnings("module")
+    warnings.warn("shapely not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 

@@ -52,13 +52,13 @@ import posixpath
 try:
     import paramiko
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("paramiko not available")
+    warnings.filterwarnings("module")
+    warnings.warn("paramiko not available", ImportWarning)
 try:
     import scp
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("scp not available")
+    warnings.filterwarnings("module")
+    warnings.warn("scp not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
