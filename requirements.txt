@@ -18,6 +18,6 @@ pyyaml
 pyYAPC
 pyTMD
 scikit-learn
-scipy
+scipy<=1.9.3
 shapely
 spatial-interpolators
