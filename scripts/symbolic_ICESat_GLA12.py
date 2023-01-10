@@ -34,8 +34,8 @@ import warnings
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("h5py not available")
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 

@@ -75,8 +75,8 @@ import grounding_zones as gz
 try:
     import osgeo.gdal, osgeo.osr, osgeo.ogr
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("GDAL not available")
+    warnings.filterwarnings("module")
+    warnings.warn("GDAL not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 

@@ -62,13 +62,13 @@ import grounding_zones as gz
 try:
     import netCDF4
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("netCDF4 not available")
+    warnings.filterwarnings("module")
+    warnings.warn("netCDF4 not available", ImportWarning)
 try:
     import pyTMD
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("pyTMD not available")
+    warnings.filterwarnings("module")
+    warnings.warn("pyTMD not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 

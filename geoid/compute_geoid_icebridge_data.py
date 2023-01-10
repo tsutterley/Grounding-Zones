@@ -70,23 +70,23 @@ import grounding_zones as gz
 try:
     import ATM1b_QFIT.read_ATM1b_QFIT_binary
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("ATM1b_QFIT not available")
+    warnings.filterwarnings("module")
+    warnings.warn("ATM1b_QFIT not available", ImportWarning)
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("h5py not available")
+    warnings.filterwarnings("module")
+    warnings.warn("h5py not available", ImportWarning)
 try:
     import geoid_toolkit as geoidtk
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("geoid_toolkit not available")
+    warnings.filterwarnings("module")
+    warnings.warn("geoid_toolkit not available", ImportWarning)
 try:
     import icesat2_toolkit as is2tk
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("icesat2_toolkit not available")
+    warnings.filterwarnings("module")
+    warnings.warn("icesat2_toolkit not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 

@@ -55,8 +55,8 @@ import warnings
 try:
     import cdsapi
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("cdsapi not available")
+    warnings.filterwarnings("module")
+    warnings.warn("cdsapi not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 

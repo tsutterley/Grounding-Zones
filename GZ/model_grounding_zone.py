@@ -47,8 +47,8 @@ try:
     import matplotlib.pyplot as plt
     from matplotlib import gridspec
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("matplotlib not available")
+    warnings.filterwarnings("module")
+    warnings.warn("matplotlib not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 

@@ -65,18 +65,18 @@ import numpy as np
 try:
     import fiona
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("mpi4py not available")
+    warnings.filterwarnings("module")
+    warnings.warn("mpi4py not available", ImportWarning)
 try:
     import icesat2_toolkit as is2tk
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("icesat2_toolkit not available")
+    warnings.filterwarnings("module")
+    warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
     import shapely.geometry
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("shapely not available")
+    warnings.filterwarnings("module")
+    warnings.warn("shapely not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 

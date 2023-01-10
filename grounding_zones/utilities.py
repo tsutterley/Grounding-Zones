@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 utilities.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (01/2023)
 Download and management utilities for syncing time and auxiliary files
 Adds additional modules to the icesat2_toolkit utilities
 
@@ -10,6 +10,7 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 01/2023: add default ssl context attribute with protocol
     Updated 12/2022: functions for managing and maintaining git repositories
     Updated 05/2022: updated docstrings to numpy documentation format
     Updated 03/2021: add data path function for this set of utilities
@@ -25,8 +26,8 @@ import subprocess
 try:
     from icesat2_toolkit.utilities import *
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("icesat2_toolkit not available")
+    warnings.filterwarnings("module")
+    warnings.warn("icesat2_toolkit not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -101,8 +102,11 @@ def convert_arg_line_to_args(arg_line):
             continue
         yield arg
 
+# default ssl context
+_default_ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+
 # PURPOSE: list a directory on Polar Geospatial Center https server
-def pgc_list(HOST, timeout=None, context=ssl.SSLContext(),
+def pgc_list(HOST, timeout=None, context=_default_ssl_context,
     parser=lxml.etree.HTMLParser(), format='%Y-%m-%d %H:%M',
     pattern='', sort=False):
     """
@@ -114,7 +118,7 @@ def pgc_list(HOST, timeout=None, context=ssl.SSLContext(),
         remote https host path
     timeout: int or NoneType, default None
         timeout in seconds for blocking operations
-    context: obj, default ssl.SSLContext()
+    context: obj, default ssl.SSLContext(ssl.PROTOCOL_TLS)
         SSL context for ``urllib`` opener object
     parser: obj, default lxml.etree.HTMLParser()
         HTML parser for ``lxml``

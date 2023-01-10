@@ -169,7 +169,7 @@ def pgc_rema_sync(base_dir, VERSION, RESOLUTION, TILES=None,
 
 # PURPOSE: Try downloading a file up to a set number of times
 def retry_download(remote_file, local=None, timeout=None,
-    retry=1, chunk=0, context=ssl.SSLContext()):
+    retry=1, chunk=0, context=gz.utilities._default_ssl_context):
     # attempt to download up to the number of retries
     retry_counter = 0
     while (retry_counter < retry):

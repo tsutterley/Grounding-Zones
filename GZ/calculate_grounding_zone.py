@@ -80,18 +80,18 @@ import matplotlib.pyplot as plt
 try:
     import fiona
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("mpi4py not available")
+    warnings.filterwarnings("module")
+    warnings.warn("mpi4py not available", ImportWarning)
 try:
     import pyTMD.spatial
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("pyTMD not available")
+    warnings.filterwarnings("module")
+    warnings.warn("pyTMD not available", ImportWarning)
 try:
     import shapely.geometry
 except (ImportError, ModuleNotFoundError) as e:
-    warnings.filterwarnings("always")
-    warnings.warn("shapely not available")
+    warnings.filterwarnings("module")
+    warnings.warn("shapely not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
