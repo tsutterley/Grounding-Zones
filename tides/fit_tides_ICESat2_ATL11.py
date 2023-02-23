@@ -76,17 +76,17 @@ import grounding_zones as gz
 # attempt imports
 try:
     import h5py
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
     import icesat2_toolkit as is2tk
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
     import pyTMD
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyTMD not available", ImportWarning)
 # ignore warnings
@@ -371,8 +371,6 @@ def fit_tides_ICESat2(tide_dir, FILE,
             # height referenced to geoid
             h1 = h_corr['AT'].data[s,i1] - geoid_h[s]
             h2 = np.atleast_1d(h_corr['XT'].data[i2]) - geoid_h[s]
-            n1 = len(h1)
-            n2 = len(h2)
             # tide time
             t1 = tide_time['AT'].data[s,i1]
             t2 = np.atleast_1d(tide_time['XT'].data[i2])
@@ -420,7 +418,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
                 # Covariance Matrix
                 # Multiplying the design matrix by itself
                 Hinv = np.linalg.inv(np.dot(np.transpose(DMAT),DMAT))
-            except:
+            except Exception as exc:
                 # set masks
                 tide_adj['AT'].mask[s,:] = True
                 tide_adj_sigma['AT'].mask[s,:] = True
@@ -431,7 +429,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
                 continue
             else:
                 # cadj,sadj,H,dH = np.copy(results['x'])
-                adj,H,dH = np.copy(results['x'])
+                adj, H, dH = np.copy(results['x'])
                 # calculate mean square error
                 MSE = np.sum(results['fun']**2)/nu
                 # standard error from covariance matrix

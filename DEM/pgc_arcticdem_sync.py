@@ -178,7 +178,7 @@ def retry_download(remote_file, local=None, timeout=None,
             with open(local, 'wb') as f:
                 shutil.copyfileobj(response, f, chunk)
             local_length = os.path.getsize(local)
-        except Exception as e:
+        except Exception as exc:
             logging.error(traceback.format_exc())
             pass
         else:

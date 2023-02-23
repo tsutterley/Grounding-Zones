@@ -51,12 +51,12 @@ import posixpath
 # attempt imports
 try:
     import paramiko
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("paramiko not available", ImportWarning)
 try:
     import scp
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("scp not available", ImportWarning)
 # ignore warnings
@@ -297,7 +297,7 @@ def retry_scp_push(client, client_ftp, local_file, remote_file,
             with scp.SCPClient(client.get_transport(), socket_timeout=TIMEOUT) as s:
                 s.put(local_file, remote_file, preserve_times=True)
             local_length = os.path.getsize(local_file)
-        except Exception as e:
+        except Exception as exc:
             pass
         else:
             # check that synced file matches original length

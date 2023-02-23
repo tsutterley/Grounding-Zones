@@ -66,12 +66,12 @@ import grounding_zones as gz
 # attempt imports
 try:
     import geoid_toolkit as geoidtk
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("geoid_toolkit not available", ImportWarning)
 try:
     import h5py
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 # ignore warnings

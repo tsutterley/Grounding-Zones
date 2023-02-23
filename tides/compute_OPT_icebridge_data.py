@@ -79,17 +79,17 @@ import grounding_zones as gz
 # attempt imports
 try:
     import ATM1b_QFIT.read_ATM1b_QFIT_binary
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("ATM1b_QFIT not available", ImportWarning)
 try:
     import h5py
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
     import pyTMD
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyTMD not available", ImportWarning)
 # ignore warnings

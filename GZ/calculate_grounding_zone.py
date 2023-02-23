@@ -79,17 +79,17 @@ import matplotlib.pyplot as plt
 # attempt imports
 try:
     import fiona
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("mpi4py not available", ImportWarning)
 try:
     import pyTMD.spatial
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyTMD not available", ImportWarning)
 try:
     import shapely.geometry
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("shapely not available", ImportWarning)
 # ignore warnings
@@ -126,7 +126,7 @@ def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     else:
         epsg = pyproj.CRS(shape.crs).to_epsg()
     # reduce to variables of interest if specified
-    shape_entities = [f for f in shape.values() if np.int(f['id']) in VARIABLES]
+    shape_entities = [f for f in shape.values() if np.int64(f['id']) in VARIABLES]
     # create list of polygons
     polygons = []
     # extract the entities and assign by tile name
@@ -168,7 +168,7 @@ def piecewise_fit(x, y, STEP=1, CONF=0.95):
     rsquare_array = np.zeros((n_param))
     loglik_array = np.zeros((n_param))
     # output cutoff and fit parameters
-    cutoff_array = np.zeros((n_param,2),dtype=np.int)
+    cutoff_array = np.zeros((n_param,2),dtype=np.int64)
     beta_matrix = np.zeros((n_param,4))
     # counter variable
     c = 0
@@ -435,7 +435,7 @@ def calculate_grounding_zone(base_dir, input_file, output_file,
             # fit with a hard piecewise model to get rough estimate of GZ
             C1,C2,PWMODEL = piecewise_fit(dist, dh_gz, STEP=5, CONF=0.95)
             # distance from estimated grounding line (0 = grounding line)
-            d = (dist - C1[0]).astype(np.int)
+            d = (dist - C1[0]).astype(np.int64)
             # determine if spacecraft is approaching coastline
             sco = True if np.sum(h_gz[d < 0]) < np.sum(h_gz[d > 0]) else False
             # fit physical elastic model

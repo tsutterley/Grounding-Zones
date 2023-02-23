@@ -25,7 +25,7 @@ import subprocess
 # extend icesat2_toolkit utilities
 try:
     from icesat2_toolkit.utilities import *
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
 # ignore warnings

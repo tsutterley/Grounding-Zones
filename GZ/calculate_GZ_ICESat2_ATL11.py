@@ -110,27 +110,27 @@ import grounding_zones as gz
 # attempt imports
 try:
     import fiona
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("fiona not available", ImportWarning)
 try:
     import h5py
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
     import icesat2_toolkit as is2tk
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
     import matplotlib.pyplot as plt
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("matplotlib not available", ImportWarning)
 try:
     import shapely.geometry
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("shapely not available", ImportWarning)
 # ignore warnings
@@ -543,7 +543,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
         try:
             mds2,attr2 = is2tk.io.ATL11.read_pair(f3, ptx,
                 ATTRIBUTES=True, VERBOSE=False, SUBSETTING=True)
-        except Exception as e:
+        except Exception as exc:
             logging.debug(traceback.format_exc())
             pass
         else:
@@ -559,8 +559,8 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
                 mds2,attr2 = is2tk.io.ATL11.read_pair(MEAN_FILE, ptx,
                     REFERENCE=True, VERBOSE=False)
                 dem_h.data[:] = mds2[ptx]['ref_surf']['dem_h'].copy()
-                fv2 = attr2[ptx]['dem']['dem_h']['_FillValue']
-            except Exception as e:
+                fv2 = attr2[ptx]['dem']['ref_surf']['_FillValue']
+            except Exception as exc:
                 logging.debug(traceback.format_exc())
                 dem_h.mask = np.ones((n_points),dtype=bool)
             else:
@@ -569,7 +569,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             # use default DEM within ATL11
             # ATL11 reference surface elevations are derived from ATL06
             dem_h.data[:] = mds1[ptx]['ref_surf']['dem_h'].copy()
-            fv2 = attr1[ptx]['dem']['dem_h']['_FillValue']
+            fv2 = attr1[ptx]['ref_surf']['dem_h']['_FillValue']
             dem_h.mask = (dem_h.data[:] == fv2)
 
         # read tide model
@@ -581,7 +581,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             try:
                 mds3,attr3 = is2tk.io.ATL11.read_pair(f3, ptx,
                     VERBOSE=False, CROSSOVERS=CROSSOVERS)
-            except Exception as e:
+            except Exception as exc:
                 logging.debug(traceback.format_exc())
                 # mask all values
                 for group in groups:
@@ -610,7 +610,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             try:
                 mds4,attr4 = is2tk.io.ATL11.read_pair(f4,ptx,
                     VERBOSE=False,CROSSOVERS=CROSSOVERS)
-            except Exception as e:
+            except Exception as exc:
                 logging.debug(traceback.format_exc())
                 # mask all values
                 for group in groups:
@@ -634,7 +634,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             try:
                 mds5,attr5 = is2tk.io.ATL11.read_pair(f5, ptx,
                     VERBOSE=False)
-            except Exception as e:
+            except Exception as exc:
                 logging.debug(traceback.format_exc())
                 mdt = np.zeros((n_points))
                 pass
@@ -729,7 +729,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
                     # deflection from mean land ice height in grounding zone
                     dh_gz = h_gz - h_mean
                     # quasi-freeboard: WGS84 elevation - geoid height
-                    QFB = h_gz - geoid_h
+                    QFB = h_gz - geoid_h[i]
                     # ice thickness from quasi-freeboard and densities
                     w_thick = QFB*rho_w/(rho_w-rho_ice)
                     # fit with a hard piecewise model to get rough estimate of GZ

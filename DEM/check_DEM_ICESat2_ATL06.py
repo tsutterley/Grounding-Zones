@@ -64,17 +64,17 @@ import numpy as np
 # attempt imports
 try:
     import fiona
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("mpi4py not available", ImportWarning)
 try:
     import icesat2_toolkit as is2tk
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
     import shapely.geometry
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("shapely not available", ImportWarning)
 # ignore warnings
@@ -253,7 +253,7 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
         intersection_map = {}
         for key,poly_obj in tile_dict.items():
             # create empty intersection map array
-            intersection_map[key] = np.zeros((n_seg),dtype=np.int)
+            intersection_map[key] = np.zeros((n_seg),dtype=np.int64)
             # finds if points are encapsulated (within tile)
             int_test = poly_obj.intersects(xy_point)
             if int_test:
