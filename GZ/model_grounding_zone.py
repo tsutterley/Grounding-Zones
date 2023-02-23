@@ -46,7 +46,7 @@ import scipy.interpolate
 try:
     import matplotlib.pyplot as plt
     from matplotlib import gridspec
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("matplotlib not available", ImportWarning)
 # ignore warnings
@@ -85,7 +85,7 @@ def model_grounding_zone(DATASET, n_years, dhdt, reorient, VERBOSE=False):
         spacing = 40.0
         cutoff = 2.0*error_level
     # number of measurements per year
-    N = np.int(365.0*n_years/repeat_period)
+    N = np.int64(365.0*n_years/repeat_period)
 
     # create interpolated flight line with smooth transitions
     SPL = scipy.interpolate.UnivariateSpline(x, z, k=4)
@@ -93,7 +93,7 @@ def model_grounding_zone(DATASET, n_years, dhdt, reorient, VERBOSE=False):
     NI = len(XI)
     ZI = SPL(XI)
     # # hydrostatic
-    # FLOAT = np.int(0.75*NI)
+    # FLOAT = np.int64(0.75*NI)
     # ZI[FLOAT:] = ZI[FLOAT]
 
     # constants for derivations of eta and beta parameters
@@ -117,9 +117,9 @@ def model_grounding_zone(DATASET, n_years, dhdt, reorient, VERBOSE=False):
     # mean
     MI = np.zeros((NI))
     # grounding points at each time
-    gp = np.zeros((N+1), dtype=np.int)
+    gp = np.zeros((N+1), dtype=np.int64)
     # tidal amplitude at each time
-    A = np.zeros((N+1), dtype=np.int)
+    A = np.zeros((N+1), dtype=np.int64)
     # counter variable
     c = 0
     # amplitude of tidal signals (max = 2.4m from Padman, 2002)
@@ -143,7 +143,7 @@ def model_grounding_zone(DATASET, n_years, dhdt, reorient, VERBOSE=False):
         # calculation of elevation with thinning and noise
         HI[:,c] = np.copy(ZI) + t*(dhdt+dhdt_uncertainty)/365.25 + noise
         # add randomness to grounding line
-        # gp[c] = np.int(0.475*NI)
+        # gp[c] = np.int64(0.475*NI)
         gp[c], = np.random.randint(0.465*NI,0.485*NI,size=1)
         # # thickness profile of the ice shelf
         # H0 = np.linspace(h[0],h[1],len(X0))
@@ -193,7 +193,7 @@ def model_grounding_zone(DATASET, n_years, dhdt, reorient, VERBOSE=False):
             ax2.plot(XI, PWMODEL, lw=0.5, color=ll.get_color()) if VERBOSE else None
 
             # distance from grounding line (0 = grounding line)
-            d = (XI[:] - C1[0]).astype(np.int)
+            d = (XI[:] - C1[0]).astype(np.int64)
             ORIENTATION=True if np.sum(ZI[d < 0]) < np.sum(ZI[d > 0]) else False
             # fit physical elastic model
             PGZ,PA,PE,PT,PdH,PEMODEL = physical_elastic_model(XI, HI[:,i]-MI/c,
@@ -238,7 +238,7 @@ def piecewise_fit(x, y, STEP=1, CONF=0.95):
     rsquare_array = np.zeros((n_param))
     loglik_array = np.zeros((n_param))
     # output cutoff and fit parameters
-    cutoff_array = np.zeros((n_param,2),dtype=np.int)
+    cutoff_array = np.zeros((n_param,2),dtype=np.int64)
     beta_matrix = np.zeros((n_param,4))
     # counter variable
     c = 0

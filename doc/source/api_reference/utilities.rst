@@ -1,11 +1,10 @@
-============
-utilities.py
-============
+=========
+utilities
+=========
 
 Download and management utilities for syncing time and auxiliary files
 
- - Adds additional modules to the ICESat-2 `icesat2_toolkit utilities <https://github.com/tsutterley/read-ICESat-2/blob/main/icesat2_toolkit/utilities.py>`__
-
+ - Adds additional modules to the `ICESat-2 <https://github.com/tsutterley/read-ICESat-2/blob/main/icesat2_toolkit/utilities.py>`_ ``icesat2_toolkit.utilities``
 
 `Source code`__
 

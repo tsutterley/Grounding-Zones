@@ -53,12 +53,12 @@ import grounding_zones as gz
 # attempt imports
 try:
     import h5py
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
     import pyTMD
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyTMD not available", ImportWarning)
 # ignore warnings
@@ -74,7 +74,7 @@ def multiprocess_h5py(filename, *args, **kwargs):
         try:
             fileID = h5py.File(filename, *args, **kwargs)
             break
-        except (IOError, BlockingIOError, PermissionError) as e:
+        except (IOError, BlockingIOError, PermissionError) as exc:
             time.sleep(1)
     # return the file access object
     return fileID

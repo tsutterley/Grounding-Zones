@@ -106,27 +106,27 @@ import grounding_zones as gz
 # attempt imports
 try:
     import fiona
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("fiona not available", ImportWarning)
 try:
     import h5py
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
     import icesat2_toolkit as is2tk
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
     import matplotlib.pyplot as plt
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("matplotlib not available", ImportWarning)
 try:
     import shapely.geometry
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("shapely not available", ImportWarning)
 # ignore warnings
@@ -188,7 +188,7 @@ def read_grounding_zone_mask(mask_file, gtx):
             v1 = [gtx, 'land_ice_segments', 'subsetting', mask]
             # read buffered grounding zone mask
             ice_gz = fileID['/'.join(v1)][:].copy()
-        except Exception as e:
+        except Exception as exc:
             logging.debug(traceback.format_exc())
             pass
         else:
@@ -501,7 +501,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
         try:
             # extract mask values for mask flags to create grounding zone mask
             ice_gz[:] = read_grounding_zone_mask(f1, gtx)
-        except Exception as e:
+        except Exception as exc:
             logging.debug(traceback.format_exc())
             continue
 
@@ -514,7 +514,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                 v2 = [gtx,'land_ice_segments','dem','dem_h']
                 dem_h.data[:] = fid2['/'.join(v2)][:].copy()
                 fv2 = fid2['/'.join(v2)].fillvalue
-            except Exception as e:
+            except Exception as exc:
                 logging.debug(traceback.format_exc())
                 dem_h.mask = np.ones((n_seg),dtype=bool)
             else:
@@ -538,7 +538,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                 v3 = [gtx,'land_ice_segments','geophysical','tide_ocean']
                 tide_ocean.data[:] = fid3['/'.join(v3)][:].copy()
                 fv3 = fid3['/'.join(v3)].fillvalue
-            except Exception as e:
+            except Exception as exc:
                 logging.debug(traceback.format_exc())
                 tide_ocean.mask = np.ones((n_seg),dtype=bool)
             else:
@@ -562,7 +562,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                 v4 = [gtx,'land_ice_segments','geophysical','ib']
                 IB.data[:] = fid4['/'.join(v4)][:].copy()
                 fv4 = fid4['/'.join(v4)].fillvalue
-            except Exception as e:
+            except Exception as exc:
                 logging.debug(traceback.format_exc())
                 IB.mask = np.ones((n_seg),dtype=bool)
             else:
@@ -585,7 +585,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                 v5 = [gtx,'land_ice_segments','geophysical','h_mdt']
                 mdt.data[:] = fid5['/'.join(v5)][:].copy()
                 fv5 = fid5['/'.join(v5)].fillvalue
-            except Exception as e:
+            except Exception as exc:
                 logging.debug(traceback.format_exc())
                 mdt.mask = np.ones((n_seg),dtype=bool)
                 pass
@@ -677,7 +677,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MEAN_FILE=None, TIDE_MODEL=None,
                         GZ,PA,PE,PT,PdH,MODEL = physical_elastic_model(dist,
                             dh_gz, GRZ=grz, TIDE=tide, ORIENTATION=sco,
                             THICKNESS=w_thick, CONF=0.95, XOUT=i)
-                    except Exception as e:
+                    except Exception as exc:
                         logging.debug(traceback.format_exc())
                         pass
                     # copy grounding zone parameters to get best fit

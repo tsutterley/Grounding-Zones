@@ -17,7 +17,7 @@ dependencies:
   - python>=3.6
   - python-dateutil
   - pyyaml
-  - scipy<=1.9.3
+  - scipy>=1.10.1
   - scikit-learn
   - shapely
   - pip:

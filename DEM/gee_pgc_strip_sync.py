@@ -61,12 +61,12 @@ import dateutil.parser
 # attempt imports
 try:
     import fiona
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("mpi4py not available", ImportWarning)
 try:
     import ee
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("ee not available", ImportWarning)
 # ignore warnings
