@@ -519,7 +519,7 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     args = (hem_flag[HEM],Ylms['modelname'],OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}_GEOID_WGS84_{2}{3}{4}{5}{6:05.0f}.H5'.format(*args)
     # print file information
-    logging.info(f'\t{FILENAME}')
+    logging.info(f'\t{os.path.join(DIRECTORY,FILENAME)}')
 
     # open output HDF5 file
     fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')

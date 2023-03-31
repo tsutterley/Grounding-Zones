@@ -284,7 +284,7 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
             "../segment_id ../delta_time ../latitude ../longitude"
 
     # print file information
-    logging.info(f'\t{OUTPUT_FILE}')
+    logging.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
     HDF5_ATL06_geoid_write(IS2_atl06_geoid, IS2_atl06_geoid_attrs,
         CLOBBER=True, INPUT=os.path.basename(INPUT_FILE),
         FILL_VALUE=IS2_atl06_fill, DIMENSIONS=IS2_atl06_dims,

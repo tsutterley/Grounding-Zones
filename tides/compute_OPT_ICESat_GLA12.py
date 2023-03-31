@@ -1,12 +1,17 @@
 #!/usr/bin/env python
 u"""
 compute_OPT_ICESat_GLA12.py
-Written by Tyler Sutterley (12/2022)
-Calculates radial ocean pole tide displacements for correcting ICESat/GLAS
-    L2 GLA12 Antarctic and Greenland Ice Sheet elevation data following
-    IERS Convention (2010) guidelines
+Written by Tyler Sutterley (03/2023)
+Calculates radial ocean pole tide displacements for correcting
+    ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
+    elevation data following IERS Convention (2010) guidelines
 
 COMMAND LINE OPTIONS:
+    -c X, --convention X: IERS mean or secular pole convention
+        2003
+        2010
+        2015
+        2018
     -I X, --interpolate X: Interpolation method
         spline
         linear
@@ -40,6 +45,7 @@ REFERENCES:
         doi: 10.1007/s00190-015-0848-7
 
 UPDATE HISTORY:
+    Updated 03/2023: added option for changing the IERS mean pole convention
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
         refactored pyTMD tide model structure
@@ -83,7 +89,8 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # compute ocean pole tide radial displacements at points and times
-def compute_OPT_ICESat(FILE, METHOD=None, VERBOSE=False, MODE=0o775):
+def compute_OPT_ICESat(FILE, CONVENTION='2018', METHOD=None,
+    VERBOSE=False, MODE=0o775):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
@@ -209,7 +216,7 @@ def compute_OPT_ICESat(FILE, METHOD=None, VERBOSE=False, MODE=0o775):
         UR = r1.__call__(np.c_[lon_40HZ,latitude_geocentric])
 
     # calculate angular coordinates of mean pole at time tdec
-    mpx,mpy,fl = pyTMD.eop.iers_mean_pole(mean_pole_file, tdec, '2015')
+    mpx,mpy,fl = pyTMD.eop.iers_mean_pole(mean_pole_file, tdec, CONVENTION)
     # interpolate daily polar motion values to t using cubic splines
     px = xSPL(t)
     py = ySPL(t)
@@ -326,7 +333,7 @@ def compute_OPT_ICESat(FILE, METHOD=None, VERBOSE=False, MODE=0o775):
     fileID.close()
 
     # print file information
-    logger.info(f'\t{OUTPUT_FILE}')
+    logger.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
     HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_tide_attrs,
         FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)
@@ -426,13 +433,16 @@ def arguments():
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='ICESat GLA12 file to run')
+    # Earth orientation parameters
+    parser.add_argument('--convention','-c',
+        type=str, choices=pyTMD.eop._conventions, default='2018',
+        help='IERS mean or secular pole convention')
     # interpolation method
     parser.add_argument('--interpolate','-I',
         metavar='METHOD', type=str, default='spline',
         choices=('spline','linear','nearest'),
         help='Spatial interpolation method')
     # verbosity settings
-    # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
         help='Output information about each created file')
@@ -451,8 +461,11 @@ def main():
 
     # run for each input GLA12 file
     for FILE in args.infile:
-        compute_OPT_ICESat(FILE, METHOD=args.interpolate,
-            VERBOSE=args.verbose, MODE=args.mode)
+        compute_OPT_ICESat(FILE,
+            CONVENTION=args.convention,
+            METHOD=args.interpolate,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

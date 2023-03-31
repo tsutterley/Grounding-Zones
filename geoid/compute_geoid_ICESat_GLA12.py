@@ -283,7 +283,7 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     fileID.close()
 
     # print file information
-    logging.info(f'\t{OUTPUT_FILE}')
+    logging.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
     HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_geoid_attrs,
         FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)

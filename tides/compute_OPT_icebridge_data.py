@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_OPT_icebridge_data.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (03/2023)
 Calculates radial ocean pole tide displacements for correcting Operation
     IceBridge elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
@@ -11,6 +11,11 @@ INPUTS:
     ATM1B, ATM icessn or LVIS file from NSIDC
 
 COMMAND LINE OPTIONS:
+    -c X, --convention X: IERS mean or secular pole convention
+        2003
+        2010
+        2015
+        2018
     -I X, --interpolate X: Interpolation method
         spline
         linear
@@ -36,6 +41,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 03/2023: added option for changing the IERS mean pole convention
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
         refactored pyTMD tide model structure
@@ -391,7 +397,8 @@ def read_LVIS_HDF5_file(input_file, input_subsetter):
 
 # PURPOSE: read Operation IceBridge data from NSIDC
 # compute ocean pole tide radial displacements at data points and times
-def compute_OPT_icebridge_data(arg,METHOD=None,VERBOSE=False,MODE=0o775):
+def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
+    VERBOSE=False, MODE=0o775):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
@@ -555,7 +562,7 @@ def compute_OPT_icebridge_data(arg,METHOD=None,VERBOSE=False,MODE=0o775):
     args = (hem_flag[HEM],'OCEAN_POLE_TIDE',OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}_WGS84_{2}{3}{4}{5}{6:05.0f}.H5'.format(*args)
     # print file information
-    logger.info(f'\t{FILENAME}')
+    logger.info(f'\t{os.path.join(DIRECTORY,FILENAME)}')
 
     # open output HDF5 file
     fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')
@@ -577,7 +584,7 @@ def compute_OPT_icebridge_data(arg,METHOD=None,VERBOSE=False,MODE=0o775):
         UR = r1.__call__(np.c_[lon,latitude_geocentric])
 
     # calculate angular coordinates of mean pole at time tdec
-    mpx,mpy,fl = pyTMD.eop.iers_mean_pole(mean_pole_file, tdec, '2015')
+    mpx,mpy,fl = pyTMD.eop.iers_mean_pole(mean_pole_file, tdec, CONVENTION)
     # interpolate daily polar motion values to t using cubic splines
     px = xSPL(t)
     py = ySPL(t)
@@ -669,6 +676,10 @@ def arguments():
     parser.add_argument('infile',
         type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
         help='Input Operation IceBridge file to run')
+    # Earth orientation parameters
+    parser.add_argument('--convention','-c',
+        type=str, choices=pyTMD.eop._conventions, default='2018',
+        help='IERS mean or secular pole convention')
     # interpolation method
     parser.add_argument('--interpolate','-I',
         metavar='METHOD', type=str, default='spline',
@@ -693,8 +704,11 @@ def main():
 
     # run for each input file
     for arg in args.infile:
-        compute_OPT_icebridge_data(arg, METHOD=args.interpolate,
-            VERBOSE=args.verbose, MODE=args.mode)
+        compute_OPT_icebridge_data(arg,
+            CONVENTION=args.convention,
+            METHOD=args.interpolate,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':
