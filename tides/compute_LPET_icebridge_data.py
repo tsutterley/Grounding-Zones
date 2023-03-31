@@ -491,7 +491,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     file_format = '{0}_NASA_EQUILIBRIUM_TIDES_WGS84_{1}{2}{3}{4}{5:05.0f}.H5'
     FILENAME = file_format.format(hem_flag[HEM],OIB,YY1,MM1,DD1,JJ1)
     # print file information
-    logger.info(f'\t{FILENAME}')
+    logger.info(f'\t{os.path.join(DIRECTORY,FILENAME)}')
 
     # open output HDF5 file
     fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')

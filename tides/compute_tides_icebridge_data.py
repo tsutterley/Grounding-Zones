@@ -50,7 +50,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
     calc_astrol_longitudes.py: computes the basic astronomical mean longitudes
-    convert_ll_xy.py: convert lat/lon points to and from projected coordinates
+    convert_crs.py: convert points to and from Coordinates Reference Systems
     load_constituent.py: loads parameters for a given tidal constituent
     load_nodal_corrections.py: load the nodal corrections for tidal constituents
     io/model.py: retrieves tide model parameters for named tide models
@@ -599,7 +599,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     args = (hem_flag[HEM],model.name,flexure_flag,OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}{2}_TIDES_WGS84_{3}{4}{5}{6}{7:05.0f}.H5'.format(*args)
     # print file information
-    logger.info(f'\t{FILENAME}')
+    logger.info(f'\t{os.path.join(DIRECTORY,FILENAME)}')
 
     # open output HDF5 file
     fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')

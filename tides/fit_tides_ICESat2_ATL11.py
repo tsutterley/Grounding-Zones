@@ -765,7 +765,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
     file_format = '{0}_{1}_FIT_TIDES_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
     OUTPUT_FILE = os.path.join(DIRECTORY,file_format.format(*args))
     # print file information
-    logging.info(f'\t{OUTPUT_FILE}')
+    logger.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
     HDF5_ATL11_corr_write(IS2_atl11_tide, IS2_atl11_tide_attrs,
         CLOBBER=True, INPUT=os.path.basename(FILE),
         CROSSOVERS=True, FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,

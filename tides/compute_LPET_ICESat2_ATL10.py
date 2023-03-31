@@ -246,7 +246,7 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
                 "../delta_time ../latitude ../longitude"
 
     # print file information
-    logger.info(f'\t{OUTPUT_FILE}')
+    logger.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
     HDF5_ATL10_tide_write(IS2_atl10_tide, IS2_atl10_tide_attrs,
         CLOBBER=True, INPUT=os.path.basename(INPUT_FILE),
         FILL_VALUE=IS2_atl10_fill, DIMENSIONS=IS2_atl10_dims,

@@ -48,7 +48,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
     calc_astrol_longitudes.py: computes the basic astronomical mean longitudes
-    convert_ll_xy.py: convert lat/lon points to and from projected coordinates
+    convert_crs.py: convert points to and from Coordinates Reference Systems
     load_constituent.py: loads parameters for a given tidal constituent
     load_nodal_corrections.py: load the nodal corrections for tidal constituents
     io/model.py: retrieves tide model parameters for named tide models
@@ -419,7 +419,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             "../geolocation/reference_photon_lat ../geolocation/reference_photon_lon")
 
     # print file information
-    logger.info(f'\t{OUTPUT_FILE}')
+    logger.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
     HDF5_ATL03_tide_write(IS2_atl03_tide, IS2_atl03_tide_attrs,
         CLOBBER=True, INPUT=os.path.basename(INPUT_FILE),
         FILL_VALUE=IS2_atl03_fill, DIMENSIONS=IS2_atl03_dims,

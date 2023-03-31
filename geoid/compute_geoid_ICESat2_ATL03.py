@@ -310,7 +310,7 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
             "../geolocation/reference_photon_lat ../geolocation/reference_photon_lon")
 
     # print file information
-    logging.info(f'\t{OUTPUT_FILE}')
+    logging.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
     HDF5_ATL03_geoid_write(IS2_atl03_geoid, IS2_atl03_geoid_attrs,
         CLOBBER=True, INPUT=os.path.basename(INPUT_FILE),
         FILL_VALUE=IS2_atl03_fill, DIMENSIONS=IS2_atl03_dims,

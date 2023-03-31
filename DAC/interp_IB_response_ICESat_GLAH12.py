@@ -509,7 +509,7 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     fileID.close()
 
     # print file information
-    logging.info(f'\t{OUTPUT_FILE}')
+    logging.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
     HDF5_GLA12_corr_write(IS_gla12_corr, IS_gla12_corr_attrs,
         FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)
