@@ -40,10 +40,10 @@ PROGRAM DEPENDENCIES:
     io/ATL10.py: reads ICESat-2 sea ice freeboard data files
     time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
-    calc_astrol_longitudes.py: computes the basic astronomical mean longitudes
+    astro.py: computes the basic astronomical mean longitudes
     convert_crs.py: convert points to and from Coordinates Reference Systems
     load_constituent.py: loads parameters for a given tidal constituent
-    load_nodal_corrections.py: load the nodal corrections for tidal constituents
+    arguments.py: load the nodal corrections for tidal constituents
     io/model.py: retrieves tide model parameters for named tide models
     io/OTIS.py: extract tidal harmonic constants from OTIS tide models
     io/ATLAS.py: extract tidal harmonic constants from netcdf models

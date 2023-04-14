@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 u"""
-compute_LPT_icebridge_data.py
+compute_SET_icebridge_data.py
 Written by Tyler Sutterley (03/2023)
-Calculates load pole tide displacements for correcting Operation IceBridge
-    elevation data following IERS Convention (2010) guidelines
+Calculates radial solid Earth tide displacements for correcting Operation
+    IceBridge elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
     http://maia.usno.navy.mil/conventions/chapter7.php
 
@@ -11,11 +11,7 @@ INPUTS:
     ATM1B, ATM icessn or LVIS file from NSIDC
 
 COMMAND LINE OPTIONS:
-    -c X, --convention X: IERS mean or secular pole convention
-        2003
-        2010
-        2015
-        2018
+    -p X, --tide-system X: Permanent tide system for output values
     -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
 
@@ -32,33 +28,11 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
     spatial.py: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
-    eop.py: utilities for calculating Earth Orientation Parameters (EOP)
+    predict.py: calculates solid Earth tides
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
-    Updated 03/2023: added option for changing the IERS mean pole convention
-    Updated 12/2022: single implicit import of grounding zone tools
-        use constants class from pyTMD for ellipsoidal parameters
-        refactored pyTMD tide model structure
-    Updated 07/2022: update imports of ATM1b QFIT functions to released version
-        place some imports within try/except statements
-    Updated 04/2022: include utf-8 encoding in reads to be windows compliant
-        use argparse descriptions within sphinx documentation
-    Updated 10/2021: using python logging for handling verbose output
-        using collections to store attributes in order of creation
-    Updated 07/2021: can use prefix files to define command line arguments
-    Updated 05/2021: modified import of ATM1b QFIT reader
-    Updated 03/2021: use cartesian coordinate conversion routine in spatial
-        replaced numpy bool/int to prevent deprecation warnings
-    Updated 12/2020: merged time conversion routines into module
-    Updated 11/2020: use internal mean pole and finals EOP files
-    Updated 10/2020: using argparse to set command line parameters
-    Updated 09/2020: output modified julian days as time variable
-    Updated 08/2020: using builtin time operations.  python3 regular expressions
-    Updated 03/2020: use read_ATM1b_QFIT_binary from repository
-    Updated 02/2019: using range for python3 compatibility
-    Updated 10/2018: updated GPS time calculation for calculating leap seconds
-    Written 06/2018
+    Written 03/2023
 """
 from __future__ import print_function
 
@@ -71,7 +45,6 @@ import argparse
 import warnings
 import collections
 import numpy as np
-import scipy.interpolate
 import grounding_zones as gz
 
 # attempt imports
@@ -400,8 +373,9 @@ def read_LVIS_HDF5_file(input_file, input_subsetter):
     return LVIS_L2_input, file_lines, lvis_flag[REGION]
 
 # PURPOSE: read Operation IceBridge data from NSIDC
-# compute load pole tide radial displacements at data points and times
-def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775):
+# compute solid earth tide radial displacements at data points and times
+def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None,
+    VERBOSE=False, MODE=0o775):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
@@ -432,13 +406,16 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
         if re.match(val, input_file.name):
             OIB = key
 
+    # invalid value
+    fill_value = -9999.0
     # HDF5 file attributes
     attrib = collections.OrderedDict()
-    # Modified Julian Days
+    # time
     attrib['time'] = {}
     attrib['time']['long_name'] = 'Time'
-    attrib['time']['units'] = 'days since 1858-11-17T00:00:00'
-    attrib['time']['description'] = 'Modified Julian Days'
+    attrib['time']['description'] = ('Time_corresponding_to_the_measurement_'
+        'position')
+    attrib['time']['units'] = 'Days since 1992-01-01T00:00:00'
     attrib['time']['standard_name'] = 'time'
     attrib['time']['calendar'] = 'standard'
     # latitude
@@ -453,15 +430,14 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
     attrib['lon']['description'] = ('Corresponding_to_the_measurement_'
         'position_at_the_acquisition_time')
     attrib['lon']['units'] = 'Degrees_East'
-    # load pole tides
-    attrib['tide_pole'] = {}
-    attrib['tide_pole']['long_name'] = 'Solid_Earth_Pole_Tide'
-    attrib['tide_pole']['description'] = ('Solid_Earth_pole_tide_radial_'
-        'displacements_at_the_measurement_position_at_the_acquisition_'
-        'time_due_to_polar_motion')
-    attrib['tide_pole']['reference'] = ('ftp://tai.bipm.org/iers/conv2010/'
-        'chapter7/tn36_c7.pdf')
-    attrib['tide_pole']['units'] = 'meters'
+    # solid earth tides
+    attrib['tide_earth'] = {}
+    attrib['tide_earth']['long_name'] = 'Solid_Earth_Tide'
+    attrib['tide_earth']['description'] = ('Solid_earth_tides_in_the_'
+        f'{TIDE_SYSTEM}_system')
+    attrib['tide_earth']['reference'] = 'https://doi.org/10.1029/97JB01515'
+    attrib['tide_earth']['units'] = 'meters'
+    attrib['tide_earth']['_FillValue'] = fill_value
 
     # extract information from input file
     # acquisition year, month and day
@@ -495,56 +471,42 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
         # load IceBridge LVIS data from input_file
         dinput,file_lines,HEM = read_LVIS_HDF5_file(input_file, input_subsetter)
 
-    # extract lat/lon
-    lon = dinput['lon'][:]
-    lat = dinput['lat'][:]
-    # convert time from UTC time of day to modified julian days (MJD)
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    t = dinput['time'][:]/86400.0 + 51544.5
-    # convert from MJD to calendar dates
-    YY,MM,DD,HH,MN,SS = pyTMD.time.convert_julian(t + 2400000.5, format='tuple')
-    # convert calendar dates into year decimal
-    tdec = pyTMD.time.convert_calendar_decimal(YY, MM, day=DD,
-        hour=HH, minute=MN, second=SS)
-    # elevation
-    h1 = np.copy(dinput['data'][:])
-
-    # degrees to radians
-    dtr = np.pi/180.0
-    atr = np.pi/648000.0
-    # earth and physical parameters for ellipsoid
+    # earth and physical parameters for WGS84 ellipsoid
     units = pyTMD.constants('WGS84')
-    # tidal love number appropriate for the load tide
-    hb2 = 0.6207
+    # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
+    # J2000: seconds since 2000-01-01 12:00:00 UTC
+    t = pyTMD.time.convert_delta_time(dinput['time'],
+        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch,
+        scale=1.0/86400.0)
+    # interpolate delta times from calendar dates to tide time
+    delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
+    deltat = pyTMD.time.interpolate_delta_time(delta_file, t)
+    # convert time to Modified Julian Days (MJD) for ephemerides
+    MJD = t + deltat + 48622.0
 
-    # convert from geodetic latitude to geocentric latitude
-    # calculate X, Y and Z from geodetic latitude and longitude
-    X,Y,Z = pyTMD.spatial.to_cartesian(lon, lat, h=h1,
+    # convert input coordinates to cartesian
+    X, Y, Z = pyTMD.spatial.to_cartesian(dinput['lon'], dinput['lat'],
+        h=dinput['data'], a_axis=units.a_axis, flat=units.flat)
+    # get low-resolution solar and lunar ephemerides
+    SX, SY, SZ = pyTMD.astro.solar_ecef(MJD)
+    LX, LY, LZ = pyTMD.astro.lunar_ecef(MJD)
+    # convert coordinates to column arrays
+    XYZ = np.c_[X, Y, Z]
+    SXYZ = np.c_[SX, SY, SZ]
+    LXYZ = np.c_[LX, LY, LZ]
+    # predict solid earth tides (cartesian)
+    dxi = pyTMD.predict.solid_earth_tide(MJD,
+        XYZ, SXYZ, LXYZ, a_axis=units.a_axis,
+        tide_system=TIDE_SYSTEM)
+    # calculate radial component of solid earth tides
+    dln, dlt, drad = pyTMD.spatial.to_geodetic(
+        X + dxi[:,0], Y + dxi[:,1], Z + dxi[:,2],
         a_axis=units.a_axis, flat=units.flat)
-    rr = np.sqrt(X**2.0 + Y**2.0 + Z**2.0)
-    # calculate geocentric latitude and convert to degrees
-    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))/dtr
-    # colatitude and longitude in radians
-    theta = dtr*(90.0 - latitude_geocentric)
-    phi = lon*dtr
+    # remove effects of original topography
+    dinput['tide_earth'] = drad - dinput['data']
 
-    # compute normal gravity at spatial location and elevation of points.
-    # Normal gravity at height h. p. 82, Eqn.(2-215)
-    gamma_h = units.gamma_h(theta, h1)
-
-    # pole tide files (mean and daily)
-    mean_pole_file = pyTMD.utilities.get_data_path(['data','mean-pole.tab'])
-    pole_tide_file = pyTMD.utilities.get_data_path(['data','finals.all'])
-    # read IERS daily polar motion values
-    EOP = pyTMD.eop.iers_daily_EOP(pole_tide_file)
-    # create cubic spline interpolations of daily polar motion values
-    xSPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['x'],k=3,s=0)
-    ySPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['y'],k=3,s=0)
-    # bad value
-    fill_value = -9999.0
-
-    # output load pole tide HDF5 file
-    # form: rg_NASA_LOAD_POLE_TIDE_WGS84_fl1yyyymmddjjjjj.H5
+    # output solid earth tide HDF5 file
+    # form: rg_NASA_SOLID_EARTH_TIDE_WGS84_fl1yyyymmddjjjjj.H5
     # where rg is the hemisphere flag (GR or AN) for the region
     # fl1 and fl2 are the data flags (ATM, LVIS, GLAS)
     # yymmddjjjjj is the year, month, day and second of the input file
@@ -553,7 +515,7 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
     # use starting second to distinguish between files for the day
     JJ1 = np.min(dinput['time']) % 86400
     # output file format
-    args = (hem_flag[HEM],'LOAD_POLE_TIDE',OIB,YY1,MM1,DD1,JJ1)
+    args = (hem_flag[HEM],'SOLID_EARTH_TIDE',OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}_WGS84_{2}{3}{4}{5}{6:05.0f}.H5'.format(*args)
     # print file information
     output_file = DIRECTORY.pathjoin(FILENAME)
@@ -561,24 +523,6 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
 
     # open output HDF5 file
     fid = h5py.File(output_file, mode='w')
-
-    # calculate angular coordinates of mean pole at time tdec
-    mpx,mpy,fl = pyTMD.eop.iers_mean_pole(mean_pole_file, tdec, CONVENTION)
-    # interpolate daily polar motion values to time using cubic splines
-    px = xSPL(t)
-    py = ySPL(t)
-    # calculate differentials from mean pole positions
-    mx = px - mpx
-    my = -(py - mpy)
-    # calculate radial displacement at time
-    dfactor = -hb2*atr*(units.omega**2*rr**2)/(2.0*gamma_h)
-    Srad = np.ma.zeros((file_lines),fill_value=fill_value)
-    Srad.data[:] = dfactor*np.sin(2.0*theta)*(mx*np.cos(phi) + my*np.sin(phi))
-    # replace fill values
-    Srad.mask = np.isnan(Srad.data)
-    Srad.data[Srad.mask] = Srad.fill_value
-    # copy radial displacement to output dictionary
-    dinput['tide_pole'] = Srad.copy()
 
     # output dictionary with HDF5 variables
     h5 = {}
@@ -599,14 +543,14 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
 
     # HDF5 file attributes
     fid.attrs['featureType'] = 'trajectory'
-    fid.attrs['title'] = 'Load_Pole_Tide_correction_for_elevation_measurements'
-    fid.attrs['summary'] = ('Solid_Earth_pole_tide_radial_displacements_'
+    fid.attrs['title'] = 'Tidal_correction_for_elevation_measurements'
+    fid.attrs['summary'] = ('Solid_Earth_tide_radial_displacements_'
         'computed_at_elevation_measurements.')
     fid.attrs['project'] = 'NASA_Operation_IceBridge'
     fid.attrs['processing_level'] = '4'
     fid.attrs['date_created'] = time.strftime('%Y-%m-%d',time.localtime())
     # add attributes for input file
-    fid.attrs['lineage'] = input_file.name
+    fid.attrs['elevation_file'] = input_file.name
     # add geospatial and temporal attributes
     fid.attrs['geospatial_lat_min'] = dinput['lat'].min()
     fid.attrs['geospatial_lat_max'] = dinput['lat'].max()
@@ -644,7 +588,7 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
-        description="""Calculates radial load pole tide displacements for
+        description="""Calculates radial solid earth tide displacements for
             correcting Operation IceBridge elevation data following IERS
             Convention (2010) guidelines
             """,
@@ -655,10 +599,10 @@ def arguments():
     parser.add_argument('infile',
         type=str, nargs='+',
         help='Input Operation IceBridge file to run')
-    # Earth orientation parameters
-    parser.add_argument('--convention','-c',
-        type=str, choices=pyTMD.eop._conventions, default='2018',
-        help='IERS mean or secular pole convention')
+    # permanent tide system for output values
+    parser.add_argument('--tide-system','-p',
+        type=str, choices=('tide_free','mean_tide'), default='tide_free',
+        help='Permanent tide system for output values')
     # verbosity settings
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -678,8 +622,8 @@ def main():
 
     # run for each input file
     for arg in args.infile:
-        compute_LPT_icebridge_data(arg,
-            CONVENTION=args.convention,
+        compute_SET_icebridge_data(arg,
+            TIDE_SYSTEM=args.tide_system,
             VERBOSE=args.verbose,
             MODE=args.mode)
 

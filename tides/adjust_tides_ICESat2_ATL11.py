@@ -34,10 +34,10 @@ UPDATE HISTORY:
     Written 06/2022
 """
 
-import os
 import re
 import pyproj
 import logging
+import pathlib
 import argparse
 import datetime
 import warnings
@@ -81,12 +81,14 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     tide_reference = model.reference
 
     # read data from input file
-    logger.info(f'{INPUT_FILE} -->')
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+    logger.info(f'{str(INPUT_FILE)} -->')
     IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
         is2tk.io.ATL11.read_granule(INPUT_FILE,
                                     ATTRIBUTES=True,
                                     CROSSOVERS=True)
-    DIRECTORY = os.path.dirname(INPUT_FILE)
+    # input directory from input file
+    DIRECTORY = INPUT_FILE.parent
     # flexure flag if being applied
     flexure_flag = '_FLEXURE'
     # extract parameters from ICESat-2 ATLAS HDF5 file name
@@ -96,8 +98,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
         SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(INPUT_FILE).pop()
     except:
         # output tide HDF5 file (generic)
-        fileBasename,fileExtension = os.path.splitext(INPUT_FILE)
-        args = (fileBasename,model.name,flexure_flag,fileExtension)
+        args = (INPUT_FILE.stem,model.name,flexure_flag,INPUT_FILE.suffix)
         OUTPUT_FILE = '{0}_{1}{2}_TIDES{3}'.format(*args)
     else:
         # output tide HDF5 file for ASAS/NSIDC granules
@@ -212,7 +213,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
 
         # read tide model HDF5 file
         a3 = (PRD,TIDE_MODEL,'',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-        f3 = os.path.join(DIRECTORY,file_format.format(*a3))
+        f3 = DIRECTORY.joinpath(file_format.format(*a3))
         # check that tide file exists
         try:
             mds3,attr3 = is2tk.io.ATL11.read_pair(f3, ptx,
@@ -510,14 +511,16 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
         IS2_atl11_tide_attrs[ptx][XT]['tide_adj']['coordinates'] = \
             "ref_pt delta_time latitude longitude"
 
+    # full path to output file
+    FILENAME = DIRECTORY.joinpath(OUTPUT_FILE)
     # print file information
-    logger.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
+    logger.info(f'\t{str(FILENAME)}')
     HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_tide_attrs,
-        CLOBBER=True, INPUT=os.path.basename(INPUT_FILE),
+        CLOBBER=True, INPUT=INPUT_FILE.name,
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE))
+        FILENAME=FILENAME)
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,OUTPUT_FILE), MODE)
+    FILENAME.chmod(MODE)
 
 # PURPOSE: outputting the tide values for ICESat-2 data to HDF5
 def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
@@ -529,7 +532,8 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
 
     # create HDF5 records
     h5 = {}
@@ -639,7 +643,7 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL11 files
-    fileID.attrs['input_files'] = os.path.basename(INPUT)
+    fileID.attrs['input_files'] = pathlib.Path(INPUT).name
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for ptx in pairs:
@@ -708,18 +712,16 @@ def arguments():
     )
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
-    group = parser.add_mutually_exclusive_group(required=True)
     # input ICESat-2 annual land ice height files
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL11 file to run')
     # set adjustment file to use
     parser.add_argument('--flexure-file','-f',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path,
         help='Ice flexure file to use')
     # tide model to use
-    group.add_argument('--tide','-T',
+    parser.add_argument('--tide','-T',
         metavar='TIDE', type=str,
         choices=get_available_models(),
         help='Tide model to use in correction')

@@ -38,12 +38,12 @@ UPDATE HISTORY:
     Written 02/2022
 """
 import sys
-import os
 import re
 import copy
 import time
 import pyproj
 import logging
+import pathlib
 import argparse
 import warnings
 import collections
@@ -67,7 +67,8 @@ warnings.filterwarnings("ignore")
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
     # check that file exists if entering with read mode
-    if kwargs['mode'] in ('r','r+') and not os.access(filename, os.F_OK):
+    filename = pathlib.path(filename).expanduser().absolute()
+    if kwargs['mode'] in ('r','r+') and not filename.exists():
         raise FileNotFoundError(filename)
     # attempt to open HDF5 file
     while True:
@@ -79,8 +80,8 @@ def multiprocess_h5py(filename, *args, **kwargs):
     # return the file access object
     return fileID
 
-# PURPOSE: create tile index files of ICESat ice sheet HDF5 elevation
-# data (GLAH12) from NSIDC
+# PURPOSE: create tile index files of ICESat ice sheet
+# HDF5 elevation data (GLAH12) from NSIDC
 def tile_ICESat_GLA12(input_file,
     SPACING=None,
     HEM=None,
@@ -94,9 +95,9 @@ def tile_ICESat_GLA12(input_file,
     # index directory for hemisphere
     index_directory = 'north' if (HEM == 'N') else 'south'
     # output directory and index file
-    DIRECTORY = os.path.dirname(input_file)
-    BASENAME = os.path.basename(input_file)
-    output_file = os.path.join(DIRECTORY, index_directory, BASENAME)
+    input_file = pathlib.path(input_file).expanduser().absolute()
+    DIRECTORY = input_file.parent.joinpath(index_directory)
+    output_file = DIRECTORY.joinpath(input_file.name)
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
         r'(\d{4})_(\d{1})_(\d{2})_(\d{4})\.H5$'), re.VERBOSE)
@@ -140,15 +141,14 @@ def tile_ICESat_GLA12(input_file,
     attributes['index']['coordinates'] = 'x y'
 
     # create index directory for hemisphere
-    if not os.access(os.path.join(DIRECTORY,index_directory),os.F_OK):
-        os.makedirs(os.path.join(DIRECTORY,index_directory),
-            mode=MODE, exist_ok=True)
+    if DIRECTORY.exists():
+        DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
 
     # track file progress
-    logging.info(input_file)
+    logging.info(str(input_file))
 
     # read GLAH12 HDF5 file
-    fileID = h5py.File(input_file,'r')
+    fileID = h5py.File(input_file, mode='r')
     n_40HZ, = fileID['Data_40HZ']['Time']['i_rec_ndx'].shape
     # get variables and attributes
     # copy ICESat campaign name from ancillary data
@@ -177,13 +177,11 @@ def tile_ICESat_GLA12(input_file,
     topex = pyTMD.constants('TOPEX')
     wgs84 = pyTMD.constants('WGS84')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
-        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
-
-    # create index directory for hemisphere
-    if not os.access(os.path.join(DIRECTORY,index_directory),os.F_OK):
-        os.makedirs(os.path.join(DIRECTORY,index_directory),
-            mode=MODE, exist_ok=True)
+    lat_40HZ, elev_40HZ = pyTMD.spatial.convert_ellipsoid(
+        lat_TPX, elev_TPX,
+        topex.a_axis, topex.flat,
+        wgs84.a_axis, wgs84.flat,
+        eps=1e-12, itmax=10)
 
     # indices of points in hemisphere
     valid, = np.nonzero((np.sign(lat_40HZ) == SIGN[HEM]) & (elev_TPX != fv))
@@ -194,7 +192,7 @@ def tile_ICESat_GLA12(input_file,
     ytile = (y-0.5*SPACING)//SPACING
 
     # open output index file
-    f2 = h5py.File(output_file, 'w')
+    f2 = h5py.File(output_file, mode='w')
     f2.attrs['featureType'] = 'trajectory'
     f2.attrs['GDAL_AREA_OR_POINT'] = 'Point'
     f2.attrs['time_type'] = 'UTC'
@@ -231,16 +229,15 @@ def tile_ICESat_GLA12(input_file,
         g2.attrs['spacing'] = SPACING
 
         # create merged tile file if not existing
-        tile_file = os.path.join(DIRECTORY, index_directory,
-            f'{tile_group}.h5')
-        clobber = 'a' if os.access(tile_file, os.F_OK) else 'w'
+        tile_file = DIRECTORY.joinpath(f'{tile_group}.h5')
+        clobber = 'a' if tile_file.exists() else 'w'
         # open output merged tile file
         f3 = multiprocess_h5py(tile_file, mode=clobber)
         # create file group
-        if BASENAME not in f3:
-            g3 = f3.create_group(BASENAME)
+        if input_file.name not in f3:
+            g3 = f3.create_group(input_file.name)
         else:
-            g3 = f3[BASENAME]
+            g3 = f3[input_file.name]
         # add file-level variables and attributes
         if (clobber == 'w'):
             # create projection variable
@@ -304,7 +301,7 @@ def tile_ICESat_GLA12(input_file,
     # close the output file
     f2.close()
     # change the permissions mode of the output file
-    os.chmod(output_file, mode=MODE)
+    output_file.chmod(mode=MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -316,7 +313,7 @@ def arguments():
     # command line parameters
     # input ICESat GLAS files
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat GLA12 file to run')
     # region of interest to run
     parser.add_argument('--hemisphere','-H',

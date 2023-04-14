@@ -44,9 +44,9 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import sys
-import os
 import re
 import logging
+import pathlib
 import argparse
 import warnings
 import numpy as np
@@ -76,8 +76,9 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
     logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
 
     # get directory from INPUT_FILE
-    logger.info(f'{INPUT_FILE} -->')
-    DIRECTORY = os.path.dirname(INPUT_FILE)
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+    logger.info(f'{str(INPUT_FILE)} -->')
+    DIRECTORY = INPUT_FILE.parent
 
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
@@ -96,19 +97,21 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
     # GRAN:  Granule version number
     # TYPE:  File type
     try:
-        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(INPUT_FILE).pop()
-    except:
+        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
+            rx.findall(INPUT_FILE.name).pop()
+    except (ValueError, IndexError):
         # output long-period equilibrium tide HDF5 file (generic)
-        fileBasename,fileExtension = os.path.splitext(INPUT_FILE)
-        OUTPUT_FILE = '{0}_{1}{2}'.format(fileBasename,'LPET',fileExtension)
+        FILENAME = f'{INPUT_FILE.stem}_LPET{INPUT_FILE.suffix}'
     else:
         # output long-period equilibrium tide HDF5 file for NSIDC granules
         args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_LPET_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
-        OUTPUT_FILE = file_format.format(*args)
+        FILENAME = file_format.format(*args)
+    # full path to output file
+    OUTPUT_FILE = DIRECTORY.joinpath(FILENAME).expanduser().absolute()
 
     # read GLAH12 HDF5 file
-    fileID = h5py.File(INPUT_FILE,'r')
+    fileID = h5py.File(INPUT_FILE, mode='r')
     n_40HZ, = fileID['Data_40HZ']['Time']['i_rec_ndx'].shape
     # get variables and attributes
     rec_ndx_40HZ = fileID['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
@@ -126,13 +129,17 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
     topex = pyTMD.constants('TOPEX')
     wgs84 = pyTMD.constants('WGS84')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
-        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
+    lat_40HZ, elev_40HZ = pyTMD.spatial.convert_ellipsoid(
+        lat_TPX, elev_TPX,
+        topex.a_axis, topex.flat,
+        wgs84.a_axis, wgs84.flat,
+        eps=1e-12, itmax=10)
 
     # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
     # J2000: seconds since 2000-01-01 12:00:00 UTC
     tide_time = pyTMD.time.convert_delta_time(DS_UTCTime_40HZ,
-        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch, scale=1.0/86400.0)
+        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch,
+        scale=1.0/86400.0)
     # interpolate delta times from calendar dates to tide time
     delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
     deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
@@ -173,7 +180,7 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
     IS_gla12_tide_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     # add attributes for input GLA12 file
-    IS_gla12_tide_attrs['input_files'] = os.path.basename(INPUT_FILE)
+    IS_gla12_tide_attrs['lineage'] = INPUT_FILE.name
     # update geospatial ranges for ellipsoid
     IS_gla12_tide_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
     IS_gla12_tide_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
@@ -242,12 +249,12 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
     fileID.close()
 
     # print file information
-    logger.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
+    logger.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_tide_attrs,
-        FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
+        FILENAME=OUTPUT_FILE,
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,OUTPUT_FILE), MODE)
+    OUTPUT_FILE.chmod(MODE)
 
 # PURPOSE: outputting the tide values for ICESat data to HDF5
 def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
@@ -259,7 +266,8 @@ def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
     # create 40HZ HDF5 records
     h5 = dict(Data_40HZ={})
 
@@ -283,9 +291,9 @@ def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
     val = IS_gla12_tide['Data_40HZ']['DS_UTCTime_40']
     attrs = IS_gla12_attrs['Data_40HZ']['DS_UTCTime_40']
     # Defining the HDF5 dataset variables
-    var = '{0}/{1}'.format('Data_40HZ','DS_UTCTime_40')
-    h5['Data_40HZ']['DS_UTCTime_40'] = fileID.create_dataset(var,
-        np.shape(val), data=val, dtype=val.dtype, compression='gzip')
+    h5['Data_40HZ']['DS_UTCTime_40'] = fileID.create_dataset(
+        'Data_40HZ/DS_UTCTime_40', np.shape(val),
+        data=val, dtype=val.dtype, compression='gzip')
     # make dimension
     h5['Data_40HZ']['DS_UTCTime_40'].make_scale('DS_UTCTime_40')
     # add HDF5 variable attributes
@@ -297,7 +305,7 @@ def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
         # add group to dict
         h5['Data_40HZ'][group] = {}
         # create Data_40HZ group
-        fileID.create_group('Data_40HZ/{0}'.format(group))
+        fileID.create_group(f'Data_40HZ/{group}')
         # add HDF5 group attributes
         for att_name,att_val in IS_gla12_attrs['Data_40HZ'][group].items():
             if not isinstance(att_val,dict):
@@ -307,7 +315,7 @@ def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
             fillvalue = FILL_VALUE['Data_40HZ'][group][key]
             attrs = IS_gla12_attrs['Data_40HZ'][group][key]
             # Defining the HDF5 dataset variables
-            var = '{0}/{1}/{2}'.format('Data_40HZ',group,key)
+            var = f'Data_40HZ/{group}/{key}'
             # use variable compression if containing fill values
             if fillvalue:
                 h5['Data_40HZ'][group][key] = fileID.create_dataset(var,
@@ -340,7 +348,7 @@ def arguments():
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat GLA12 file to run')
     # verbosity settings
     # verbose will output information about each output file

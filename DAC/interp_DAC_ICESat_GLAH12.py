@@ -338,9 +338,9 @@ def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
     val = IS_gla12_tide['Data_40HZ']['DS_UTCTime_40']
     attrs = IS_gla12_attrs['Data_40HZ']['DS_UTCTime_40']
     # Defining the HDF5 dataset variables
-    var = '{0}/{1}'.format('Data_40HZ','DS_UTCTime_40')
-    h5['Data_40HZ']['DS_UTCTime_40'] = fileID.create_dataset(var,
-        np.shape(val), data=val, dtype=val.dtype, compression='gzip')
+    h5['Data_40HZ']['DS_UTCTime_40'] = fileID.create_dataset(
+        'Data_40HZ/DS_UTCTime_40', np.shape(val),
+        data=val, dtype=val.dtype, compression='gzip')
     # make dimension
     h5['Data_40HZ']['DS_UTCTime_40'].make_scale('DS_UTCTime_40')
     # add HDF5 variable attributes
@@ -352,7 +352,7 @@ def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
         # add group to dict
         h5['Data_40HZ'][group] = {}
         # create Data_40HZ group
-        fileID.create_group('Data_40HZ/{0}'.format(group))
+        fileID.create_group(f'Data_40HZ/{group}')
         # add HDF5 group attributes
         for att_name,att_val in IS_gla12_attrs['Data_40HZ'][group].items():
             if not isinstance(att_val,dict):
@@ -362,7 +362,7 @@ def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
             fillvalue = FILL_VALUE['Data_40HZ'][group][key]
             attrs = IS_gla12_attrs['Data_40HZ'][group][key]
             # Defining the HDF5 dataset variables
-            var = '{0}/{1}/{2}'.format('Data_40HZ',group,key)
+            var = f'Data_40HZ/{group}/{key}'
             # use variable compression if containing fill values
             if fillvalue:
                 h5['Data_40HZ'][group][key] = fileID.create_dataset(var,

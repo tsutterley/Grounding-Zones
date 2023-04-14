@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 symbolic_ICESat_GLA12.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (04/2023)
 Creates symbolic links for ICESat/GLAS L2 GLA12 Antarctic and Greenland
     Ice Sheet elevation files organized by date
 
@@ -17,16 +17,17 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: permission mode of directories
 
 UPDATE HISTORY:
+    Updated 04/2023: use pathlib to find, operate on and construct paths
     Updated 05/2022: use argparse descriptions within documentation
     Written 02/2022
 """
 from __future__ import print_function
 
 import sys
-import os
 import re
 import copy
 import logging
+import pathlib
 import argparse
 import warnings
 
@@ -50,12 +51,11 @@ def arguments():
     # command line parameters
     # working data directory
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory for symbolic link')
     # incoming directory with ICESat GLA12 data
     parser.add_argument('--incoming',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        type=pathlib.Path,
         help='Directory with ICESat GLA12 data')
     # verbose will output information about each symbolic link
     parser.add_argument('--verbose','-V',
@@ -90,51 +90,53 @@ def symbolic_ICESat_GLA12(base_dir, incoming, MODE=0o775):
         r'(\d{4})_(\d{1})_(\d{2})_(\d{4})\.H5$'), re.VERBOSE)
 
     # find subdirectories within incoming
-    subdirectories = [s for s in os.listdir(incoming) if rx1.match(s) and
-        os.path.isdir(os.path.join(incoming,s))]
-    for sd in sorted(subdirectories):
+    subdir = [s for s in incoming.iterdir() if rx1.match(s.name) and s.is_dir()]
+    for sd in sorted(subdir):
         # put symlinks in directories similar to NSIDC
-        local_dir = os.path.join(base_dir,sd)
-        os.makedirs(local_dir,MODE) if not os.path.exists(local_dir) else None
-        # find each  ICESat GLA12 file within the subdirectory
-        files = [f for f in os.listdir(os.path.join(incoming,sd)) if rx2.match(f)]
+        local_dir = base_dir.joinpath(sd.name)
+        local_dir.mkdir(mode=MODE, parents=True, exist_ok=True)
+        # find each ICESat GLA12 file within the subdirectory
+        files = [f for f in sd.iterdir() if rx2.match(f.name)]
         # for each ICESat GLA12 file
         for f in sorted(files):
             # attempt to create the symbolic link else continue
             try:
-                # create symbolic link of file from scf_outgoing to local
-                os.symlink(os.path.join(incoming,sd,f), os.path.join(local_dir,f))
+                # create symbolic link of file from incoming to outgoing
+                outgoing = local_dir.joinpath(f.name)
+                f.symlink_to(outgoing)
             except FileExistsError:
                 continue
             else:
                 # print original and symbolic link of file
-                args = (os.path.join(incoming,sd,f),os.path.join(local_dir,f))
-                logging.info('{0} -->\n\t{1}'.format(*args))
+                logging.info(f'{str(f)} -->\n\t{str(outgoing)}')
+
     # find files within incoming (if flattened)
     # find each ICESat GLA12 file within the subdirectory
-    files = [f for f in os.listdir(incoming) if rx2.match(f)]
+    files = [f for f in incoming.iterdir() if rx2.match(f.name)]
     for f in sorted(files):
         # get the date information from the input file
-        year,month,day = parse_GLA12_HDF5_file(os.path.join(incoming,f))
+        year,month,day = parse_GLA12_HDF5_file(incoming.joinpath(f))
         # put symlinks in directories similar to NSIDC
-        sd = '{year:4d}.{month:02d}.{day:02d}'.format(year,month,day)
-        local_dir = os.path.join(base_dir,sd)
-        os.makedirs(local_dir,MODE) if not os.path.exists(local_dir) else None
+        local_dir = base_dir.joinpath(f'{year:4d}.{month:02d}.{day:02d}')
+        local_dir.mkdir(mode=MODE, parents=True, exist_ok=True)
         # attempt to create the symbolic link else continue
         try:
             # create symbolic link of file from scf_outgoing to local
-            os.symlink(os.path.join(incoming,f), os.path.join(local_dir,f))
+            outgoing = local_dir.joinpath(f.name)
+            f.symlink_to(outgoing)
         except FileExistsError:
             continue
         else:
             # print original and symbolic link of file
-            args = (os.path.join(incoming,f),os.path.join(local_dir,f))
-            logging.info('{0} -->\n\t{1}'.format(*args))
+            logging.info(f'{str(f)} -->\n\t{str(outgoing)}')
 
 # PURPOSE: extract date information from HDF5 ancillary data attributes
 def parse_GLA12_HDF5_file(input_file):
     attributes = {}
-    with h5py.File(os.path.expanduser(input_file),'r') as fileID:
+    # open input HDF5 file for reading
+    input_file = pathlib.path(input_file).expanduser().absolute()
+    with h5py.File(input_file, mode='r') as fileID:
+        # get inventory metadata
         for key,val in fileID['METADATA']['INVENTORYMETADATA'].attrs.items():
             attributes[key] = copy.copy(val)
     # extract year month and day from attributes

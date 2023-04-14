@@ -51,10 +51,10 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import sys
-import os
 import re
 import time
 import logging
+import pathlib
 import argparse
 import warnings
 import collections
@@ -82,19 +82,21 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: reading the number of file lines removing commented lines
 def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
+    # verify input file is path
+    input_file = pathlib.Path(input_file).expanduser().absolute()
     # subset the data to indices if specified
     if input_subsetter:
         file_lines = len(input_subsetter)
     elif HDF5:
         # read the size of an input variable within a HDF5 file
-        with h5py.File(input_file,'r') as fileID:
+        with h5py.File(input_file, 'r') as fileID:
             file_lines, = fileID[HDF5].shape
     elif QFIT:
         # read the size of a QFIT binary file
         file_lines = ATM1b_QFIT.ATM1b_QFIT_shape(input_file)
     else:
         # read the input file, split at lines and remove all commented lines
-        with open(input_file, mode='r', encoding='utf8') as f:
+        with input_file.open(mode='r', encoding='utf8') as f:
             i = [i for i in f.readlines() if re.match(r'^(?!\#|\n)',i)]
         file_lines = len(i)
     # return the number of lines
@@ -102,11 +104,14 @@ def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
 
 ## PURPOSE: read the ATM Level-1b data file for variables of interest
 def read_ATM_qfit_file(input_file, input_subsetter):
+    # verify input file is path
+    input_file = pathlib.Path(input_file).expanduser().absolute()
     # regular expression pattern for extracting parameters
     mission_flag = r'(BLATM1B|ILATM1B|ILNSA1B)'
     regex_pattern = rf'{mission_flag}_(\d+)_(\d+)(.*?).(qi|TXT|h5)'
+    regex = re.compile(regex_pattern, re.VERBOSE)
     # extract mission and other parameters from filename
-    MISSION,YYMMDD,HHMMSS,AUX,SFX = re.findall(regex_pattern,input_file).pop()
+    MISSION,YYMMDD,HHMMSS,AUX,SFX = regex.findall(input_file.name).pop()
     # early date strings omitted century and millenia (e.g. 93 for 1993)
     if (len(YYMMDD) == 6):
         yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
@@ -123,18 +128,18 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         regex_pattern = r'[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[Ee][+-]?\d+)?'
         rx = re.compile(regex_pattern, re.VERBOSE)
         # read the input file, split at lines and remove all commented lines
-        with open(input_file, mode='r', encoding='utf8') as f:
+        with input_file.open(mode='r', encoding='utf8') as f:
             file_contents = [i for i in f.read().splitlines() if
                 re.match(r'^(?!\#|\n)',i)]
         # number of lines of data within file
-        file_lines = file_length(input_file,input_subsetter)
+        file_lines = file_length(input_file, input_subsetter)
         # create output variables with length equal to the number of lines
-        ATM_L1b_input['lat'] = np.zeros_like(file_contents,dtype=np.float64)
-        ATM_L1b_input['lon'] = np.zeros_like(file_contents,dtype=np.float64)
-        ATM_L1b_input['data'] = np.zeros_like(file_contents,dtype=np.float64)
-        hour = np.zeros_like(file_contents,dtype=np.float64)
-        minute = np.zeros_like(file_contents,dtype=np.float64)
-        second = np.zeros_like(file_contents,dtype=np.float64)
+        ATM_L1b_input['lat'] = np.zeros_like(file_contents, dtype=np.float64)
+        ATM_L1b_input['lon'] = np.zeros_like(file_contents, dtype=np.float64)
+        ATM_L1b_input['data'] = np.zeros_like(file_contents, dtype=np.float64)
+        hour = np.zeros_like(file_contents, dtype=np.float64)
+        minute = np.zeros_like(file_contents, dtype=np.float64)
+        second = np.zeros_like(file_contents, dtype=np.float64)
         # for each line within the file
         for i,line in enumerate(file_contents):
             # find numerical instances within the line
@@ -148,17 +153,17 @@ def read_ATM_qfit_file(input_file, input_subsetter):
     # Version 1 of ATM QFIT files (binary)
     elif (SFX == 'qi'):
         # read input QFIT data file and subset if specified
-        fid,h = ATM1b_QFIT.read_ATM1b_QFIT_binary(input_file)
+        fid, h = ATM1b_QFIT.read_ATM1b_QFIT_binary(input_file)
         # number of lines of data within file
-        file_lines = file_length(input_file,input_subsetter,QFIT=True)
+        file_lines = file_length(input_file, input_subsetter, QFIT=True)
         ATM_L1b_input['lat'] = fid['latitude'][:]
         ATM_L1b_input['lon'] = fid['longitude'][:]
         ATM_L1b_input['data'] = fid['elevation'][:]
         time_hhmmss = fid['time_hhmmss'][:]
         # extract hour, minute and second from time_hhmmss
-        hour = np.zeros_like(time_hhmmss,dtype=np.float64)
-        minute = np.zeros_like(time_hhmmss,dtype=np.float64)
-        second = np.zeros_like(time_hhmmss,dtype=np.float64)
+        hour = np.zeros_like(time_hhmmss, dtype=np.float64)
+        minute = np.zeros_like(time_hhmmss, dtype=np.float64)
+        second = np.zeros_like(time_hhmmss, dtype=np.float64)
         # for each line within the file
         for i,packed_time in enumerate(time_hhmmss):
             # convert to zero-padded string with 3 decimal points
@@ -169,18 +174,19 @@ def read_ATM_qfit_file(input_file, input_subsetter):
     # Version 2 of ATM QFIT files (HDF5)
     elif (SFX == 'h5'):
         # Open the HDF5 file for reading
-        fileID = h5py.File(os.path.expanduser(input_file), 'r')
+        fileID = h5py.File(input_file, 'r')
         # number of lines of data within file
-        file_lines = file_length(input_file,input_subsetter,HDF5='elevation')
+        file_lines = file_length(input_file, input_subsetter,
+            HDF5='elevation')
         # create output variables with length equal to input elevation
         ATM_L1b_input['lat'] = fileID['latitude'][:]
         ATM_L1b_input['lon'] = fileID['longitude'][:]
         ATM_L1b_input['data'] = fileID['elevation'][:]
         time_hhmmss = fileID['instrument_parameters']['time_hhmmss'][:]
         # extract hour, minute and second from time_hhmmss
-        hour = np.zeros_like(time_hhmmss,dtype=np.float64)
-        minute = np.zeros_like(time_hhmmss,dtype=np.float64)
-        second = np.zeros_like(time_hhmmss,dtype=np.float64)
+        hour = np.zeros_like(time_hhmmss, dtype=np.float64)
+        minute = np.zeros_like(time_hhmmss, dtype=np.float64)
+        second = np.zeros_like(time_hhmmss, dtype=np.float64)
         # for each line within the file
         for i,packed_time in enumerate(time_hhmmss):
             # convert to zero-padded string with 3 decimal points
@@ -212,15 +218,18 @@ def read_ATM_qfit_file(input_file, input_subsetter):
     # determine hemisphere with containing shots in file
     HEM, = [key for key, val in count.items() if val]
     # return the output variables
-    return ATM_L1b_input,file_lines,HEM
+    return ATM_L1b_input, file_lines, HEM
 
 # PURPOSE: read the ATM Level-2 data file for variables of interest
 def read_ATM_icessn_file(input_file, input_subsetter):
+    # verify input file is path
+    input_file = pathlib.Path(input_file).expanduser().absolute()
     # regular expression pattern for extracting parameters
     mission_flag = r'(BLATM2|ILATM2)'
     regex_pattern = rf'{mission_flag}_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
+    regex = re.compile(regex_pattern, re.VERBOSE)
     # extract mission and other parameters from filename
-    MISSION,YYMMDD,HHMMSS,AUX,SFX = re.findall(regex_pattern,input_file).pop()
+    MISSION,YYMMDD,HHMMSS,AUX,SFX = regex.findall(input_file.name).pop()
     # early date strings omitted century and millenia (e.g. 93 for 1993)
     if (len(YYMMDD) == 6):
         yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
@@ -238,7 +247,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
         file_contents = [i for i in f.read().splitlines() if
             re.match(r'^(?!\#|\n)',i)]
     # number of lines of data within file
-    file_lines = file_length(input_file,input_subsetter)
+    file_lines = file_length(input_file, input_subsetter)
     # output python dictionary with variables
     ATM_L2_input = {}
     # create output variables with length equal to the number of file lines
@@ -283,25 +292,28 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     # determine hemisphere with containing shots in file
     HEM, = [key for key, val in count.items() if val]
     # return the output variables
-    return ATM_L2_input,file_lines,HEM
+    return ATM_L2_input, file_lines, HEM
 
 # PURPOSE: read the LVIS Level-2 data file for variables of interest
 def read_LVIS_HDF5_file(input_file, input_subsetter):
+    # verify input file is path
+    input_file = pathlib.Path(input_file).expanduser().absolute()
     # LVIS region flags: GL for Greenland and AQ for Antarctica
     lvis_flag = {'GL':'N','AQ':'S'}
     # regular expression pattern for extracting parameters from HDF5 files
     # computed in read_icebridge_lvis.py
     mission_flag = r'(BLVIS2|BVLIS2|ILVIS2|ILVGH2)'
     regex_pattern = rf'{mission_flag}_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5'
+    regex = re.compile(regex_pattern, re.VERBOSE)
     # extract mission, region and other parameters from filename
-    MISSION,REGION,YY,MMDD,RLD,SS = re.findall(regex_pattern,input_file).pop()
+    MISSION,REGION,YY,MMDD,RLD,SS = regex.findall(input_file.name).pop()
     LDS_VERSION = '2.0.2' if (int(RLD[1:3]) >= 18) else '1.04'
     # input and output python dictionaries with variables
     file_input = {}
     LVIS_L2_input = {}
-    fileID = h5py.File(input_file,'r')
+    fileID = h5py.File(input_file, 'r')
     # create output variables with length equal to input shot number
-    file_lines = file_length(input_file,input_subsetter,HDF5='Shot_Number')
+    file_lines = file_length(input_file, input_subsetter, HDF5='Shot_Number')
     # https://lvis.gsfc.nasa.gov/Data/Data_Structure/DataStructure_LDS104.html
     # https://lvis.gsfc.nasa.gov/Data/Data_Structure/DataStructure_LDS202.html
     if (LDS_VERSION == '1.04'):
@@ -340,10 +352,10 @@ def read_LVIS_HDF5_file(input_file, input_subsetter):
     # close the input HDF5 file
     fileID.close()
     # output combined variables
-    LVIS_L2_input['data'] = np.zeros_like(file_input['elev'],dtype=np.float64)
-    LVIS_L2_input['lon'] = np.zeros_like(file_input['elev'],dtype=np.float64)
-    LVIS_L2_input['lat'] = np.zeros_like(file_input['elev'],dtype=np.float64)
-    LVIS_L2_input['error'] = np.zeros_like(file_input['elev'],dtype=np.float64)
+    LVIS_L2_input['data'] = np.zeros_like(file_input['elev'], dtype=np.float64)
+    LVIS_L2_input['lon'] = np.zeros_like(file_input['elev'], dtype=np.float64)
+    LVIS_L2_input['lat'] = np.zeros_like(file_input['elev'], dtype=np.float64)
+    LVIS_L2_input['error'] = np.zeros_like(file_input['elev'], dtype=np.float64)
     # find where elev high is equal to elev low
     # see note about using LVIS centroid elevation product
     # http://lvis.gsfc.nasa.gov/OIBDataStructure.html
@@ -372,7 +384,7 @@ def read_LVIS_HDF5_file(input_file, input_subsetter):
         for key,val in LVIS_L2_input.items():
             LVIS_L2_input[key] = val[input_subsetter]
     # return the output variables
-    return LVIS_L2_input,file_lines,lvis_flag[REGION]
+    return LVIS_L2_input, file_lines, lvis_flag[REGION]
 
 # PURPOSE: read Operation IceBridge data from NSIDC
 # compute long-period equilibrium tides at points and times
@@ -383,8 +395,8 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
 
     # extract file name and subsetter indices lists
-    match_object = re.match(r'(.*?)(\[(.*?)\])?$',arg)
-    input_file = os.path.expanduser(match_object.group(1))
+    match_object = re.match(r'(.*?)(\[(.*?)\])?$', arg)
+    input_file = pathlib.Path(match_object.group(1)).expanduser().absolute()
     # subset input file to indices
     if match_object.group(2):
         # decompress ranges and add to list
@@ -396,7 +408,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
         input_subsetter = None
 
     # output directory for input_file
-    DIRECTORY = os.path.dirname(input_file)
+    DIRECTORY = input_file.parent
     # calculate if input files are from ATM or LVIS (+GH)
     regex = {}
     regex['ATM'] = r'(BLATM2|ILATM2)_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
@@ -404,7 +416,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     regex['LVIS'] = r'(BLVIS2|BVLIS2|ILVIS2)_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5$'
     regex['LVGH'] = r'(ILVGH2)_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5$'
     for key,val in regex.items():
-        if re.match(val, os.path.basename(input_file)):
+        if re.match(val, input_file.name):
             OIB = key
 
     # HDF5 file attributes
@@ -437,12 +449,12 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
         'j.1365-246X.1973.tb03420.x')
     attrib['tide_lpe']['units'] = 'meters'
 
-    # extract information from first input file
+    # extract information from input file
     # acquisition year, month and day
     # number of points
     # instrument (PRE-OIB ATM or LVIS, OIB ATM or LVIS)
     if OIB in ('ATM','ATM1b'):
-        M1,YYMMDD1,HHMMSS1,AX1,SF1 = re.findall(regex[OIB], input_file).pop()
+        M1,YYMMDD1,HHMMSS1,AX1,SF1 = re.findall(regex[OIB], input_file.name).pop()
         # early date strings omitted century and millenia (e.g. 93 for 1993)
         if (len(YYMMDD1) == 6):
             year_two_digit,MM1,DD1 = YYMMDD1[:2],YYMMDD1[2:4],YYMMDD1[4:]
@@ -454,20 +466,20 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
         elif (len(YYMMDD1) == 8):
             YY1,MM1,DD1 = YYMMDD1[:4],YYMMDD1[4:6],YYMMDD1[6:]
     elif OIB in ('LVIS','LVGH'):
-        M1,RG1,YY1,MMDD1,RLD1,SS1 = re.findall(regex[OIB], input_file).pop()
+        M1,RG1,YY1,MMDD1,RLD1,SS1 = re.findall(regex[OIB], input_file.name).pop()
         MM1,DD1 = MMDD1[:2],MMDD1[2:]
 
     # read data from input_file
-    logger.info('{0} -->'.format(input_file))
+    logger.info(f'{str(input_file)} -->')
     if (OIB == 'ATM'):
         # load IceBridge ATM data from input_file
-        dinput,file_lines,HEM = read_ATM_icessn_file(input_file,input_subsetter)
+        dinput,file_lines,HEM = read_ATM_icessn_file(input_file, input_subsetter)
     elif (OIB == 'ATM1b'):
         # load IceBridge Level-1b ATM data from input_file
-        dinput,file_lines,HEM = read_ATM_qfit_file(input_file,input_subsetter)
+        dinput,file_lines,HEM = read_ATM_qfit_file(input_file, input_subsetter)
     elif OIB in ('LVIS','LVGH'):
         # load IceBridge LVIS data from input_file
-        dinput,file_lines,HEM = read_LVIS_HDF5_file(input_file,input_subsetter)
+        dinput,file_lines,HEM = read_LVIS_HDF5_file(input_file, input_subsetter)
 
     # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
     # J2000: seconds since 2000-01-01 12:00:00 UTC
@@ -491,10 +503,11 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     file_format = '{0}_NASA_EQUILIBRIUM_TIDES_WGS84_{1}{2}{3}{4}{5:05.0f}.H5'
     FILENAME = file_format.format(hem_flag[HEM],OIB,YY1,MM1,DD1,JJ1)
     # print file information
-    logger.info(f'\t{os.path.join(DIRECTORY,FILENAME)}')
+    output_file = DIRECTORY.pathjoin(FILENAME)
+    logger.info(f'\t{str(output_file)}')
 
     # open output HDF5 file
-    fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')
+    fid = h5py.File(output_file, mode='w')
 
     # predict long-period equilibrium tides at time
     dinput['tide_lpe'] = pyTMD.predict.equilibrium_tide(tide_time + deltat,
@@ -527,7 +540,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     fid.attrs['processing_level'] = '4'
     fid.attrs['date_created'] = time.strftime('%Y-%m-%d',time.localtime())
     # add attributes for input file
-    fid.attrs['elevation_file'] = os.path.basename(input_file)
+    fid.attrs['lineage'] = input_file.name
     # add geospatial and temporal attributes
     fid.attrs['geospatial_lat_min'] = dinput['lat'].min()
     fid.attrs['geospatial_lat_max'] = dinput['lat'].max()
@@ -560,7 +573,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE
-    os.chmod(os.path.join(DIRECTORY,FILENAME), MODE)
+    output_file.chmod(MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -573,7 +586,7 @@ def arguments():
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line options
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=str, nargs='+',
         help='Input Operation IceBridge file to run')
     # verbosity settings
     parser.add_argument('--verbose','-V',
