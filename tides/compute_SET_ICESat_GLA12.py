@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_SET_ICESat_GLA12.py
-Written by Tyler Sutterley (03/2023)
+Written by Tyler Sutterley (04/2023)
 Calculates radial olid Earth tide displacements for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
     elevation data following IERS Convention (2010) guidelines
@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
     predict.py: calculates solid Earth tides
 
 UPDATE HISTORY:
+    Updated 04/2023: added permanent tide system offset (free-to-mean)
     Written 03/2023
 """
 from __future__ import print_function
@@ -40,7 +41,6 @@ import pathlib
 import argparse
 import warnings
 import numpy as np
-import scipy.interpolate
 import grounding_zones as gz
 
 # attempt imports
@@ -161,6 +161,9 @@ def compute_SET_ICESat(INPUT_FILE, TIDE_SYSTEM=None,
     # replace fill values
     tide_se.mask = np.isnan(tide_se.data) | (elev_40HZ == fv)
     tide_se.data[tide_se.mask] = tide_se.fill_value
+    # calculate permanent tide offset (meters)
+    tide_se_free2mean = 0.06029 - \
+        0.180873*np.sin(lat_40HZ*np.pi/180.0)**2
 
     # copy variables for outputting to HDF5 file
     IS_gla12_tide = dict(Data_40HZ={})
@@ -258,6 +261,20 @@ def compute_SET_ICESat(INPUT_FILE, TIDE_SYSTEM=None,
     IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_erElv']['reference'] = \
         'https://doi.org/10.1029/97JB01515'
     IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_erElv']['coordinates'] = \
+        "../DS_UTCTime_40"
+    # computed solid earth permanent tide offset
+    IS_gla12_tide['Data_40HZ']['Geophysical']['d_erf2mElv'] = tide_se_free2mean
+    IS_gla12_fill['Data_40HZ']['Geophysical']['d_erf2mElv'] = None
+    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_erf2mElv'] = {}
+    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_erf2mElv']['units'] = "meters"
+    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_erf2mElv']['long_name'] = \
+        "Solid Earth Tide Free-to-Mean conversion"
+    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_erf2mElv']['description'] = \
+        ('Additive value to convert solid earth tide from the tide_free system to '
+         'the mean_tide system')
+    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_erf2mElv']['reference'] = \
+        'https://doi.org/10.1029/97JB01515'
+    IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_erf2mElv']['coordinates'] = \
         "../DS_UTCTime_40"
 
     # close the input HDF5 file

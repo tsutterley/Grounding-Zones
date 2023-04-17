@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_SET_icebridge_data.py
-Written by Tyler Sutterley (03/2023)
+Written by Tyler Sutterley (04/2023)
 Calculates radial solid Earth tide displacements for correcting Operation
     IceBridge elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
@@ -32,6 +32,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 04/2023: added permanent tide system offset (free-to-mean)
     Written 03/2023
 """
 from __future__ import print_function
@@ -438,6 +439,15 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None,
     attrib['tide_earth']['reference'] = 'https://doi.org/10.1029/97JB01515'
     attrib['tide_earth']['units'] = 'meters'
     attrib['tide_earth']['_FillValue'] = fill_value
+    # solid earth permanent tide offset
+    attrib['tide_earth_free2mean'] = {}
+    attrib['tide_earth_free2mean']['long_name'] = \
+        'Solid_Earth_Tide_Free-to-Mean_conversion'
+    attrib['tide_earth_free2mean']['description'] = ('Additive_value_to_convert_'
+        'solid_earth_tide_from_the_tide_free_system_to_the_mean_tide_system')
+    attrib['tide_earth_free2mean']['reference'] = 'https://doi.org/10.1029/97JB01515'
+    attrib['tide_earth_free2mean']['units'] = 'meters'
+    attrib['tide_earth_free2mean']['_FillValue'] = fill_value
 
     # extract information from input file
     # acquisition year, month and day
@@ -504,6 +514,9 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None,
         a_axis=units.a_axis, flat=units.flat)
     # remove effects of original topography
     dinput['tide_earth'] = drad - dinput['data']
+    # calculate permanent tide offset (meters)
+    dinput['tide_earth_free2mean'] = 0.06029 - \
+        0.180873*np.sin(dinput['lat']*np.pi/180.0)**2
 
     # output solid earth tide HDF5 file
     # form: rg_NASA_SOLID_EARTH_TIDE_WGS84_fl1yyyymmddjjjjj.H5
