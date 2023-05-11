@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -50,6 +50,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
@@ -131,13 +132,9 @@ def fit_tides_ICESat2(tide_dir, FILE,
 
     # height threshold (filter points below 0m elevation)
     THRESHOLD = 0.0
-    #  maximum height sigmas allowed in tidal adjustment fit
+    # maximum height sigmas allowed in tidal adjustment fit
     sigma_tolerance = 0.5
     output_tolerance = 0.5
-
-    # number of GPS seconds between the GPS epoch
-    # and ATLAS Standard Data Product (SDP) epoch
-    atlas_sdp_gps_epoch = mds1['ancillary_data']['atlas_sdp_gps_epoch']
 
     # copy variables for outputting to HDF5 file
     IS2_atl11_tide = {}
@@ -333,17 +330,15 @@ def fit_tides_ICESat2(tide_dir, FILE,
             val.mask[:] |= (h_corr[group].data == h_corr[group].fill_value)
             val.data[val.mask] = val.fill_value
 
-        # allocate for output tide times
-        tide_time = {}
+        # allocate for output timescales
+        timescale = {}
         # calculate tides for along-track and across-track data
         for track in ['AT','XT']:
-            # convert time from ATLAS SDP to days relative to Jan 1, 1992
-            gps_seconds = atlas_sdp_gps_epoch + delta_time[track]
-            leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
-            utc_seconds = gps_seconds - leap_seconds
-            tide_time[track] = is2tk.time.convert_delta_time(utc_seconds,
-                epoch1=pyTMD.time._gps_epoch, epoch2=pyTMD.time._tide_epoch,
-                scale=1.0/86400.0)
+            # create timescale from ATLAS Standard Epoch time
+            # GPS seconds since 2018-01-01 00:00:00 UTC
+            timescale[track] = pyTMD.time.timescale().from_deltatime(
+                delta_time[track], epoch=pyTMD.time._atlas_sdp_epoch,
+                standard='GPS')
 
         # for each ATL11 segment
         for s in range(n_points):
@@ -371,9 +366,9 @@ def fit_tides_ICESat2(tide_dir, FILE,
             # height referenced to geoid
             h1 = h_corr['AT'].data[s,i1] - geoid_h[s]
             h2 = np.atleast_1d(h_corr['XT'].data[i2]) - geoid_h[s]
-            # tide time
-            t1 = tide_time['AT'].data[s,i1]
-            t2 = np.atleast_1d(tide_time['XT'].data[i2])
+            # tide times
+            t1 = timescale['AT'].tide[s,i1]
+            t2 = timescale['XT'].tide[i2]
             # combined tide and dac height
             ot1 = tide_ocean['AT'].data[s,i1] + IB['AT'].data[s,i1]
             ot2 = np.atleast_1d(tide_ocean['XT'].data[i2] + IB['XT'].data[i2])

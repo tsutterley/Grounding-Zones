@@ -21,6 +21,6 @@ Calling Sequence
 References
 ##########
 
-.. [Pritchard2009] H. D. Pritchard, R. J. Arthern, D. G. Vaughan, and L. A. Edwards, "Extensive dynamic thinning on the margins of the Greenland and Antarctic ice sheets", *Nature*, 461(7266), 971--975, (2009). `doi:10.1038/nature08471 <https://doi.org/10.1038/nature08471>`_
+.. [Pritchard2009] H. D. Pritchard, R. J. Arthern, D. G. Vaughan, and L. A. Edwards, "Extensive dynamic thinning on the margins of the Greenland and Antarctic ice sheets", *Nature*, 461(7266), 971--975, (2009). `doi: 10.1038/nature08471 <https://doi.org/10.1038/nature08471>`_
 
-.. [Smith2017] B. E. Smith, N. Gourmelen, A. Huth, and I. Joughin, "Connected subglacial lake drainage beneath Thwaites Glacier, West Antarctica", *The Cryosphere*, 11(1), 451--467, (2017). `doi:10.5194/tc-11-451-2017 <https://doi.org/10.5194/tc-11-451-2017>`_
+.. [Smith2017] B. E. Smith, N. Gourmelen, A. Huth, and I. Joughin, "Connected subglacial lake drainage beneath Thwaites Glacier, West Antarctica", *The Cryosphere*, 11(1), 451--467, (2017). `doi: 10.5194/tc-11-451-2017 <https://doi.org/10.5194/tc-11-451-2017>`_

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL03.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Calculates tidal elevations for correcting ICESat-2 photon height data
 Calculated at ATL03 segment level using reference photon geolocation and time
 Segment level corrections can be applied to the individual photon events (PEs)
@@ -60,6 +60,7 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
         use read and interpolation scheme for tidal constituents
@@ -178,12 +179,6 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         file_format = '{0}_{1}{2}_TIDES_{3}{4}{5}{6}{7}{8}_{9}{10}{11}_{12}_{13}{14}.h5'
         OUTPUT_FILE = file_format.format(*args)
 
-    # number of GPS seconds between the GPS epoch
-    # and ATLAS Standard Data Product (SDP) epoch
-    atlas_sdp_gps_epoch = IS2_atl03_mds['ancillary_data']['atlas_sdp_gps_epoch']
-    # delta time (TT - UT1) file
-    delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-
     # read tidal constants
     if model.format in ('OTIS','ATLAS','ESR'):
         constituents = pyTMD.io.OTIS.read_constants(model.grid_file,
@@ -246,12 +241,10 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         # invalid value
         fv = attrs['geolocation']['sigma_h']['_FillValue']
 
-        # convert time from ATLAS SDP to days relative to Jan 1, 1992
-        gps_seconds = atlas_sdp_gps_epoch + delta_time
-        leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
-        tide_time = pyTMD.time.convert_delta_time(gps_seconds-leap_seconds,
-            epoch1=pyTMD.time._gps_epoch, epoch2=pyTMD.time._tide_epoch,
-            scale=1.0/86400.0)
+        # create timescale from ATLAS Standard Epoch time
+        # GPS seconds since 2018-01-01 00:00:00 UTC
+        timescale = pyTMD.time.timescale().from_deltatime(delta_time,
+            epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
 
         # interpolate tidal constants to grid points
         if model.format in ('OTIS','ATLAS','ESR'):
@@ -259,25 +252,25 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                 constituents, model.projection, type=model.type,
                 method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
             # use delta time at 2000.0 to match TMD outputs
-            deltat = np.zeros_like(tide_time)
+            deltat = np.zeros((n_seg))
         elif (model.format == 'netcdf'):
             amp,ph,D = pyTMD.io.ATLAS.interpolate_constants(lon, lat,
                 constituents, type=model.type, method=METHOD,
                 extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
             # use delta time at 2000.0 to match TMD outputs
-            deltat = np.zeros_like(tide_time)
+            deltat = np.zeros((n_seg))
         elif (model.format == 'GOT'):
             amp,ph = pyTMD.io.GOT.interpolate_constants(lon, lat,
                 constituents, method=METHOD, extrapolate=EXTRAPOLATE,
                 cutoff=CUTOFF, scale=model.scale)
-            # interpolate delta times from calendar dates to tide time
-            deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
+            # delta time (TT - UT1)
+            deltat = timescale.tt_ut1
         elif (model.format == 'FES'):
             amp,ph = pyTMD.io.FES.interpolate_constants(lon, lat,
                 constituents, method=METHOD, extrapolate=EXTRAPOLATE,
                 cutoff=CUTOFF, scale=model.scale)
-            # interpolate delta times from calendar dates to tide time
-            deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
+            # delta time (TT - UT1)
+            deltat = timescale.tt_ut1
 
         # calculate complex phase in radians for Euler's
         cph = -1j*ph*np.pi/180.0
@@ -287,9 +280,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         # predict tidal elevations at time and infer minor corrections
         tide = np.ma.empty((n_seg),fill_value=fv)
         tide.mask = np.any(hc.mask,axis=1)
-        tide.data[:] = pyTMD.predict.drift(tide_time, hc, c,
+        tide.data[:] = pyTMD.predict.drift(timescale.tide, hc, c,
             deltat=deltat, corrections=model.format)
-        minor = pyTMD.predict.infer_minor(tide_time, hc, c,
+        minor = pyTMD.predict.infer_minor(timescale.tide, hc, c,
             deltat=deltat, corrections=model.format)
         tide.data[:] += minor.data[:]
         # replace masked and nan values with fill value

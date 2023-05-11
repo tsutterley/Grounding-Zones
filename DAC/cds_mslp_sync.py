@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 u"""
-cds_mslp_retrieve.py (11/2022)
+cds_mslp_retrieve.py
+Written by Tyler Sutterley (04/2023)
 Retrieves ERA5 mean sea level pressure reanalysis datasets from the CDS Web API
 https://cds.climate.copernicus.eu/user/register
 https://cds.climate.copernicus.eu/cdsapp/#!/terms/licence-to-use-copernicus-products
@@ -30,6 +31,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/cdsapi/
 
 UPDATE HISTORY:
+    Updated 04/2023: using pathlib to define and expand paths
     Updated 11/2022: use f-strings for formatting verbose or ascii output
     Updated 07/2022: place cdsapi import within try/except statement
     Updated 05/2022: use argparse descriptions within sphinx documentation
@@ -49,6 +51,7 @@ from __future__ import print_function
 
 import os
 import time
+import pathlib
 import argparse
 import warnings
 # attempt imports
@@ -76,8 +79,8 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
     # mean sea level pressure field
     surface_variable_dict['MSL'] = 'mean_sea_level_pressure'
     # setup output directory and recursively create if currently non-existent
-    ddir = os.path.join(base_dir,MODEL)
-    os.makedirs(ddir, MODE) if not os.access(ddir, os.F_OK) else None
+    ddir = pathlib.Path(base_dir).joinpath(MODEL).expanduser().absolute()
+    ddir.mkdir(mode=MODE, parents=True, exist_ok=True)
 
     # for each year
     for y in YEAR:
@@ -89,7 +92,7 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
         # for each surface variable to retrieve
         for surf in SURFACE:
             # output filename
-            output_surface_file = f"{MODEL}-Monthly-{surf}-{y:4d}.nc"
+            FILE = ddir.joinpath(f"{MODEL}-Monthly-{surf}-{y:4d}.nc")
             server.retrieve('reanalysis-era5-single-levels-monthly-means', {
                 "year": str(y),
                 'month': months,
@@ -98,13 +101,13 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
                 'variable': surface_variable_dict[surf],
                 "format" : "netcdf",
                 'product_type': 'monthly_averaged_reanalysis',
-            }, os.path.join(ddir,output_surface_file))
+            }, FILE)
             # change the permissions mode to MODE
-            os.chmod(os.path.join(ddir,output_surface_file), MODE)
+            FILE.chmod(MODE)
 
     # if retrieving the model invariant parameters
     if INVARIANT:
-        output_invariant_file = f'{MODEL}-Invariant-Parameters.nc'
+        FILE = ddir.joinpath(f'{MODEL}-Invariant-Parameters.nc')
         server.retrieve('reanalysis-era5-single-levels-monthly-means', {
             "class": model_class,
             "dataset": model_dataset,
@@ -124,9 +127,9 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
             ],
             'product_type': 'monthly_averaged_reanalysis',
             "format" : "netcdf",
-        }, os.path.join(ddir,output_invariant_file))
+        }, FILE)
         # change the permissions mode to MODE
-        os.chmod(os.path.join(ddir,output_invariant_file), MODE)
+        FILE.chmod(MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -145,8 +148,7 @@ def arguments():
         help='CDS api key')
     # working data directory
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # years to retrieve
     now = time.gmtime()

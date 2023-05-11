@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 aviso_dac_sync.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (04/2023)
 
 Syncs the dynamic atmospheric correction (DAC) from AVISO
     https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/
@@ -26,6 +26,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the directories and files synced
 
 UPDATE HISTORY:
+    Updated 04/2023: using pathlib to define and expand paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: use f-strings for formatting verbose or ascii output
     Updated 02/2022: using argparse to set command line parameters
@@ -41,6 +42,7 @@ import os
 import netrc
 import getpass
 import logging
+import pathlib
 import argparse
 import builtins
 import posixpath
@@ -62,12 +64,15 @@ def aviso_dac_sync(DIRECTORY,
     ftp = ftplib.FTP('ftp-access.aviso.altimetry.fr', timeout=TIMEOUT)
     ftp.login(USER, PASSWORD)
 
+    # output directory
+    DIRECTORY = pathlib.Path(DIRECTORY).expanduser().absolute()
+    DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
     # output of synchronized files
     if LOG:
         # format: AVISO_DAC_sync_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
         LOGFILE = f'AVISO_DAC_sync_{today}.log'
-        logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
+        logging.basicConfig(filename=DIRECTORY.joinpath(LOGFILE),
             level=logging.INFO)
         logging.info(f'AVISO DAC Sync Log ({today})')
 
@@ -88,9 +93,8 @@ def aviso_dac_sync(DIRECTORY,
         basename=True, pattern=R1, sort=True)
     for Y in YEARS:
         # remote and local directory for data product of year
-        local_dir = os.path.join(DIRECTORY,Y)
         # check if local directory exists and recursively create if not
-        os.makedirs(local_dir,MODE) if not os.path.exists(local_dir) else None
+        DIRECTORY.joinpath(Y).mkdir(mode=MODE, exist_ok=True)
         # get filenames from remote directory
         remote_files,remote_mtimes = gz.utilities.ftp_list(
             [ftp.host,'auxiliary','dac','dac_delayed_global',Y],
@@ -99,14 +103,14 @@ def aviso_dac_sync(DIRECTORY,
         for fi,remote_mtime in zip(remote_files,remote_mtimes):
             # extract filename from regex object
             remote_path = [ftp.host,'auxiliary','dac','dac_delayed_global',Y,fi]
-            local_file = os.path.join(local_dir,fi)
+            local_file = DIRECTORY.joinpath(Y,fi)
             ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
                 LIST=LIST, CLOBBER=CLOBBER, MODE=MODE)
     # close the ftp connection
     ftp.quit()
     # close log file and set permissions level to MODE
     if LOG:
-        os.chmod(os.path.join(DIRECTORY,LOGFILE), MODE)
+        DIRECTORY.joinpath(LOGFILE).chmod(MODE)
 
 # PURPOSE: pull file from a remote host checking if file exists locally
 # and if the remote file is newer than the local file
@@ -116,9 +120,9 @@ def ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
     TEST = False
     OVERWRITE = ' (clobber)'
     # check if local version of file exists
-    if os.access(local_file, os.F_OK):
+    if local_file.exists():
         # check last modification time of local file
-        local_mtime = os.stat(local_file).st_mtime
+        local_mtime = local_file.stat().st_mtime
         # if remote file is newer: overwrite the local file
         if (gz.utilities.even(remote_mtime) >
             gz.utilities.even(local_mtime)):
@@ -141,8 +145,8 @@ def ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
             with open(local_file, 'wb') as f:
                 ftp.retrbinary(f'RETR {remote_file}', f.write)
             # keep remote modification time of file and local access time
-            os.utime(local_file, (os.stat(local_file).st_atime, remote_mtime))
-            os.chmod(local_file, MODE)
+            os.utime(local_file, (local_file.stat().st_atime, remote_mtime))
+            local_file.chmod(MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -161,13 +165,11 @@ def arguments():
         type=str, default=os.environ.get('AVISO_PASSWORD'),
         help='Password for AVISO Login')
     parser.add_argument('--netrc','-N',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.path.join(os.path.expanduser('~'),'.netrc'),
+        type=pathlib.Path, default=pathlib.Path().home().joinpath('.netrc'),
         help='Path to .netrc file for authentication')
     # working data directory
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # years of data to sync
     parser.add_argument('--year','-Y',
@@ -204,12 +206,12 @@ def main():
     # AVISO ftp hostname
     HOST = 'ftp-access.aviso.altimetry.fr'
     # get authentication
-    if not args.user and not os.access(args.netrc,os.F_OK):
+    if not args.user and not args.netrc.exists():
         # check that AVISO credentials were entered
         args.user = builtins.input(f'Username for {HOST}: ')
         # enter password securely from command-line
         args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
-    elif os.access(args.netrc, os.F_OK):
+    elif args.netrc.exists():
         args.user,_,args.password = netrc.netrc(args.netrc).authenticators(HOST)
     elif args.user and not args.password:
         # enter password securely from command-line

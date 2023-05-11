@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_OPT_icebridge_data.py
-Written by Tyler Sutterley (03/2023)
+Written by Tyler Sutterley (05/2023)
 Calculates radial ocean pole tide displacements for correcting Operation
     IceBridge elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
@@ -41,6 +41,8 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
+        use defaults from eop module for pole tide and EOP files
     Updated 03/2023: added option for changing the IERS mean pole convention
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
@@ -509,14 +511,16 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
     # extract lat/lon
     lon = dinput['lon'][:]
     lat = dinput['lat'][:]
-    # convert time from UTC time of day to modified julian days (MJD)
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    t = dinput['time'][:]/86400.0 + 51544.5
-    # convert from MJD to calendar dates
-    YY,MM,DD,HH,MN,SS = pyTMD.time.convert_julian(t + 2400000.5, format='tuple')
-    # convert calendar dates into year decimal
-    tdec = pyTMD.time.convert_calendar_decimal(YY, MM, day=DD,
-        hour=HH, minute=MN, second=SS)
+    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
+    timescale = pyTMD.time.timescale().from_deltatime(dinput['time'],
+        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    # convert dynamic time to Modified Julian Days (MJD)
+    MJD = timescale.tt - 2400000.5
+    # convert Julian days to calendar dates
+    Y,M,D,h,m,s = pyTMD.time.convert_julian(timescale.tt, format='tuple')
+    # calculate time in year-decimal format
+    time_decimal = pyTMD.time.convert_calendar_decimal(Y,M,day=D,
+        hour=h,minute=m,second=s)
     # elevation
     h1 = dinput['data'][:]
 
@@ -531,6 +535,8 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
     rho_w = 1025.0
     # tidal love number differential (1 + kl - hl) for pole tide frequencies
     gamma = 0.6870 + 0.0036j
+    # bad value
+    fill_value = -9999.0
 
     # convert from geodetic latitude to geocentric latitude
     # calculate X, Y and Z from geodetic latitude and longitude
@@ -543,23 +549,6 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
     Hp = np.sqrt(8.0*np.pi/15.0)*(units.omega**2*units.a_axis**4)/units.GM
     K = 4.0*np.pi*units.G*rho_w*Hp*units.a_axis/(3.0*ge)
     K1 = 4.0*np.pi*units.G*rho_w*Hp*units.a_axis**3/(3.0*units.GM)
-
-    # read ocean pole tide map from Desai (2002)
-    ocean_pole_tide_file = pyTMD.utilities.get_data_path(['data',
-        'opoleloadcoefcmcor.txt.gz'])
-    iur,iun,iue,ilon,ilat = pyTMD.io.ocean_pole_tide(ocean_pole_tide_file)
-
-    # pole tide files (mean and daily)
-    mean_pole_file = pyTMD.utilities.get_data_path(['data','mean-pole.tab'])
-    pole_tide_file = pyTMD.utilities.get_data_path(['data','finals.all'])
-
-    # read IERS daily polar motion values
-    EOP = pyTMD.eop.iers_daily_EOP(pole_tide_file)
-    # create cubic spline interpolations of daily polar motion values
-    xSPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['x'],k=3,s=0)
-    ySPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['y'],k=3,s=0)
-    # bad value
-    fill_value = -9999.0
 
     # output ocean pole tide HDF5 file
     # form: rg_NASA_OCEAN_POLE_TIDE_WGS84_fl1yyyymmddjjjjj.H5
@@ -580,6 +569,8 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
     # open output HDF5 file
     fid = h5py.File(output_file, mode='w')
 
+    # read ocean pole tide map from Desai (2002)
+    iur, iun, iue, ilon, ilat = pyTMD.io.ocean_pole_tide()
     # interpolate ocean pole tide map from Desai (2002)
     if (METHOD == 'spline'):
         # use scipy bivariate splines to interpolate to output points
@@ -596,12 +587,11 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
             iur[:,::-1], method=METHOD)
         UR = r1.__call__(np.c_[lon,latitude_geocentric])
 
-    # calculate angular coordinates of mean pole at time tdec
-    mpx,mpy,fl = pyTMD.eop.iers_mean_pole(mean_pole_file, tdec, CONVENTION)
-    # interpolate daily polar motion values to t using cubic splines
-    px = xSPL(t)
-    py = ySPL(t)
-    # calculate differentials from mean pole positions
+    # calculate angular coordinates of mean/secular pole at time
+    mpx, mpy, fl = pyTMD.eop.iers_mean_pole(time_decimal, convention=CONVENTION)
+    # read and interpolate IERS daily polar motion values
+    px, py = pyTMD.eop.iers_polar_motion(MJD, k=3, s=0)
+    # calculate differentials from mean/secular pole positions
     mx = px - mpx
     my = -(py - mpy)
     # calculate radial displacement at time
@@ -650,12 +640,10 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
     fid.attrs['geospatial_lon_units'] = "degrees_east"
     fid.attrs['geospatial_ellipsoid'] = "WGS84"
     fid.attrs['time_type'] = 'UTC'
-
-    # convert start/end time from MJD into Julian days
-    JD_start = np.min(t) + 2400000.5
-    JD_end = np.max(t) + 2400000.5
+    # get time range as Julian days
+    time_julian = np.array([np.min(timescale.ut1), np.max(timescale.ut1)])
     # convert to calendar date
-    cal = pyTMD.time.convert_julian(np.array([JD_start,JD_end]),astype=int)
+    cal = pyTMD.time.convert_julian(time_julian, astype=int)
     # add attributes with measurement date start, end and duration
     args = (cal['hour'][0],cal['minute'][0],cal['second'][0])
     fid.attrs['RangeBeginningTime'] = '{0:02d}:{1:02d}:{2:02d}'.format(*args)
@@ -665,7 +653,7 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
     fid.attrs['RangeBeginningDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
     args = (cal['year'][-1],cal['month'][-1],cal['day'][-1])
     fid.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
-    duration = np.round(JD_end*86400.0 - JD_start*86400.0)
+    duration = np.round(time_julian[-1]*86400.0 - time_julian[0]*86400.0)
     fid.attrs['DurationTimeSeconds'] =f'{duration:0.0f}'
     # add software information
     fid.attrs['software_reference'] = pyTMD.version.project_name

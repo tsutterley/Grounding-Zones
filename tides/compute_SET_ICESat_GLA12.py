@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_SET_ICESat_GLA12.py
-Written by Tyler Sutterley (04/2023)
+Written by Tyler Sutterley (05/2023)
 Calculates radial olid Earth tide displacements for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
     elevation data following IERS Convention (2010) guidelines
@@ -29,6 +29,8 @@ PROGRAM DEPENDENCIES:
     predict.py: calculates solid Earth tides
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
+        add option for using higher resolution ephemerides from JPL
     Updated 04/2023: added permanent tide system offset (free-to-mean)
     Written 03/2023
 """
@@ -59,7 +61,7 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # compute solid Earth tide radial displacements at points and times
-def compute_SET_ICESat(INPUT_FILE, TIDE_SYSTEM=None,
+def compute_SET_ICESat(INPUT_FILE, TIDE_SYSTEM=None, EPHEMERIDES=None,
     VERBOSE=False, MODE=0o775):
 
     # create logger for verbosity level
@@ -116,16 +118,11 @@ def compute_SET_ICESat(INPUT_FILE, TIDE_SYSTEM=None,
     elev_TPX = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'][:].copy()
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
-    # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    t = pyTMD.time.convert_delta_time(DS_UTCTime_40HZ[:],
-        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch,
-        scale=1.0/86400.0)
-    # interpolate delta times from calendar dates to tide time
-    delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-    deltat = pyTMD.time.interpolate_delta_time(delta_file, t)
-    # convert time to Modified Julian Days (MJD) for ephemerides
-    MJD = t + deltat + 48622.0
+    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
+    timescale = pyTMD.time.timescale().from_deltatime(DS_UTCTime_40HZ[:],
+        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    # convert tide times to dynamical time
+    tide_time = timescale.tide + timescale.tt_ut1
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
     topex = pyTMD.constants('TOPEX')
@@ -140,19 +137,25 @@ def compute_SET_ICESat(INPUT_FILE, TIDE_SYSTEM=None,
     # convert input coordinates to cartesian
     X, Y, Z = pyTMD.spatial.to_cartesian(lon_40HZ, lat_40HZ, h=elev_40HZ,
         a_axis=wgs84.a_axis, flat=wgs84.flat)
-    # get low-resolution solar and lunar ephemerides
-    SX, SY, SZ = pyTMD.astro.solar_ecef(MJD)
-    LX, LY, LZ = pyTMD.astro.lunar_ecef(MJD)
+    # compute ephemerides for lunisolar coordinates
+    if (EPHEMERIDES.lower() == 'approximate'):
+        # get low-resolution solar and lunar ephemerides
+        SX, SY, SZ = pyTMD.astro.solar_ecef(timescale.MJD)
+        LX, LY, LZ = pyTMD.astro.lunar_ecef(timescale.MJD)
+    elif (EPHEMERIDES.upper() == 'JPL'):
+        # compute solar and lunar ephemerides from JPL kernel
+        SX, SY, SZ = pyTMD.astro.solar_ephemerides(timescale.MJD)
+        LX, LY, LZ = pyTMD.astro.lunar_ephemerides(timescale.MJD)
     # convert coordinates to column arrays
     XYZ = np.c_[X, Y, Z]
     SXYZ = np.c_[SX, SY, SZ]
     LXYZ = np.c_[LX, LY, LZ]
     # predict solid earth tides (cartesian)
-    dxi = pyTMD.predict.solid_earth_tide(MJD,
+    dxi = pyTMD.predict.solid_earth_tide(tide_time,
         XYZ, SXYZ, LXYZ, a_axis=wgs84.a_axis,
         tide_system=TIDE_SYSTEM)
     # calculate radial component of solid earth tides
-    dln,dlt,drad = pyTMD.spatial.to_geodetic(
+    dln, dlt, drad = pyTMD.spatial.to_geodetic(
         X + dxi[:,0], Y + dxi[:,1], Z + dxi[:,2],
         a_axis=wgs84.a_axis, flat=wgs84.flat)
     # remove effects of original topography
@@ -386,6 +389,10 @@ def arguments():
     parser.add_argument('--tide-system','-p',
         type=str, choices=('tide_free','mean_tide'), default='tide_free',
         help='Permanent tide system for output values')
+    # method for calculating lunisolar ephemerides
+    parser.add_argument('--ephemerides','-c',
+        type=str, choices=('approximate','JPL'), default='approximate',
+        help='Method for calculating lunisolar ephemerides')
     # verbosity settings
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -407,6 +414,7 @@ def main():
     for FILE in args.infile:
         compute_SET_ICESat(FILE,
             TIDE_SYSTEM=args.tide_system,
+            EPHEMERIDES=args.ephemerides,
             VERBOSE=args.verbose,
             MODE=args.mode)
 

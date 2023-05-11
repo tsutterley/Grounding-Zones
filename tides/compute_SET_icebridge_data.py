@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_SET_icebridge_data.py
-Written by Tyler Sutterley (04/2023)
+Written by Tyler Sutterley (05/2023)
 Calculates radial solid Earth tide displacements for correcting Operation
     IceBridge elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
@@ -32,6 +32,8 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
+        add option for using higher resolution ephemerides from JPL
     Updated 04/2023: added permanent tide system offset (free-to-mean)
     Written 03/2023
 """
@@ -375,7 +377,7 @@ def read_LVIS_HDF5_file(input_file, input_subsetter):
 
 # PURPOSE: read Operation IceBridge data from NSIDC
 # compute solid earth tide radial displacements at data points and times
-def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None,
+def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
     VERBOSE=False, MODE=0o775):
 
     # create logger for verbosity level
@@ -483,29 +485,30 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None,
 
     # earth and physical parameters for WGS84 ellipsoid
     units = pyTMD.constants('WGS84')
-    # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    t = pyTMD.time.convert_delta_time(dinput['time'],
-        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch,
-        scale=1.0/86400.0)
-    # interpolate delta times from calendar dates to tide time
-    delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-    deltat = pyTMD.time.interpolate_delta_time(delta_file, t)
-    # convert time to Modified Julian Days (MJD) for ephemerides
-    MJD = t + deltat + 48622.0
+    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
+    timescale = pyTMD.time.timescale().from_deltatime(dinput['time'],
+        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    # convert tide times to dynamical time
+    tide_time = timescale.tide + timescale.tt_ut1
 
     # convert input coordinates to cartesian
     X, Y, Z = pyTMD.spatial.to_cartesian(dinput['lon'], dinput['lat'],
         h=dinput['data'], a_axis=units.a_axis, flat=units.flat)
-    # get low-resolution solar and lunar ephemerides
-    SX, SY, SZ = pyTMD.astro.solar_ecef(MJD)
-    LX, LY, LZ = pyTMD.astro.lunar_ecef(MJD)
+    # compute ephemerides for lunisolar coordinates
+    if (EPHEMERIDES.lower() == 'approximate'):
+        # get low-resolution solar and lunar ephemerides
+        SX, SY, SZ = pyTMD.astro.solar_ecef(timescale.MJD)
+        LX, LY, LZ = pyTMD.astro.lunar_ecef(timescale.MJD)
+    elif (EPHEMERIDES.upper() == 'JPL'):
+        # compute solar and lunar ephemerides from JPL kernel
+        SX, SY, SZ = pyTMD.astro.solar_ephemerides(timescale.MJD)
+        LX, LY, LZ = pyTMD.astro.lunar_ephemerides(timescale.MJD)
     # convert coordinates to column arrays
     XYZ = np.c_[X, Y, Z]
     SXYZ = np.c_[SX, SY, SZ]
     LXYZ = np.c_[LX, LY, LZ]
     # predict solid earth tides (cartesian)
-    dxi = pyTMD.predict.solid_earth_tide(MJD,
+    dxi = pyTMD.predict.solid_earth_tide(tide_time,
         XYZ, SXYZ, LXYZ, a_axis=units.a_axis,
         tide_system=TIDE_SYSTEM)
     # calculate radial component of solid earth tides
@@ -573,12 +576,10 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None,
     fid.attrs['geospatial_lon_units'] = "degrees_east"
     fid.attrs['geospatial_ellipsoid'] = "WGS84"
     fid.attrs['time_type'] = 'UTC'
-
-    # convert start/end time from MJD into Julian days
-    JD_start = np.min(t) + 2400000.5
-    JD_end = np.max(t) + 2400000.5
+    # get time range as Julian days
+    time_julian = np.array([np.min(timescale.ut1), np.max(timescale.ut1)])
     # convert to calendar date
-    cal = pyTMD.time.convert_julian(np.array([JD_start,JD_end]),astype=int)
+    cal = pyTMD.time.convert_julian(time_julian, astype=int)
     # add attributes with measurement date start, end and duration
     args = (cal['hour'][0],cal['minute'][0],cal['second'][0])
     fid.attrs['RangeBeginningTime'] = '{0:02d}:{1:02d}:{2:02d}'.format(*args)
@@ -588,7 +589,7 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None,
     fid.attrs['RangeBeginningDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
     args = (cal['year'][-1],cal['month'][-1],cal['day'][-1])
     fid.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
-    duration = np.round(JD_end*86400.0 - JD_start*86400.0)
+    duration = np.round(time_julian[-1]*86400.0 - time_julian[0]*86400.0)
     fid.attrs['DurationTimeSeconds'] =f'{duration:0.0f}'
     # add software information
     fid.attrs['software_reference'] = pyTMD.version.project_name
@@ -616,6 +617,10 @@ def arguments():
     parser.add_argument('--tide-system','-p',
         type=str, choices=('tide_free','mean_tide'), default='tide_free',
         help='Permanent tide system for output values')
+    # method for calculating lunisolar ephemerides
+    parser.add_argument('--ephemerides','-c',
+        type=str, choices=('approximate','JPL'), default='approximate',
+        help='Method for calculating lunisolar ephemerides')
     # verbosity settings
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -637,6 +642,7 @@ def main():
     for arg in args.infile:
         compute_SET_icebridge_data(arg,
             TIDE_SYSTEM=args.tide_system,
+            EPHEMERIDES=args.ephemerides,
             VERBOSE=args.verbose,
             MODE=args.mode)
 

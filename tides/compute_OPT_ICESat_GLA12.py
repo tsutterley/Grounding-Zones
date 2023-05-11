@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_OPT_ICESat_GLA12.py
-Written by Tyler Sutterley (03/2023)
+Written by Tyler Sutterley (05/2023)
 Calculates radial ocean pole tide displacements for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
     elevation data following IERS Convention (2010) guidelines
@@ -38,13 +38,15 @@ PROGRAM DEPENDENCIES:
     io/ocean_pole_tide.py: read ocean pole load tide map from IERS
 
 REFERENCES:
-    S Desai, "Observing the pole tide with satellite altimetry", Journal of
+    S. Desai, "Observing the pole tide with satellite altimetry", Journal of
         Geophysical Research: Oceans, 107(C11), 2002. doi: 10.1029/2001JC001224
-    S Desai, J Wahr and B Beckley "Revisiting the pole tide for and from
+    S. Desai, J Wahr and B Beckley "Revisiting the pole tide for and from
         satellite altimetry", Journal of Geodesy, 89(12), p1233-1243, 2015.
         doi: 10.1007/s00190-015-0848-7
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
+        use defaults from eop module for pole tide and EOP files
     Updated 03/2023: added option for changing the IERS mean pole convention
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
@@ -146,14 +148,16 @@ def compute_OPT_ICESat(INPUT_FILE, CONVENTION=None, METHOD=None,
     elev_TPX = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'][:].copy()
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
-    # convert time from UTC time of day to Modified Julian Days (MJD)
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    t = DS_UTCTime_40HZ[:]/86400.0 + 51544.5
-    # convert from MJD to calendar dates
-    YY,MM,DD,HH,MN,SS = pyTMD.time.convert_julian(t + 2400000.5, format='tuple')
-    # convert calendar dates into year decimal
-    tdec = pyTMD.time.convert_calendar_decimal(YY, MM, day=DD,
-        hour=HH, minute=MN, second=SS)
+    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
+    timescale = pyTMD.time.timescale().from_deltatime(DS_UTCTime_40HZ[:],
+        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    # convert dynamic time to Modified Julian Days (MJD)
+    MJD = timescale.tt - 2400000.5
+    # convert Julian days to calendar dates
+    Y,M,D,h,m,s = pyTMD.time.convert_julian(timescale.tt, format='tuple')
+    # calculate time in year-decimal format
+    time_decimal = pyTMD.time.convert_calendar_decimal(Y,M,day=D,
+        hour=h,minute=m,second=s)
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
     topex = pyTMD.constants('TOPEX')
@@ -187,21 +191,16 @@ def compute_OPT_ICESat(INPUT_FILE, CONVENTION=None, METHOD=None,
     K = 4.0*np.pi*wgs84.G*rho_w*Hp*wgs84.a_axis/(3.0*ge)
     K1 = 4.0*np.pi*wgs84.G*rho_w*Hp*wgs84.a_axis**3/(3.0*wgs84.GM)
 
+    # calculate angular coordinates of mean/secular pole at time
+    mpx, mpy, fl = pyTMD.eop.iers_mean_pole(time_decimal, convention=CONVENTION)
+    # read and interpolate IERS daily polar motion values
+    px, py = pyTMD.eop.iers_polar_motion(MJD, k=3, s=0)
+    # calculate differentials from mean/secular pole positions
+    mx = px - mpx
+    my = -(py - mpy)
+
     # read ocean pole tide map from Desai (2002)
-    ocean_pole_tide_file = pyTMD.utilities.get_data_path(['data',
-        'opoleloadcoefcmcor.txt.gz'])
-    iur,iun,iue,ilon,ilat = pyTMD.io.ocean_pole_tide(ocean_pole_tide_file)
-
-    # pole tide files (mean and daily)
-    mean_pole_file = pyTMD.utilities.get_data_path(['data','mean-pole.tab'])
-    pole_tide_file = pyTMD.utilities.get_data_path(['data','finals.all'])
-
-    # read IERS daily polar motion values
-    EOP = pyTMD.eop.iers_daily_EOP(pole_tide_file)
-    # create cubic spline interpolations of daily polar motion values
-    xSPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['x'],k=3,s=0)
-    ySPL = scipy.interpolate.UnivariateSpline(EOP['MJD'],EOP['y'],k=3,s=0)
-
+    iur, iun, iue, ilon, ilat = pyTMD.io.ocean_pole_tide()
     # interpolate ocean pole tide map from Desai (2002)
     if (METHOD == 'spline'):
         # use scipy bivariate splines to interpolate to output points
@@ -218,14 +217,6 @@ def compute_OPT_ICESat(INPUT_FILE, CONVENTION=None, METHOD=None,
             iur[:,::-1], method=METHOD)
         UR = r1.__call__(np.c_[lon_40HZ,latitude_geocentric])
 
-    # calculate angular coordinates of mean pole at time tdec
-    mpx,mpy,fl = pyTMD.eop.iers_mean_pole(mean_pole_file, tdec, CONVENTION)
-    # interpolate daily polar motion values to t using cubic splines
-    px = xSPL(t)
-    py = ySPL(t)
-    # calculate differentials from mean pole positions
-    mx = px - mpx
-    my = -(py - mpy)
     # calculate radial displacement at time
     Urad = np.ma.zeros((n_40HZ),fill_value=fv)
     Urad.data[:] = K*atr*np.real((mx*gamma.real + my*gamma.imag)*UR.real +

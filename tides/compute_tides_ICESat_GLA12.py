@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat_GLA12.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Calculates tidal elevations for correcting ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -59,6 +59,7 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
         refactored pyTMD tide model structure
@@ -204,35 +205,32 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     topex = pyTMD.constants('TOPEX')
     wgs84 = pyTMD.constants('WGS84')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
+    lat_40HZ, elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
         topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
 
-    # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    tide_time = pyTMD.time.convert_delta_time(DS_UTCTime_40HZ,
-        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch,
-        scale=1.0/86400.0)
-    # delta time (TT - UT1) file
-    delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
+    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
+    timescale = pyTMD.time.timescale().from_deltatime(DS_UTCTime_40HZ[:],
+        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+
     # read tidal constants and interpolate to grid points
     if model.format in ('OTIS','ATLAS','ESR'):
         amp,ph,D,c = pyTMD.io.OTIS.extract_constants(lon_40HZ, lat_40HZ,
             model.grid_file, model.model_file, model.projection,
             type=model.type, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, grid=model.format, apply_flexure=APPLY_FLEXURE)
-        deltat = np.zeros_like(tide_time)
+        deltat = np.zeros((n_40HZ))
     elif (model.format == 'netcdf'):
         amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(lon_40HZ, lat_40HZ,
             model.grid_file, model.model_file, type=model.type,
             method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
             scale=model.scale, compressed=model.compressed)
-        deltat = np.zeros_like(tide_time)
+        deltat = np.zeros((n_40HZ))
     elif (model.format == 'GOT'):
         amp,ph,c = pyTMD.io.GOT.extract_constants(lon_40HZ, lat_40HZ,
             model.model_file, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
-        # interpolate delta times from calendar dates to tide time
-        deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
+        # delta time (TT - UT1)
+        deltat = timescale.tt_ut1
     elif (model.format == 'FES'):
         amp,ph = pyTMD.io.FES.extract_constants(lon_40HZ, lat_40HZ,
             model.model_file, type=model.type, version=model.version,
@@ -240,8 +238,8 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
             scale=model.scale, compressed=model.compressed)
         # available model constituents
         c = model.constituents
-        # interpolate delta times from calendar dates to tide time
-        deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
+        # delta time (TT - UT1)
+        deltat = timescale.tt_ut1
 
     # calculate complex phase in radians for Euler's
     cph = -1j*ph*np.pi/180.0
@@ -251,9 +249,9 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     # predict tidal elevations at time and infer minor corrections
     tide = np.ma.empty((n_40HZ),fill_value=fv)
     tide.mask = np.any(hc.mask,axis=1)
-    tide.data[:] = pyTMD.predict.drift(tide_time, hc, c,
+    tide.data[:] = pyTMD.predict.drift(timescale.tide, hc, c,
         deltat=deltat, corrections=model.format)
-    minor = pyTMD.predict.infer_minor(tide_time, hc, c,
+    minor = pyTMD.predict.infer_minor(timescale.tide, hc, c,
         deltat=deltat, corrections=model.format)
     tide.data[:] += minor.data[:]
     # replace masked and nan values with fill value

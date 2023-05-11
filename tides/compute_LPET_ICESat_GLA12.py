@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_ICESat_GLA12.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Calculates long-period equilibrium tidal elevations for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
 Will calculate the long-period tides for all GLAS elevations and not just
@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
     predict.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
         refactored pyTMD tide model structure
@@ -135,17 +136,14 @@ def compute_LPET_ICESat(INPUT_FILE, VERBOSE=False, MODE=0o775):
         wgs84.a_axis, wgs84.flat,
         eps=1e-12, itmax=10)
 
-    # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    tide_time = pyTMD.time.convert_delta_time(DS_UTCTime_40HZ,
-        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch,
-        scale=1.0/86400.0)
-    # interpolate delta times from calendar dates to tide time
-    delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-    deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
+    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
+    timescale = pyTMD.time.timescale().from_deltatime(DS_UTCTime_40HZ[:],
+        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    # convert tide times to dynamical time
+    tide_time = timescale.tide + timescale.tt_ut1
 
     # predict long-period equilibrium tides at latitudes and time
-    tide_lpe = pyTMD.predict.equilibrium_tide(tide_time + deltat, lat_40HZ)
+    tide_lpe = pyTMD.predict.equilibrium_tide(tide_time, lat_40HZ)
 
     # copy variables for outputting to HDF5 file
     IS_gla12_tide = dict(Data_40HZ={})

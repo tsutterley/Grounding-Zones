@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_icebridge_data.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Calculates long-period equilibrium tidal elevations for correcting Operation
     IceBridge elevation data
 
@@ -32,6 +32,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
     Updated 12/2022: single implicit import of grounding zone tools
         refactored pyTMD tide model structure
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
@@ -481,14 +482,11 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
         # load IceBridge LVIS data from input_file
         dinput,file_lines,HEM = read_LVIS_HDF5_file(input_file, input_subsetter)
 
-    # convert time from J2000 to days relative to Jan 1, 1992 (48622mjd)
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    tide_time = pyTMD.time.convert_delta_time(dinput['time'],
-        epoch1=pyTMD.time._j2000_epoch, epoch2=pyTMD.time._tide_epoch,
-        scale=1.0/86400.0)
-    # interpolate delta times from calendar dates to tide time
-    delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-    deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
+    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
+    timescale = pyTMD.time.timescale().from_deltatime(dinput['time'],
+        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    # convert tide times to dynamical time
+    tide_time = timescale.tide + timescale.tt_ut1
 
     # output tidal HDF5 file
     # form: rg_NASA_model_EQUILIBRIUM_TIDES_WGS84_fl1yyyymmddjjjjj.H5
@@ -510,7 +508,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     fid = h5py.File(output_file, mode='w')
 
     # predict long-period equilibrium tides at time
-    dinput['tide_lpe'] = pyTMD.predict.equilibrium_tide(tide_time + deltat,
+    dinput['tide_lpe'] = pyTMD.predict.equilibrium_tide(tide_time,
         dinput['lat'])
 
     # output dictionary with HDF5 variables
@@ -550,12 +548,10 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     fid.attrs['geospatial_lon_units'] = "degrees_east"
     fid.attrs['geospatial_ellipsoid'] = "WGS84"
     fid.attrs['time_type'] = 'UTC'
-    # convert start/end time from days since 1992-01-01 into Julian days
-    time_range = np.array([np.min(tide_time),np.max(tide_time)])
-    time_julian = 2400000.5 + pyTMD.time.convert_delta_time(time_range,
-        epoch1=pyTMD.time._tide_epoch, epoch2=(1858,11,17,0,0,0), scale=1.0)
+    # get time range as Julian days
+    time_julian = np.array([np.min(timescale.ut1), np.max(timescale.ut1)])
     # convert to calendar date
-    cal = pyTMD.time.convert_julian(time_julian,astype=int)
+    cal = pyTMD.time.convert_julian(time_julian, astype=int)
     # add attributes with measurement date start, end and duration
     args = (cal['hour'][0],cal['minute'][0],cal['second'][0])
     fid.attrs['RangeBeginningTime'] = '{0:02d}:{1:02d}:{2:02d}'.format(*args)
