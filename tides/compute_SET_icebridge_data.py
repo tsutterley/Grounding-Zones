@@ -589,7 +589,7 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE
-    output_file.chmod(MODE)
+    output_file.chmod(mode=MODE)
 
 # PURPOSE: create argument parser
 def arguments():

@@ -805,7 +805,7 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL, RANGE=None,
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
         FILENAME=OUTPUT_FILE)
     # change the permissions mode
-    OUTPUT_FILE.chmod(MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the correction values for ICESat-2 data to HDF5
 def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,

@@ -106,10 +106,6 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
     # full path to output file
     OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
-    # number of GPS seconds between the GPS epoch
-    # and ATLAS Standard Data Product (SDP) epoch
-    atlas_sdp_gps_epoch = IS2_atl10_mds['ancillary_data']['atlas_sdp_gps_epoch']
-
     # copy variables for outputting to HDF5 file
     IS2_atl10_tide = {}
     IS2_atl10_fill = {}

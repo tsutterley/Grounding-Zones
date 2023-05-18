@@ -282,7 +282,7 @@ def filter_ICESat_GLA12(INPUT_FILE,
         FILENAME=OUTPUT_FILE,
         CLOBBER=True)
     # change the permissions mode
-    OUTPUT_FILE.chmod(MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the mask values for ICESat data to HDF5
 def HDF5_GLA12_mask_write(IS_gla12_tide, IS_gla12_attrs,

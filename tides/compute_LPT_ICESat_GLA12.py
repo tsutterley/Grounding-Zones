@@ -306,7 +306,7 @@ def compute_LPT_ICESat(INPUT_FILE, CONVENTION=None, VERBOSE=False, MODE=0o775):
         FILENAME=OUTPUT_FILE,
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)
     # change the permissions mode
-    OUTPUT_FILE.chmod(MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the tide values for ICESat data to HDF5
 def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,

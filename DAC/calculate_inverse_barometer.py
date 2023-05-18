@@ -266,7 +266,7 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
             TIME_UNITS=TIME_UNITS, TIME_LONGNAME=TIME_LONGNAME,
             UNITS=UNITS, DENSITY=DENSITY)
         # change permissions mode
-        OUTPUT_FILE.chmod(MODE)
+        OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: write output inverse barometer fields data to file
 def ncdf_IB_write(dinput, fill_value, FILENAME=None, IBNAME=None,

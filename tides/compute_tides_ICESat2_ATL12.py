@@ -567,7 +567,7 @@ def arguments():
         help='ICESat-2 ATL12 file to run')
     # directory with tide data
     parser.add_argument('--directory','-D',
-        type=pathlib.Path, default=pathlib.Path.cwd()
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # tide model to use
     group.add_argument('--tide','-T',

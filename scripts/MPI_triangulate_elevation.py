@@ -534,7 +534,7 @@ def main():
             n_1 = file_length(input_files[0],None)
         # early date strings omitted century and millenia (e.g. 93 for 1993)
         if (len(YYMMDD1) == 6):
-            year_two_digit,MM1,DD1 = YYMMDD2[:2],YYMMDD2[2:4],YYMMDD2[4:]
+            year_two_digit,MM1,DD1 = YYMMDD1[:2],YYMMDD1[2:4],YYMMDD1[4:]
             year_two_digit = float(year_two_digit)
             if (year_two_digit >= 90):
                 YY1 = f'{1900.0+year_two_digit:4.0f}'

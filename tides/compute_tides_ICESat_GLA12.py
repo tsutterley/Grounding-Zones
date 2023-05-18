@@ -371,7 +371,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
         FILENAME=OUTPUT_FILE,
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)
     # change the permissions mode
-    OUTPUT_FILE.chmod(MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the tide values for ICESat data to HDF5
 def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
@@ -479,7 +479,7 @@ def arguments():
         help='ICESat GLA12 file to run')
     # directory with tide data
     parser.add_argument('--directory','-D',
-        type=pathlib.Path, default=pathlib.Path.cwd()
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # tide model to use
     group.add_argument('--tide','-T',

@@ -103,7 +103,7 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
                 'product_type': 'monthly_averaged_reanalysis',
             }, FILE)
             # change the permissions mode to MODE
-            FILE.chmod(MODE)
+            FILE.chmod(mode=MODE)
 
     # if retrieving the model invariant parameters
     if INVARIANT:
@@ -129,7 +129,7 @@ def cds_mslp_retrieve(base_dir, server, YEAR,
             "format" : "netcdf",
         }, FILE)
         # change the permissions mode to MODE
-        FILE.chmod(MODE)
+        FILE.chmod(mode=MODE)
 
 # PURPOSE: create argument parser
 def arguments():

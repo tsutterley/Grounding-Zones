@@ -60,6 +60,7 @@ def aviso_dac_sync(DIRECTORY,
     LIST=False,
     MODE=None,
     CLOBBER=False):
+
     # connect and login to AVISO ftp server
     ftp = ftplib.FTP('ftp-access.aviso.altimetry.fr', timeout=TIMEOUT)
     ftp.login(USER, PASSWORD)
@@ -67,13 +68,13 @@ def aviso_dac_sync(DIRECTORY,
     # output directory
     DIRECTORY = pathlib.Path(DIRECTORY).expanduser().absolute()
     DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
+
     # output of synchronized files
     if LOG:
         # format: AVISO_DAC_sync_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
-        LOGFILE = f'AVISO_DAC_sync_{today}.log'
-        logging.basicConfig(filename=DIRECTORY.joinpath(LOGFILE),
-            level=logging.INFO)
+        LOGFILE = DIRECTORY.joinpath(f'AVISO_DAC_sync_{today}.log')
+        logging.basicConfig(filename=LOGFILE, level=logging.INFO)
         logging.info(f'AVISO DAC Sync Log ({today})')
 
     else:
@@ -110,7 +111,7 @@ def aviso_dac_sync(DIRECTORY,
     ftp.quit()
     # close log file and set permissions level to MODE
     if LOG:
-        DIRECTORY.joinpath(LOGFILE).chmod(MODE)
+        LOGFILE.chmod(mode=MODE)
 
 # PURPOSE: pull file from a remote host checking if file exists locally
 # and if the remote file is newer than the local file
@@ -120,6 +121,7 @@ def ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
     TEST = False
     OVERWRITE = ' (clobber)'
     # check if local version of file exists
+    local_file = pathlib.Path(local_file).expanduser
     if local_file.exists():
         # check last modification time of local file
         local_mtime = local_file.stat().st_mtime
@@ -146,7 +148,7 @@ def ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
                 ftp.retrbinary(f'RETR {remote_file}', f.write)
             # keep remote modification time of file and local access time
             os.utime(local_file, (local_file.stat().st_atime, remote_mtime))
-            local_file.chmod(MODE)
+            local_file.chmod(mode=MODE)
 
 # PURPOSE: create argument parser
 def arguments():

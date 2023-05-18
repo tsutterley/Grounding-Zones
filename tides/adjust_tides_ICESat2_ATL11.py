@@ -520,7 +520,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
         FILENAME=OUTPUT_FILE)
     # change the permissions mode
-    OUTPUT_FILE.chmod(MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the tide values for ICESat-2 data to HDF5
 def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,

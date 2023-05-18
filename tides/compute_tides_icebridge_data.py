@@ -678,7 +678,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE
-    output_file.chmod(MODE)
+    output_file.chmod(mode=MODE)
 
 # PURPOSE: create a list of available ocean and load tide models
 def get_available_models():
