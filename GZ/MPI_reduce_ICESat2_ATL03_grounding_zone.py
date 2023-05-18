@@ -531,7 +531,7 @@ def HDF5_ATL03_mask_write(IS2_atl03_mask, IS2_atl03_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL03 and ATL09 files
-    fileID.attrs['input_files'] = ','.join([os.path.basename(i) for i in INPUT])
+    fileID.attrs['lineage'] = ','.join([os.path.basename(i) for i in INPUT])
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for gtx in beams:

@@ -128,7 +128,7 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
         OUTPUT_FILE = file_format.format(*args)
 
     # read GLAH12 HDF5 file
-    fileID = h5py.File(INPUT_FILE,'r')
+    fileID = h5py.File(INPUT_FILE, mode='r')
     # get variables and attributes
     rec_ndx_40HZ = fileID['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
     # seconds since 2000-01-01 12:00:00 UTC (J2000)
@@ -193,7 +193,7 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     IS_gla12_geoid_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     # add attributes for input GLA12 file
-    IS_gla12_geoid_attrs['input_files'] = os.path.basename(INPUT_FILE)
+    IS_gla12_geoid_attrs['lineage'] = os.path.basename(INPUT_FILE)
     # update geospatial ranges for ellipsoid
     IS_gla12_geoid_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
     IS_gla12_geoid_attrs['geospatial_lat_max'] = np.max(lat_40HZ)

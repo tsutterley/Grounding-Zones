@@ -409,7 +409,7 @@ def HDF5_ATL10_geoid_write(IS2_atl10_geoid, IS2_atl10_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL10 file
-    fileID.attrs['input_files'] = os.path.basename(INPUT)
+    fileID.attrs['lineage'] = os.path.basename(INPUT)
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for gtx in beams:

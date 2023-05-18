@@ -612,21 +612,12 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
     fid.attrs['geospatial_lon_units'] = "degrees_east"
     fid.attrs['geospatial_ellipsoid'] = "WGS84"
     fid.attrs['time_type'] = 'UTC'
-    # get time range as Julian days
-    time_julian = np.array([np.min(timescale.ut1), np.max(timescale.ut1)])
-    # convert to calendar date
-    cal = pyTMD.time.convert_julian(time_julian, astype=int)
     # add attributes with measurement date start, end and duration
-    args = (cal['hour'][0],cal['minute'][0],cal['second'][0])
-    fid.attrs['RangeBeginningTime'] = '{0:02d}:{1:02d}:{2:02d}'.format(*args)
-    args = (cal['hour'][-1],cal['minute'][-1],cal['second'][-1])
-    fid.attrs['RangeEndingTime'] = '{0:02d}:{1:02d}:{2:02d}'.format(*args)
-    args = (cal['year'][0],cal['month'][0],cal['day'][0])
-    fid.attrs['RangeBeginningDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
-    args = (cal['year'][-1],cal['month'][-1],cal['day'][-1])
-    fid.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
-    duration = np.round(time_julian[-1]*86400.0 - time_julian[0]*86400.0)
-    fid.attrs['DurationTimeSeconds'] =f'{duration:0.0f}'
+    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
+    fid.attrs['time_coverage_start'] = dt[0]
+    fid.attrs['time_coverage_end'] = dt[-1]
+    duration = timescale.day*(np.max(timescale.MJD) - np.min(timescale.MJD))
+    fid.attrs['time_coverage_duration'] = f'{duration:0.0f}'
     # add software information
     fid.attrs['software_reference'] = pyTMD.version.project_name
     fid.attrs['software_version'] = pyTMD.version.full_version

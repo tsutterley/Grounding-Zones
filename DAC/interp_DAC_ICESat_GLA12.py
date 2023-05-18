@@ -2,7 +2,7 @@
 u"""
 interp_DAC_ICESat_GLAH12.py
 Written by Tyler Sutterley (12/2022)
-Calculates and interpolates dynamic atmospheric corrections for ICESat/GLAS
+Interpolates AVISO dynamic atmospheric corrections (DAC) for ICESat/GLAS
     L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
 
 Data will be interpolated for all valid points
@@ -49,11 +49,11 @@ UPDATE HISTORY:
 """
 from __future__ import print_function
 
-import os
 import re
 import bz2
 import pyproj
 import logging
+import pathlib
 import argparse
 import warnings
 import numpy as np
@@ -92,9 +92,11 @@ def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
-    # get directory from INPUT_FILE
-    logging.info(f'{INPUT_FILE} -->')
-    DIRECTORY = os.path.dirname(INPUT_FILE)
+    # directory setup
+    base_dir = pathlib.Path(base_dir).expanduser().absolute()
+    # full path to input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
 
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
@@ -113,20 +115,21 @@ def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     # GRAN:  Granule version number
     # TYPE:  File type
     try:
-        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(INPUT_FILE).pop()
+        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
+            rx.findall(INPUT_FILE.name).pop()
     except:
         # output dynamic atmospheric correction HDF5 file (generic)
-        fileBasename,fileExtension = os.path.splitext(INPUT_FILE)
-        args = (fileBasename,fileExtension)
-        OUTPUT_FILE = '{0}_DAC{1}'.format(*args)
+        FILENAME = f'{INPUT_FILE.stem}_DAC{INPUT_FILE.suffix}'
     else:
         # output dynamic atmospheric correction HDF5 file for NSIDC granules
         args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_DAC_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
-        OUTPUT_FILE = file_format.format(*args)
+        FILENAME = file_format.format(*args)
+    # full path to output file
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
     # read GLAH12 HDF5 file
-    fileID = h5py.File(INPUT_FILE,'r')
+    fileID = h5py.File(INPUT_FILE, mode='r')
     # get variables and attributes
     rec_ndx_40HZ = fileID['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
     # seconds since 2000-01-01 12:00:00 UTC (J2000)
@@ -139,9 +142,12 @@ def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     elev_TPX = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'][:].copy()
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
-    # convert time from J2000 to days relative to 1950-01-01 (MJD:33282)
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    t = DS_UTCTime_40HZ/86400.0 + 18262.5
+    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
+    timescale = pyTMD.time.timescale().from_deltatime(DS_UTCTime_40HZ[:],
+        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    # convert time to days relative to 1950-01-01 (MJD:33282)
+    t = timescale.to_deltatime(epoch=(1950,1,1,0,0,0))
+    YY = np.datetime_as_string(timescale.to_datetime(), unit='Y')
     # days and hours to read
     unique_hours = np.unique([np.floor(t*24.0/6.0)*6.0, np.ceil(t*24.0/6.0)*6.0])
     days,hours = (unique_hours // 24, unique_hours % 24)
@@ -169,13 +175,10 @@ def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     idac = np.ma.zeros((len(days),ny,nx))
     icjd = np.zeros((len(days)))
     for i,CJD in enumerate(days):
-        # convert from CNES Julians Day to calendar
-        YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(CJD + 2433282.5,
-            format='tuple')
         # input file for 6-hour period
         input_file = f'dac_dif_{CJD:0.0f}_{hours[i]:02.0f}.nc.bz2'
         # read bytes from compressed file
-        fd = bz2.BZ2File(os.path.join(base_dir,f'{YY:0.0f}',input_file))
+        fd = bz2.BZ2File(base_dir.joinpath(YY[i], input_file))
         # read netCDF file for time
         with netCDF4.Dataset('dac', mode='r', memory=fd.read()) as fid:
             ilon = fid['longitude'][:]
@@ -226,7 +229,7 @@ def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     IS_gla12_corr_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     # add attributes for input GLA12 file
-    IS_gla12_corr_attrs['input_files'] = os.path.basename(INPUT_FILE)
+    IS_gla12_corr_attrs['lineage'] = pathlib.Path(INPUT_FILE).name
     # update geospatial ranges for ellipsoid
     IS_gla12_corr_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
     IS_gla12_corr_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
@@ -299,10 +302,10 @@ def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     # print file information
     logging.info(f'\t{OUTPUT_FILE}')
     HDF5_GLA12_corr_write(IS_gla12_corr, IS_gla12_corr_attrs,
-        FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
+        FILENAME=OUTPUT_FILE,
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,OUTPUT_FILE), MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the correction values for ICESat data to HDF5
 def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
@@ -314,7 +317,8 @@ def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
     # create 40HZ HDF5 records
     h5 = dict(Data_40HZ={})
 
@@ -395,12 +399,11 @@ def arguments():
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat GLA12 file to run')
     # directory with reanalysis data
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # verbosity settings
     # verbose will output information about each output file

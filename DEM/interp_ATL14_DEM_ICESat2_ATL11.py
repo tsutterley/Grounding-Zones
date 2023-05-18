@@ -438,7 +438,7 @@ def HDF5_ATL11_dem_write(IS2_atl11_dem, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL11 files
-    fileID.attrs['input_files'] = ','.join([os.path.basename(i) for i in INPUT])
+    fileID.attrs['lineage'] = ','.join([os.path.basename(i) for i in INPUT])
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for ptx in pairs:
