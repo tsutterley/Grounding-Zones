@@ -42,6 +42,7 @@ REFERENCES:
 UPDATE HISTORY:
     Updated 05/2023: use timescale class for time conversion operations
         use defaults from eop module for pole tide and EOP files
+        using pathlib to define and operate on paths
     Updated 03/2023: added option for changing the IERS mean pole convention
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
@@ -94,7 +95,6 @@ def compute_LPT_ICESat(INPUT_FILE, CONVENTION=None, VERBOSE=False, MODE=0o775):
     # get directory from INPUT_FILE
     INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
     logger.info(f'{str(INPUT_FILE)} -->')
-    DIRECTORY = INPUT_FILE.parent
 
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
@@ -124,7 +124,7 @@ def compute_LPT_ICESat(INPUT_FILE, CONVENTION=None, VERBOSE=False, MODE=0o775):
         file_format = 'GLAH{0}_{1}_LPT_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
         FILENAME = file_format.format(*args)
     # full path to output file
-    OUTPUT_FILE = DIRECTORY.joinpath(FILENAME).expanduser().absolute()
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE, mode='r')

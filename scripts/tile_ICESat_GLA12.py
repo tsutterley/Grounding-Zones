@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_ICESat_GLA12.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Creates tile index files of ICESat/GLAS L2 GLA12 Antarctic and
     Greenland Ice Sheet elevation data
 
@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
     spatial: utilities for reading, writing and operating on spatial data
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         use constants class from pyTMD for ellipsoidal parameters
         single implicit import of grounding zone tools
@@ -67,7 +68,7 @@ warnings.filterwarnings("ignore")
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
     # check that file exists if entering with read mode
-    filename = pathlib.path(filename).expanduser().absolute()
+    filename = pathlib.Path(filename).expanduser().absolute()
     if kwargs['mode'] in ('r','r+') and not filename.exists():
         raise FileNotFoundError(filename)
     # attempt to open HDF5 file
@@ -95,8 +96,8 @@ def tile_ICESat_GLA12(input_file,
     # index directory for hemisphere
     index_directory = 'north' if (HEM == 'N') else 'south'
     # output directory and index file
-    input_file = pathlib.path(input_file).expanduser().absolute()
-    DIRECTORY = input_file.parent.joinpath(index_directory)
+    input_file = pathlib.Path(input_file).expanduser().absolute()
+    DIRECTORY = input_file.with_name(index_directory)
     output_file = DIRECTORY.joinpath(input_file.name)
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'

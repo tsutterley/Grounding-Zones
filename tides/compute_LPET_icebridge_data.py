@@ -33,6 +33,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2023: use timescale class for time conversion operations
+        using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored pyTMD tide model structure
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
@@ -501,7 +502,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     file_format = '{0}_NASA_EQUILIBRIUM_TIDES_WGS84_{1}{2}{3}{4}{5:05.0f}.H5'
     FILENAME = file_format.format(hem_flag[HEM],OIB,YY1,MM1,DD1,JJ1)
     # print file information
-    output_file = DIRECTORY.pathjoin(FILENAME)
+    output_file = DIRECTORY.joinpath(FILENAME)
     logger.info(f'\t{str(output_file)}')
 
     # open output HDF5 file

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 symbolic_ICESat_GLA12.py
-Written by Tyler Sutterley (04/2023)
+Written by Tyler Sutterley (05/2023)
 Creates symbolic links for ICESat/GLAS L2 GLA12 Antarctic and Greenland
     Ice Sheet elevation files organized by date
 
@@ -17,7 +17,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: permission mode of directories
 
 UPDATE HISTORY:
-    Updated 04/2023: use pathlib to find, operate on and construct paths
+    Updated 05/2023: using pathlib to define and operate on paths
     Updated 05/2022: use argparse descriptions within documentation
     Written 02/2022
 """
@@ -134,7 +134,7 @@ def symbolic_ICESat_GLA12(base_dir, incoming, MODE=0o775):
 def parse_GLA12_HDF5_file(input_file):
     attributes = {}
     # open input HDF5 file for reading
-    input_file = pathlib.path(input_file).expanduser().absolute()
+    input_file = pathlib.Path(input_file).expanduser().absolute()
     with h5py.File(input_file, mode='r') as fileID:
         # get inventory metadata
         for key,val in fileID['METADATA']['INVENTORYMETADATA'].attrs.items():

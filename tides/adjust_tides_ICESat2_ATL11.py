@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 adjust_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Applies interpolated tidal adjustment scale factors to
     ICESat-2 ATL11 annual land ice height data within
     ice sheet grounding zones
@@ -28,6 +28,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
@@ -81,14 +82,13 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     tide_reference = model.reference
 
     # read data from input file
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
     logger.info(f'{str(INPUT_FILE)} -->')
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
     IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
         is2tk.io.ATL11.read_granule(INPUT_FILE,
                                     ATTRIBUTES=True,
                                     CROSSOVERS=True)
-    # input directory from input file
-    DIRECTORY = INPUT_FILE.parent
+
     # flexure flag if being applied
     flexure_flag = '_FLEXURE'
     # extract parameters from ICESat-2 ATLAS HDF5 file name
@@ -99,12 +99,14 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     except:
         # output tide HDF5 file (generic)
         args = (INPUT_FILE.stem,model.name,flexure_flag,INPUT_FILE.suffix)
-        OUTPUT_FILE = '{0}_{1}{2}_TIDES{3}'.format(*args)
+        FILENAME = '{0}_{1}{2}_TIDES{3}'.format(*args)
     else:
         # output tide HDF5 file for ASAS/NSIDC granules
         args = (PRD,model.name,flexure_flag,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_{1}{2}_TIDES_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
-        OUTPUT_FILE = file_format.format(*args)
+        FILENAME = file_format.format(*args)
+    # full path to output file
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
     # read tide adjustment file
     adjustment = pyTMD.spatial.from_HDF5(adjustment_file,
@@ -213,7 +215,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
 
         # read tide model HDF5 file
         a3 = (PRD,TIDE_MODEL,'',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-        f3 = DIRECTORY.joinpath(file_format.format(*a3))
+        f3 = INPUT_FILE.with_name(file_format.format(*a3))
         # check that tide file exists
         try:
             mds3,attr3 = is2tk.io.ATL11.read_pair(f3, ptx,
@@ -511,16 +513,14 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
         IS2_atl11_tide_attrs[ptx][XT]['tide_adj']['coordinates'] = \
             "ref_pt delta_time latitude longitude"
 
-    # full path to output file
-    FILENAME = DIRECTORY.joinpath(OUTPUT_FILE)
     # print file information
-    logger.info(f'\t{str(FILENAME)}')
+    logger.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_tide_attrs,
         CLOBBER=True, INPUT=INPUT_FILE.name,
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=FILENAME)
+        FILENAME=OUTPUT_FILE)
     # change the permissions mode
-    FILENAME.chmod(MODE)
+    OUTPUT_FILE.chmod(MODE)
 
 # PURPOSE: outputting the tide values for ICESat-2 data to HDF5
 def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
@@ -643,7 +643,7 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL11 files
-    fileID.attrs['input_files'] = pathlib.Path(INPUT).name
+    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for ptx in pairs:

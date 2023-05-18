@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_icebridge_data.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Creates tile index files of Operation IceBridge elevation data
 
 INPUTS:
@@ -27,6 +27,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         single implicit import of grounding zone tools
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
@@ -38,11 +39,11 @@ UPDATE HISTORY:
     Written 10/2021
 """
 import sys
-import os
 import re
 import time
 import pyproj
 import logging
+import pathlib
 import argparse
 import warnings
 import collections
@@ -71,8 +72,9 @@ warnings.filterwarnings("ignore")
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
     # check that file exists if entering with read mode
-    if kwargs['mode'] in ('r','r+') and not os.access(filename, os.F_OK):
-        raise FileNotFoundError(filename)
+    filename = pathlib.path(filename).expanduser().absolute()
+    if kwargs['mode'] in ('r','r+') and not filename.exists():
+        raise FileNotFoundError(str(filename))
     # attempt to open HDF5 file
     while True:
         try:
@@ -172,7 +174,7 @@ def read_ATM_qfit_file(input_file, input_subsetter):
     # Version 2 of ATM QFIT files (HDF5)
     elif (SFX == 'h5'):
         # Open the HDF5 file for reading
-        fileID = h5py.File(os.path.expanduser(input_file), 'r')
+        fileID = h5py.File(input_file, 'r')
         # number of lines of data within file
         file_lines = file_length(input_file,input_subsetter,HDF5='elevation')
         # create output variables with length equal to input elevation
@@ -389,7 +391,7 @@ def tile_icebridge_data(arg,
 
     # extract file name and subsetter indices lists
     match_object = re.match(r'(.*?)(\[(.*?)\])?$',arg)
-    input_file = os.path.expanduser(match_object.group(1))
+    input_file = pathlib.Path(match_object.group(1)).expanduser().absolute()
     # subset input file to indices
     if match_object.group(2):
         # decompress ranges and add to list
@@ -407,7 +409,7 @@ def tile_icebridge_data(arg,
     regex['LVIS'] = r'(BLVIS2|BVLIS2|ILVIS2)_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5$'
     regex['LVGH'] = r'(ILVGH2)_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5$'
     for key,val in regex.items():
-        if re.match(val, os.path.basename(input_file)):
+        if re.match(val, input_file.name):
             OIB = key
 
     # extract information from first input file
@@ -479,16 +481,11 @@ def tile_icebridge_data(arg,
     # index directory for hemisphere
     index_directory = 'north' if (HEM == 'N') else 'south'
     # output directory and index file
-    DIRECTORY = os.path.dirname(input_file)
-    BASENAME = os.path.basename(input_file)
-    fileBasename,_ = os.path.splitext(BASENAME)
-    output_file = os.path.join(DIRECTORY, index_directory,
-        f'{fileBasename}.h5')
-
+    DIRECTORY = input_file.parent
+    output_file = DIRECTORY.joinpath(index_directory,
+        f'{input_file.stem}.h5')
     # create index directory for hemisphere
-    if not os.access(os.path.join(DIRECTORY,index_directory),os.F_OK):
-        os.makedirs(os.path.join(DIRECTORY,index_directory),
-            mode=MODE, exist_ok=True)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
 
     # indices of points in hemisphere
     valid, = np.nonzero(np.sign(dinput['lat']) == SIGN[HEM])
@@ -535,15 +532,15 @@ def tile_icebridge_data(arg,
         g2.attrs['spacing'] = SPACING
 
         # create merged tile file if not existing
-        tile_file = os.path.join(DIRECTORY,index_directory,
+        tile_file = DIRECTORY.joinpath(index_directory,
             f'{tile_group}.h5')
-        clobber = 'a' if os.access(tile_file, os.F_OK) else 'w'
+        clobber = 'a' if tile_file.exists() else 'w'
         # open output merged tile file
         f3 = multiprocess_h5py(tile_file, mode=clobber)
-        if BASENAME not in f3:
-            g3 = f3.create_group(BASENAME)
+        if input_file.stem not in f3:
+            g3 = f3.create_group(input_file.stem)
         else:
-            g3 = f3[BASENAME]
+            g3 = f3[input_file.stem]
         # add file-level variables and attributes
         if (clobber == 'w'):
             # create projection variable
@@ -606,7 +603,7 @@ def tile_icebridge_data(arg,
     # close the output file
     f2.close()
     # change the permissions mode of the output file
-    os.chmod(output_file, mode=MODE)
+    output_file.chmod(mode=MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -618,7 +615,7 @@ def arguments():
     # command line parameters
     # input operation icebridge files
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='Input Operation IceBridge file')
     # output grid spacing
     parser.add_argument('--spacing','-S',

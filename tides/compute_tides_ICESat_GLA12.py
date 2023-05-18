@@ -60,6 +60,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2023: use timescale class for time conversion operations
+        using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
         refactored pyTMD tide model structure
@@ -152,7 +153,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     # get directory from INPUT_FILE
     INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
     logger.info(f'{str(INPUT_FILE)} -->')
-    DIRECTORY = INPUT_FILE.parent
+
     # flexure flag if being applied
     flexure_flag = '_FLEXURE' if APPLY_FLEXURE and model.flexure else ''
     # compile regular expression operator for extracting information from file
@@ -184,7 +185,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
         file_format = 'GLAH{0}_{1}_{2}{3}_TIDES_{4}{5}{6}_{7}_{8}_{9}_{10}_{11}.h5'
         FILENAME = file_format.format(*args)
     # full path to output file
-    OUTPUT_FILE = DIRECTORY.joinpath(FILENAME).expanduser().absolute()
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE, mode='r')
@@ -478,7 +479,7 @@ def arguments():
         help='ICESat GLA12 file to run')
     # directory with tide data
     parser.add_argument('--directory','-D',
-        type=pathlib.Path,
+        type=pathlib.Path, default=pathlib.Path.cwd()
         help='Working data directory')
     # tide model to use
     group.add_argument('--tide','-T',

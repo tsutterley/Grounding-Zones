@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 utilities.py
-Written by Tyler Sutterley (01/2023)
+Written by Tyler Sutterley (05/2023)
 Download and management utilities for syncing time and auxiliary files
 Adds additional modules to the icesat2_toolkit utilities
 
@@ -10,14 +10,17 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and expand paths
     Updated 01/2023: add default ssl context attribute with protocol
     Updated 12/2022: functions for managing and maintaining git repositories
     Updated 05/2022: updated docstrings to numpy documentation format
     Updated 03/2021: add data path function for this set of utilities
     Written 01/2021
 """
-import os
+from __future__ import annotations
+
 import ssl
+import pathlib
 import inspect
 import warnings
 import lxml.etree
@@ -31,26 +34,30 @@ except (ImportError, ModuleNotFoundError) as exc:
 # ignore warnings
 warnings.filterwarnings("ignore")
 
-def get_data_path(relpath):
+# PURPOSE: get absolute path within a package from a relative path
+def get_data_path(relpath: list | str | pathlib.Path):
     """
     Get the absolute path within a package from a relative path
 
     Parameters
     ----------
-    relpath: str,
+    relpath: list, str or pathlib.Path
         relative path
     """
     # current file path
     filename = inspect.getframeinfo(inspect.currentframe()).filename
-    filepath = os.path.dirname(os.path.abspath(filename))
-    if isinstance(relpath,list):
+    filepath = pathlib.Path(filename).absolute().parent
+    if isinstance(relpath, list):
         # use *splat operator to extract from list
-        return os.path.join(filepath,*relpath)
-    elif isinstance(relpath,str):
-        return os.path.join(filepath,relpath)
+        return filepath.joinpath(*relpath)
+    elif isinstance(relpath, (str, pathlib.Path)):
+        return filepath.joinpath(relpath)
 
 # PURPOSE: get the git hash value
-def get_git_revision_hash(refname='HEAD', short=False):
+def get_git_revision_hash(
+        refname: str = 'HEAD',
+        short: bool = False
+    ):
     """
     Get the ``git`` hash value for a particular reference
 
@@ -63,8 +70,8 @@ def get_git_revision_hash(refname='HEAD', short=False):
     """
     # get path to .git directory from current file path
     filename = inspect.getframeinfo(inspect.currentframe()).filename
-    basepath = os.path.dirname(os.path.dirname(os.path.abspath(filename)))
-    gitpath = os.path.join(basepath,'.git')
+    basepath = pathlib.Path(filename).absolute().parent.parent
+    gitpath = basepath.joinpath('.git')
     # build command
     cmd = ['git', f'--git-dir={gitpath}', 'rev-parse']
     cmd.append('--short') if short else None
@@ -79,8 +86,8 @@ def get_git_status():
     """
     # get path to .git directory from current file path
     filename = inspect.getframeinfo(inspect.currentframe()).filename
-    basepath = os.path.dirname(os.path.dirname(os.path.abspath(filename)))
-    gitpath = os.path.join(basepath,'.git')
+    basepath = pathlib.Path(filename).absolute().parent.parent
+    gitpath = basepath.joinpath('.git')
     # build command
     cmd = ['git', f'--git-dir={gitpath}', 'status', '--porcelain']
     with warnings.catch_warnings():
@@ -106,9 +113,15 @@ def convert_arg_line_to_args(arg_line):
 _default_ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
 
 # PURPOSE: list a directory on Polar Geospatial Center https server
-def pgc_list(HOST, timeout=None, context=_default_ssl_context,
-    parser=lxml.etree.HTMLParser(), format='%Y-%m-%d %H:%M',
-    pattern='', sort=False):
+def pgc_list(
+        HOST: str | list,
+        timeout: int | None = None,
+        context = _default_ssl_context,
+        parser = lxml.etree.HTMLParser(),
+        format: str = '%Y-%m-%d %H:%M',
+        pattern: str = '',
+        sort: bool = False
+    ):
     """
     List a directory on Polar Geospatial Center (PGC) servers
 
@@ -144,14 +157,14 @@ def pgc_list(HOST, timeout=None, context=_default_ssl_context,
     # try listing from https
     try:
         # Create and submit request.
-        request=urllib2.Request(posixpath.join(*HOST))
-        response=urllib2.urlopen(request,context=context,timeout=timeout)
+        request = urllib2.Request(posixpath.join(*HOST))
+        response = urllib2.urlopen(request, timeout=timeout, context=context)
     except (urllib2.HTTPError, urllib2.URLError):
         colerror = 'List error from {0}'.format(posixpath.join(*HOST))
-        return (False,False,colerror)
+        return (False, False, colerror)
     else:
         # read and parse request for files (column names and modified times)
-        tree = lxml.etree.parse(response,parser)
+        tree = lxml.etree.parse(response, parser)
         colnames = [i.replace(posixpath.sep,'')
             for i in tree.xpath('//tr/td[not(@*)]//a/@href')]
         # get the Unix timestamp value for a modification time
@@ -170,4 +183,4 @@ def pgc_list(HOST, timeout=None, context=_default_ssl_context,
             colnames = [colnames[indice] for indice in i]
             lastmod = [lastmod[indice] for indice in i]
         # return the list of column names and last modified times
-        return (colnames,lastmod,None)
+        return (colnames, lastmod, None)

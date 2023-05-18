@@ -24,6 +24,7 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
@@ -34,11 +35,11 @@ UPDATE HISTORY:
     Written 12/2021
 """
 
-import os
 import re
 import time
 import pyproj
 import logging
+import pathlib
 import argparse
 import warnings
 import numpy as np
@@ -61,7 +62,8 @@ warnings.filterwarnings("ignore")
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
     # check that file exists if entering with read mode
-    if kwargs['mode'] in ('r','r+') and not os.access(filename, os.F_OK):
+    filename = pathlib.Path(filename).expanduser().absolute()
+    if kwargs['mode'] in ('r','r+') and not filename.exists():
         raise FileNotFoundError(filename)
     # attempt to open HDF5 file
     while True:
@@ -97,8 +99,8 @@ def interpolate_tide_adjustment(tile_file,
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
-    # directory with tile data
-    tile_directory = os.path.dirname(tile_file)
+    # input tile data file
+    tile_file = pathlib.Path(tile_file).expanduser().absolute()
     tile_file_format = 'E{0:0.0f}_N{1:0.0f}.h5'
     # get center coordinates of tile file
     # regular expression pattern for tile files
@@ -108,13 +110,13 @@ def interpolate_tide_adjustment(tile_file,
         r'(\d{3})_(\d{2})(.*?).h5$', re.VERBOSE)
     # directory with ATL11 data
     if DIRECTORY is None:
-        DIRECTORY = os.path.dirname(tile_directory)
+        DIRECTORY = tile_file.parents[1]
     # file format for mask and tide fit files
     file_format = '{0}_{1}{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
     # extract tile centers from filename
-    tile_centers = R1.findall(os.path.basename(tile_file)).pop()
-    xc,yc = 1000.0*np.array(tile_centers,dtype=np.float64)
-    logging.info('Tile File: {0}'.format(os.path.basename(tile_file)))
+    tile_centers = R1.findall(tile_file.name).pop()
+    xc, yc = 1000.0*np.array(tile_centers, dtype=np.float64)
+    logging.info('Tile File: {0}'.format(str(tile_file)))
 
     # grid dimensions
     xmin,xmax = xc + np.array([-0.5,0.5])*W
@@ -124,7 +126,7 @@ def interpolate_tide_adjustment(tile_file,
     ny = np.int64(W//dy) + 1
 
     # pyproj transformer for converting to polar stereographic
-    EPSG = dict(N=3413,S=3031)[HEM]
+    EPSG = dict(N=3413, S=3031)[HEM]
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(EPSG)
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
@@ -142,11 +144,12 @@ def interpolate_tide_adjustment(tile_file,
     for ii,jj in zip(d_i.ravel(), d_j.ravel()):
         # tile file for buffer
         tile = tile_file_format.format((xc+W*ii)/1e3, (yc+W*jj)/1e3)
-        if not os.access(os.path.join(tile_directory,tile), os.F_OK):
+        buffer_file = tile_file.with_name(tile)
+        if not buffer_file.exists():
             continue
         # read the HDF5 file
-        logging.info(f'Reading Buffer File: {tile}')
-        f1 = multiprocess_h5py(os.path.join(tile_directory,tile), mode='r')
+        logging.info(f'Reading Buffer File: {str(buffer_file)}')
+        f1 = multiprocess_h5py(buffer_file, mode='r')
         # find ATL11 files within tile
         ATL11_files = [f for f in f1.keys() if R2.match(f)]
         # read each ATL11 file and estimate errors
@@ -179,11 +182,12 @@ def interpolate_tide_adjustment(tile_file,
     for ii,jj in zip(d_i.ravel(), d_j.ravel()):
         # tile file for buffer
         tile = tile_file_format.format((xc+W*ii)/1e3, (yc+W*jj)/1e3)
-        if not os.access(os.path.join(tile_directory,tile), os.F_OK):
+        buffer_file = tile_file.with_name(tile)
+        if not buffer_file.exists():
             continue
         # read the HDF5 file
-        logging.info(f'Reading Buffer File: {tile}')
-        f1 = multiprocess_h5py(os.path.join(tile_directory,tile), mode='r')
+        logging.info(f'Reading Buffer File: {str(buffer_file)}')
+        f1 = multiprocess_h5py(buffer_file, mode='r')
         # find ATL11 files within tile
         ATL11_files = [f for f in f1.keys() if R2.match(f)]
         # read each ATL11 file and estimate errors
@@ -191,18 +195,18 @@ def interpolate_tide_adjustment(tile_file,
             # extract parameters from ATL11 filename
             PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX=R2.findall(ATL11).pop()
             # ATL11 flexure correction HDF5 file
-            FILE2 = file_format.format(PRD,TIDE_MODEL,'_FIT_TIDES',
-                TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
+            FILE2 = DIRECTORY.joinpath(file_format.format(PRD,TIDE_MODEL,
+                '_FIT_TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX))
             # ATL11 raster mask HDF5 file
-            FILE3 = file_format.format(PRD,'MASK','',
-                TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
+            FILE3 = DIRECTORY.joinpath(file_format.format(PRD,'MASK','',
+                TRK,GRAN,SCYC,ECYC,RL,VERS,AUX))
             # skip file if not currently accessible
-            if not os.access(os.path.join(DIRECTORY,FILE2), os.F_OK):
+            if not FILE2.exists():
                 continue
             # open ATL11 flexure correction HDF5 file
-            f2 = multiprocess_h5py(os.path.join(DIRECTORY,FILE2), mode='r')
+            f2 = multiprocess_h5py(FILE2, mode='r')
             # open ATL11 grounded mask HDF5 file
-            f3 = multiprocess_h5py(os.path.join(DIRECTORY,FILE3), mode='r')
+            f3 = multiprocess_h5py(FILE3, mode='r')
             # for each ATL11 beam pairs within the tile
             for ptx in f1[ATL11].keys():
                 # reference points and indices within tile
@@ -438,7 +442,7 @@ def interpolate_tide_adjustment(tile_file,
     # close the output file
     fileID.close()
     # change the permissions mode
-    os.chmod(tile_file, MODE)
+    tile_file.chmod(mode=MODE)
 
 # PURPOSE: create arguments parser
 def arguments():
@@ -451,11 +455,11 @@ def arguments():
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL11 tile file to run')
     # input ICESat-2 annual land ice height file directory
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        type=pathlib.Path,
         help='ICESat-2 ATL11 directory')
     # region of interest to run
     parser.add_argument('--hemisphere','-H',

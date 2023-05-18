@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_ICESat2_ATL11.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Calculates long-period equilibrium tidal elevations for correcting ICESat-2
     annual land ice height data
 Will calculate the long-period tides for all ATL11 segments and not just ocean
@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
     predict.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
@@ -46,9 +47,9 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import sys
-import os
 import re
 import logging
+import pathlib
 import argparse
 import datetime
 import warnings
@@ -84,12 +85,13 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
     logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
 
     # read data from input file
-    logger.info(f'{INPUT_FILE} -->')
+    logger.info(f'{str(INPUT_FILE)} -->')
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
     IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
         is2tk.io.ATL11.read_granule(INPUT_FILE,
                                     ATTRIBUTES=True,
                                     CROSSOVERS=True)
-    DIRECTORY = os.path.dirname(INPUT_FILE)
+
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$')
@@ -97,13 +99,14 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
         SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(INPUT_FILE).pop()
     except:
         # output long-period equilibrium tide HDF5 file (generic)
-        fileBasename,fileExtension = os.path.splitext(INPUT_FILE)
-        OUTPUT_FILE = '{0}_{1}{2}'.format(fileBasename,'LPET',fileExtension)
+        FILENAME = f'{INPUT_FILE.stem}_LPET{INPUT_FILE.suffix}'
     else:
         # output long-period equilibrium tide HDF5 file for ASAS/NSIDC granules
         args = (PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_LPET_{1}{2}_{3}{4}_{5}_{6}{7}.h5'
-        OUTPUT_FILE = file_format.format(*args)
+        FILENAME = file_format.format(*args)
+    # full path to output file
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
     # number of GPS seconds between the GPS epoch
     # and ATLAS Standard Data Product (SDP) epoch
@@ -441,13 +444,13 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
             "ref_pt delta_time latitude longitude"
 
     # print file information
-    logger.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
+    logger.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_tide_attrs,
-        CLOBBER=True, INPUT=os.path.basename(INPUT_FILE),
+        CLOBBER=True, INPUT=INPUT_FILE.name,
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE))
+        FILENAME=OUTPUT_FILE)
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,OUTPUT_FILE), MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the tide values for ICESat-2 data to HDF5
 def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
@@ -459,7 +462,8 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
 
     # create HDF5 records
     h5 = {}
@@ -569,7 +573,7 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL11 files
-    fileID.attrs['input_files'] = os.path.basename(INPUT)
+    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for ptx in pairs:
@@ -629,7 +633,7 @@ def arguments():
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL11 file to run')
     # verbosity settings
     # verbose will output information about each output file

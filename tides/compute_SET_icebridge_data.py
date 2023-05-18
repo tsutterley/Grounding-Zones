@@ -34,6 +34,7 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2023: use timescale class for time conversion operations
         add option for using higher resolution ephemerides from JPL
+        using pathlib to define and operate on paths
     Updated 04/2023: added permanent tide system offset (free-to-mean)
     Written 03/2023
 """
@@ -534,7 +535,7 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
     args = (hem_flag[HEM],'SOLID_EARTH_TIDE',OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}_WGS84_{2}{3}{4}{5}{6:05.0f}.H5'.format(*args)
     # print file information
-    output_file = DIRECTORY.pathjoin(FILENAME)
+    output_file = DIRECTORY.joinpath(FILENAME)
     logger.info(f'\t{str(output_file)}')
 
     # open output HDF5 file

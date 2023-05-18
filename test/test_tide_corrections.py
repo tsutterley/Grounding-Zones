@@ -29,8 +29,8 @@ def download_ATL03(username, password):
     # only download ATL03 file if not currently existing
     if not os.access(ATL03[-1], os.F_OK):
         # download an ATL03 file from NSIDC
-        is2tk.utilities.from_nsidc(ATL03,username=username,
-            password=password,local=ATL03[-1],verbose=True)
+        is2tk.utilities.from_nsidc(ATL03, username=username,
+            password=password, local=ATL03[-1], verbose=True)
         autoremove = True
     else:
         autoremove = False
@@ -45,7 +45,7 @@ def test_ATL03_equilibrium_tides():
     # path to local ATL03 granule
     granule = ATL03[-1]
     # read ATL03 file using HDF5 reader
-    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
+    IS2_atl03_mds, IS2_atl03_attrs, IS2_atl03_beams = \
         is2tk.io.ATL03.read_granule(granule, ATTRIBUTES=True, VERBOSE=True)
     # verify that data is imported correctly
     assert all(gtx in IS2_atl03_mds.keys() for gtx in IS2_atl03_beams)
@@ -87,7 +87,7 @@ def test_ATL03_load_pole_tide():
     # path to local ATL03 granule
     granule = ATL03[-1]
     # read ATL03 file using HDF5 reader
-    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
+    IS2_atl03_mds, IS2_atl03_attrs, IS2_atl03_beams = \
         is2tk.io.ATL03.read_granule(granule, ATTRIBUTES=True, VERBOSE=True)
     # verify that data is imported correctly
     assert all(gtx in IS2_atl03_mds.keys() for gtx in IS2_atl03_beams)
@@ -156,8 +156,8 @@ def download_ATL07(username, password):
     # only download ATL07 file if not currently existing
     if not os.access(ATL07[-1], os.F_OK):
         # download an ATL07 file from NSIDC
-        is2tk.utilities.from_nsidc(ATL07,username=username,
-            password=password,local=ATL07[-1],verbose=True)
+        is2tk.utilities.from_nsidc(ATL07, username=username,
+            password=password, local=ATL07[-1], verbose=True)
         autoremove = True
     else:
         autoremove = False
@@ -172,7 +172,7 @@ def test_ATL07_equilibrium_tides():
     # path to local ATL07 granule
     granule = ATL07[-1]
     # read ATL07 file using HDF5 reader
-    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
+    IS2_atl07_mds, IS2_atl07_attrs, IS2_atl07_beams = \
         is2tk.io.ATL07.read_granule(granule, ATTRIBUTES=True, VERBOSE=True)
     # verify that data is imported correctly
     assert all(gtx in IS2_atl07_mds.keys() for gtx in IS2_atl07_beams)

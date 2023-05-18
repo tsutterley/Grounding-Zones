@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_triangulate_elevation.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 
 Calculates interpolated elevations by triangulated irregular
     network meshing (TINs) to compare with an input file
@@ -44,6 +44,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: updated ATM1b read functions for distributed version
@@ -89,6 +90,7 @@ import re
 import time
 import pyproj
 import logging
+import pathlib
 import argparse
 import warnings
 import numpy as np
@@ -137,7 +139,7 @@ def arguments():
     )
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=str, nargs='+',
         help='Input files')
     # radial distance to determine points to triangulate (meters)
     parser.add_argument('--distance','-D',
@@ -483,7 +485,8 @@ def main():
     for arg in args.infile:
         # extract file name and subsetter indices lists
         match_object = re.match(r'(.*?)(\[(.*?)\])?$',arg)
-        input_files.append(os.path.expanduser(match_object.group(1)))
+        input_file = pathlib.Path(match_object.group(1)).expanduser().absolute()
+        input_files.append(input_file)
         # subset triangulated files to indices
         if match_object.group(2):
             # decompress ranges and add to list
@@ -499,22 +502,22 @@ def main():
     logging.info(input_files[0]) if (comm.rank == 0) else None
     info(comm.rank,comm.size)
 
-    # output directory for input_files[0]
-    icebridge_dir = os.path.dirname(input_files[0])
     # calculate if input files are from ATM or LVIS (+GH)
     regex = {}
     regex['ATM'] = r'(BLATM2|ILATM2)_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
     regex['ATM1b'] = r'(BLATM1b|ILATM1b)_(\d+)_(\d+)(.*?).(qi|TXT|h5)$'
     regex['LVIS'] = r'(BLVIS2|BVLIS2|ILVIS2)_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5$'
     regex['LVGH'] = r'(ILVGH2)_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5$'
+    for key,val in regex.items():
+        if re.match(val, input_files[0].name):
+            OIB1 = key
+        if re.match(val, input_files[1].name):
+            OIB2 = key
+
+    # full path for data directory
+    DIRECTORY = input_files[0].parent
     # output file formats
     file_format = '{0}_NASA_{1}_WGS84_{2}{3}{4}{5}{6:05.0f}-{7}{8}{9}{10}.H5'
-
-    for key,val in regex.items():
-        if re.match(val, os.path.basename(input_files[0])):
-            OIB1 = key
-        if re.match(val, os.path.basename(input_files[1])):
-            OIB2 = key
 
     # extract information from first input file
     # acquisition year, month and day
@@ -531,8 +534,12 @@ def main():
             n_1 = file_length(input_files[0],None)
         # early date strings omitted century and millenia (e.g. 93 for 1993)
         if (len(YYMMDD1) == 6):
-            SD1 = os.path.basename(os.path.dirname(input_files[0]))
-            YY1,MM1,DD1 = re.findall(r'(\d+)\.(\d+)\.(\d+)',SD1).pop()
+            year_two_digit,MM1,DD1 = YYMMDD2[:2],YYMMDD2[2:4],YYMMDD2[4:]
+            year_two_digit = float(year_two_digit)
+            if (year_two_digit >= 90):
+                YY1 = f'{1900.0+year_two_digit:4.0f}'
+            else:
+                YY1 = f'{2000.0+year_two_digit:4.0f}'
         elif (len(YYMMDD1) == 8):
             YY1,MM1,DD1 = YYMMDD1[:4],YYMMDD1[4:6],YYMMDD1[6:]
     elif OIB1 in ('LVIS','LVGH'):
@@ -542,8 +549,7 @@ def main():
 
     # if there are no data points in the input file (primary)
     if (n_1 == 0):
-        file1 = os.path.basename(input_files[0])
-        raise ValueError(f'No data points found in {file1}')
+        raise ValueError(f'No data points found in {input_files[0].name}')
 
     # extract information from second set of input files
     # acquisition year, month and day
@@ -563,8 +569,12 @@ def main():
                 for i,f in enumerate(input_files[1:])])
         # early date strings omitted century and millenia (e.g. 93 for 1993)
         if (len(YYMMDD2) == 6):
-            SD2 = os.path.basename(os.path.dirname(input_files[1]))
-            YY2,MM2,DD2 = re.findall(r'(\d+)\.(\d+)\.(\d+)',SD2).pop()
+            year_two_digit,MM2,DD2 = YYMMDD2[:2],YYMMDD2[2:4],YYMMDD2[4:]
+            year_two_digit = float(year_two_digit)
+            if (year_two_digit >= 90):
+                YY2 = f'{1900.0+year_two_digit:4.0f}'
+            else:
+                YY2 = f'{2000.0+year_two_digit:4.0f}'
         elif (len(YYMMDD2) == 8):
             YY2,MM2,DD2 = YYMMDD2[:4],YYMMDD2[4:6],YYMMDD2[6:]
     elif OIB2 in ('LVIS','LVGH'):
@@ -576,7 +586,7 @@ def main():
     # if there are no data points in the input files to be triangulated:
     # end program with error for set of input files
     if (n_2 == 0):
-        file2 = ','.join([os.path.basename(f) for f in input_files[1:]])
+        file2 = ','.join([f.name for f in input_files[1:]])
         raise ValueError(f'No data points found in {file2}')
 
     # read all input data on rank 0 (parent process)
@@ -748,15 +758,15 @@ def main():
             # fl1 and fl2 are the data flags (ATM, LVIS)
             # yymmddjjjjj is the year, month, day and second of input file
             # yymmdd is the year, month and day of the triangulated files
-            FILE = file_format.format(hem_flag[HEM],'TRIANGULATED',OIB1,
-                YY1,MM1,DD1,JJ1,OIB2,YY2,MM2,DD2)
+            FILE = DIRECTORY.joinpath(file_format.format(hem_flag[HEM],
+                'TRIANGULATED',OIB1,YY1,MM1,DD1,JJ1,OIB2,YY2,MM2,DD2))
             HDF5_triangulated_data(combined, MISSION=M2, INPUT=input_files,
-                FILENAME=os.path.join(icebridge_dir,FILE),
+                FILENAME=FILE,
                 FILL_VALUE=FILL_VALUE, CLOBBER=True)
             # print file name if verbose output is specified
-            logging.info(os.path.join(icebridge_dir,FILE))
+            logging.info(str(FILE))
             # change the permissions level to MODE
-            os.chmod(os.path.join(icebridge_dir,FILE), args.mode)
+            FILE.chmod(args.mode)
 
 # PURPOSE: triangulate elevation points to xpt and ypt
 def triangulate_elevation(X, Y, H, T, xpt, ypt, DISTANCE, RMS=None, ANGLE=120.):
@@ -1075,7 +1085,8 @@ def HDF5_triangulated_data(output_data, MISSION=None, INPUT=None, FILENAME='',
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser
+    fileID = h5py.File(FILENAME, clobber)
 
     # number of valid points
     n_valid = np.count_nonzero(output_data['data'] != FILL_VALUE)
@@ -1174,8 +1185,8 @@ def HDF5_triangulated_data(output_data, MISSION=None, INPUT=None, FILENAME='',
     fileID.attrs['instrument'] = instrument[MISSION]
     fileID.attrs['processing_level'] = '4'
     # add attributes for input elevation file and files triangulated
-    fileID.attrs['elevation_file'] = os.path.basename(INPUT[0])
-    input_elevation_files = ','.join([os.path.basename(f) for f in INPUT[1:]])
+    fileID.attrs['elevation_file'] = pathlib.Path(INPUT[0]).name
+    input_elevation_files = ','.join([pathlib.Path(f).name for f in INPUT[1:]])
     fileID.attrs['triangulated_files'] = input_elevation_files
     # add geospatial and temporal attributes
     fileID.attrs['geospatial_lat_min'] = output_data['lat'].min()
@@ -1190,8 +1201,8 @@ def HDF5_triangulated_data(output_data, MISSION=None, INPUT=None, FILENAME='',
     ind, = np.nonzero(output_data['time'] != FILL_VALUE)
     time_start = np.min(output_data['time'][ind])
     time_end = np.max(output_data['time'][ind])
-    JD_start = time_start/86400. + 2451545.
-    JD_end = time_end/86400. + 2451545.
+    JD_start = time_start/86400. + 2451545.0
+    JD_end = time_end/86400. + 2451545.0
     # convert from julian to calendar dates
     cal_date = is2tk.time.convert_julian(np.array([JD_start,JD_end]),
         ASTYPE=np.int64)

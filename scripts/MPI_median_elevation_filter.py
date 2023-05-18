@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_median_elevation_filter.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 
 Filters elevation change rates from triangulated Operation IceBridge data
     using an interquartile range algorithm described by Pritchard (2009)
@@ -50,6 +50,7 @@ REFERENCE:
     pp. 451-467 (2017).  https://doi.org/10.5194/tc-11-451-2017
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: updated ATM1b read functions for distributed version
@@ -99,6 +100,7 @@ import re
 import time
 import pyproj
 import logging
+import pathlib
 import argparse
 import warnings
 import numpy as np
@@ -147,7 +149,7 @@ def arguments():
     )
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=str, nargs='+',
         help='Input files')
     # radial distance to determine points to filter (25km)
     parser.add_argument('--distance','-D',
@@ -574,7 +576,8 @@ def main():
     for arg in args.infile:
         # extract file name and subsetter indices lists
         match_object = re.match(r'(.*?)(\[(.*?)\])?$',arg)
-        input_files.append(os.path.expanduser(match_object.group(1)))
+        input_file = pathlib.Path(match_object.group(1)).expanduser().absolute()
+        input_files.append(input_file)
         # subset auxiliary files to indices
         if match_object.group(2):
             # decompress ranges and add to list
@@ -607,11 +610,10 @@ def main():
     n_2 = np.sum([file_length(f,s,HDF5='data') for f,s in
         zip(input_files[1:],input_subsetter[1:])], dtype=np.int64)
 
+    # full path for data directory
+    DIRECTORY = input_files[0].parent
     # output mask format for each type
     file_format = '{0}_NASA_{1}_MASK_{2}{3}-{4}{5}.H5'
-
-    # full path for ATM/LVIS directory
-    DIRECTORY = os.path.dirname(input_files[0])
 
     # lists with input files
     original_files = []
@@ -638,12 +640,12 @@ def main():
         transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
         # original data file used in the triangulation
-        elevation_file = att1['elevation_file']#.decode('utf-8')
-        FILENAME = os.path.join(DIRECTORY,os.path.basename(elevation_file))
+        elevation_file = pathlib.Path(att1['elevation_file']).name
+        FILENAME = DIRECTORY.joinpath(elevation_file)
         original_files.append(elevation_file)
         # check that original data file exists locally
-        if not os.access(FILENAME, os.F_OK):
-            raise FileNotFoundError(f'{FILENAME} not found in filesystem')
+        if not FILENAME.exists():
+            raise FileNotFoundError(f'{str(FILENAME)} not found')
         # read the original data file
         if (OIB1 == 'ATM'):
             # load IceBridge ATM data
@@ -656,8 +658,7 @@ def main():
             dinput2,file_lines = read_LVIS_HDF5_file(FILENAME, None)
         # check that data sizes match
         if (file_lines != n_1):
-            logging.critical(os.path.basename(input_files[0]),
-                os.path.basename(FILENAME))
+            logging.critical(input_files[0].name, FILENAME.name)
             raise RuntimeError(f'Mismatch ({n_1:d} {file_lines:d})')
 
         # if there are secondary files to add to filter (data within DISTANCE)
@@ -669,19 +670,19 @@ def main():
                 error=np.zeros((n_2)), lon=np.zeros((n_2)), lat=np.zeros((n_2)))
             # read data from input_files[1:] and combine into single array
             c = 0
-            for fi,s in zip(input_files[1:],input_subsetter[1:]):
+            for fi,s in zip(input_files[1:], input_subsetter[1:]):
                 file_input,att3 = read_HDF5_triangle_data(fi,s)
                 n_3 = file_length(fi,s,HDF5='data')
                 # iterate through input keys of iterest
                 for key in ['data','lon','lat','time','error']:
                     dinput3[key][c:c+n_3] = file_input.get(key,None)
                 # original data file used in the triangulation
-                elevation_file = att3['elevation_file']#.decode('utf-8')
-                FILENAME = os.path.join(DIRECTORY,os.path.basename(elevation_file))
+                elevation_file = pathlib.Path(att3['elevation_file']).name
+                FILENAME = DIRECTORY.joinpath(elevation_file)
                 original_files.append(elevation_file)
                 # check that original data file exists locally
-                if not os.access(FILENAME, os.F_OK):
-                    raise FileNotFoundError(f'{FILENAME} not found in filesystem')
+                if not FILENAME.exists():
+                    raise FileNotFoundError(f'{str(FILENAME)} not found')
                 # read the original data file
                 if (OIB1 == 'ATM'):
                     # load IceBridge ATM data from FILENAME
@@ -694,8 +695,7 @@ def main():
                     file_input,n_4 = read_LVIS_HDF5_file(FILENAME,s)
                 # check that data sizes match
                 if (n_3 != n_4):
-                    logging.critical(os.path.basename(fi),
-                        os.path.basename(FILENAME))
+                    logging.critical(fi.name, FILENAME.name)
                     raise RuntimeError(f'Mismatch ({n_3:d} {n_4:d})')
                 # iterate through input keys of iterest
                 for key in ['data','lon','lat','time','error']:
@@ -784,15 +784,16 @@ def main():
         # fl1 and fl2 are the data flags (ATM, LVIS)
         # yymmddjjjjj is the year, month, day and second of input file 1
         # yymmdd is the year, month and day of the triangulated files
-        FILE = file_format.format(REG1,TYPE1,OIB1,YMDS1,OIB2,YMD2)
+        fargs = (REG1, TYPE1, OIB1, YMDS1, OIB2, YMD2)
+        FILE = DIRECTORY.joinpath(file_format.format(*fargs))
         median_masks = dict(IQR=associated_IQR, RDE=associated_RDE)
         HDF5_triangulated_mask(median_masks, DISTANCE=args.distance,
             COUNT=args.count, INPUT=input_files, ORIGINAL=original_files,
-            FILENAME=os.path.join(DIRECTORY,FILE))
+            FILENAME=FILE)
         # print file name if verbose output is specified
-        logging.info(os.path.join(DIRECTORY,FILE))
+        logging.info(str(FILE))
         # change the permissions level to MODE
-        os.chmod(os.path.join(DIRECTORY,FILE), args.mode)
+        FILE.chmod(mode=args.mode)
 
 # PURPOSE: outputting the data mask for reducing input data as HDF5 file
 def HDF5_triangulated_mask(valid_mask, DISTANCE=0, COUNT=0, FILENAME='',
@@ -803,6 +804,10 @@ def HDF5_triangulated_mask(valid_mask, DISTANCE=0, COUNT=0, FILENAME='',
     else:
         clobber = 'w-'
 
+    # open output HDF5 file
+    FILENAME = pathlib.Path(FILENAME).expanduser
+    fileID = h5py.File(FILENAME, clobber)
+
     # description and references for each median filter
     description = {}
     reference = {}
@@ -812,8 +817,7 @@ def HDF5_triangulated_mask(valid_mask, DISTANCE=0, COUNT=0, FILENAME='',
     description['RDE'] = ('a_robust_dispersion_estimator_(RDE)_algorithm_'
         'described_by_Smith_et_al.,_The_Cryosphere_(2017)')
     reference['RDE'] = 'http://dx.doi.org/10.5194/tc-11-451-2017'
-    # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+
     # Defining the HDF5 dataset variables
     h5 = {}
     for key, val in valid_mask.items():
@@ -825,16 +829,16 @@ def HDF5_triangulated_mask(valid_mask, DISTANCE=0, COUNT=0, FILENAME='',
             'using_{0}').format(description[key])
         h5[key].attrs['reference'] = reference[key]
         h5[key].attrs['passing_count'] = np.count_nonzero(val)
-        h5[key].attrs['search_radius'] = '{0:0.0f}km'.format(DISTANCE/1e3)
+        h5[key].attrs['search_radius'] = f'{DISTANCE/1e3:0.0f}km'
         h5[key].attrs['threshold_count'] = COUNT
         # attach dimensions
         h5[key].dims[0].label = 'RECORD_SIZE'
     # HDF5 file attributes
     fileID.attrs['date_created'] = time.strftime('%Y-%m-%d',time.localtime())
     # add attributes for input elevation file and files triangulated
-    input_elevation_files = ','.join([os.path.basename(f) for f in ORIGINAL])
+    input_elevation_files = ','.join([pathlib.Path(f).name for f in ORIGINAL])
     fileID.attrs['elevation_files'] = input_elevation_files
-    input_triangulated_files = ','.join([os.path.basename(f) for f in INPUT])
+    input_triangulated_files = ','.join([pathlib.Path(f).name for f in INPUT])
     fileID.attrs['triangulated_files'] = input_triangulated_files
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name

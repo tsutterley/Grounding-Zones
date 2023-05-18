@@ -54,6 +54,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2023: use timescale class for time conversion operations
+        using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
         use read and interpolation scheme for tidal constituents
@@ -98,9 +99,9 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import sys
-import os
 import re
 import logging
+import pathlib
 import argparse
 import datetime
 import warnings
@@ -144,10 +145,11 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE, TIDE_MODEL=None,
             compressed=GZIP).elevation(TIDE_MODEL)
 
     # read data from input file
-    logger.info(f'{INPUT_FILE} -->')
+    logger.info(f'{str(INPUT_FILE)} -->')
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
     IS2_atl10_mds,IS2_atl10_attrs,IS2_atl10_beams = \
         is2tk.io.ATL10.read_granule(INPUT_FILE, ATTRIBUTES=True)
-    DIRECTORY = os.path.dirname(INPUT_FILE)
+
     # extract parameters from ICESat-2 ATLAS HDF5 sea ice file name
     rx = re.compile(r'(processed_)?(ATL\d{2})-(\d{2})_(\d{4})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
@@ -155,14 +157,15 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE, TIDE_MODEL=None,
         SUB,PRD,HEM,YY,MM,DD,HH,MN,SS,TRK,CYCL,SN,RL,VERS,AUX=rx.findall(INPUT_FILE).pop()
     except:
         # output tide HDF5 file (generic)
-        fileBasename,fileExtension = os.path.splitext(INPUT_FILE)
-        args = (fileBasename,model.name,fileExtension)
-        OUTPUT_FILE = '{0}_{1}_TIDES{2}'.format(*args)
+        args = (INPUT_FILE.stem,model.name,INPUT_FILE.suffix)
+        FILENAME = '{0}_{1}_TIDES{2}'.format(*args)
     else:
         # output tide HDF5 file for ASAS/NSIDC granules
         args = (PRD,HEM,model.name,YY,MM,DD,HH,MN,SS,TRK,CYCL,SN,RL,VERS,AUX)
         ff = '{0}-{1}_{2}_TIDES_{3}{4}{5}{6}{7}{8}_{9}{10}{11}_{12}_{13}{14}.h5'
-        OUTPUT_FILE = ff.format(*args)
+        FILENAME = ff.format(*args)
+    # full path to output file
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
     # read tidal constants
     if model.format in ('OTIS','ATLAS','ESR'):
@@ -365,13 +368,13 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE, TIDE_MODEL=None,
                 "../delta_time ../latitude ../longitude"
 
     # print file information
-    logger.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
+    logger.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL10_tide_write(IS2_atl10_tide, IS2_atl10_tide_attrs,
-        CLOBBER=True, INPUT=os.path.basename(INPUT_FILE),
+        CLOBBER=True, INPUT=INPUT_FILE.name,
         FILL_VALUE=IS2_atl10_fill, DIMENSIONS=IS2_atl10_dims,
-        FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE))
+        FILENAME=OUTPUT_FILE)
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,OUTPUT_FILE), MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the tide values for ICESat-2 data to HDF5
 def HDF5_ATL10_tide_write(IS2_atl10_tide, IS2_atl10_attrs, INPUT=None,
@@ -383,7 +386,8 @@ def HDF5_ATL10_tide_write(IS2_atl10_tide, IS2_atl10_attrs, INPUT=None,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
 
     # create HDF5 records
     h5 = {}
@@ -496,7 +500,7 @@ def HDF5_ATL10_tide_write(IS2_atl10_tide, IS2_atl10_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL10 file
-    fileID.attrs['input_files'] = os.path.basename(INPUT)
+    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for gtx in beams:
@@ -568,12 +572,11 @@ def arguments():
     group = parser.add_mutually_exclusive_group(required=True)
     # input ICESat-2 sea ice height files
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL10 file to run')
     # directory with tide data
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd()
         help='Working data directory')
     # tide model to use
     group.add_argument('--tide','-T',
@@ -588,7 +591,7 @@ def arguments():
         help='Tide model files are gzip compressed')
     # tide model definition file to set an undefined model
     group.add_argument('--definition-file',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        type=pathlib.Path,
         help='Tide model definition file for use as correction')
     # interpolation method
     parser.add_argument('--interpolate','-I',

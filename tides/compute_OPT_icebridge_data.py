@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2023: use timescale class for time conversion operations
         use defaults from eop module for pole tide and EOP files
+        using pathlib to define and operate on paths
     Updated 03/2023: added option for changing the IERS mean pole convention
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
@@ -563,7 +564,7 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
     args = (hem_flag[HEM],'OCEAN_POLE_TIDE',OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}_WGS84_{2}{3}{4}{5}{6:05.0f}.H5'.format(*args)
     # print file information
-    output_file = DIRECTORY.pathjoin(FILENAME)
+    output_file = DIRECTORY.joinpath(FILENAME)
     logger.info(f'\t{str(output_file)}')
 
     # open output HDF5 file

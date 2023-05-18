@@ -64,6 +64,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2023: use timescale class for time conversion operations
+        using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored pyTMD tide model structure
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
@@ -608,7 +609,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     args = (hem_flag[HEM],model.name,flexure_flag,OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}{2}_TIDES_WGS84_{3}{4}{5}{6}{7:05.0f}.H5'.format(*args)
     # print file information
-    output_file = DIRECTORY.pathjoin(FILENAME)
+    output_file = DIRECTORY.joinpath(FILENAME)
     logger.info(f'\t{str(output_file)}')
 
     # open output HDF5 file
