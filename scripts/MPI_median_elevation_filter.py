@@ -511,7 +511,7 @@ def HDF5_triangulated_mask(valid_mask, DISTANCE=0, COUNT=0, FILENAME='',
         clobber = 'w-'
 
     # open output HDF5 file
-    FILENAME = pathlib.Path(FILENAME).expanduser
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
     fileID = h5py.File(FILENAME, clobber)
 
     # description and references for each median filter

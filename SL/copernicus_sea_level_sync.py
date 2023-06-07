@@ -130,7 +130,7 @@ def ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
     TEST = False
     OVERWRITE = ' (clobber)'
     # check if local version of file exists
-    local_file = pathlib.Path(local_file).expanduser
+    local_file = pathlib.Path(local_file).expanduser().absolute()
     if local_file.exists():
         # check last modification time of local file
         local_mtime = local_file.stat().st_mtime
