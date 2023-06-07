@@ -780,7 +780,7 @@ def HDF5_triangulated_data(output_data, MISSION=None, INPUT=None, FILENAME='',
         clobber = 'w-'
 
     # open output HDF5 file
-    FILENAME = pathlib.Path(FILENAME).expanduser
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
     fileID = h5py.File(FILENAME, clobber)
 
     # number of valid points
