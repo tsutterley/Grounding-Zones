@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_ATL14_DEM_ICESat2_ATL06.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 Interpolates ATL14 elevations to locations of ICESat-2 ATL06 segments
 
 COMMAND LINE OPTIONS:
@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
     Updated 11/2022: check that granule intersects ATL14 DEM
@@ -36,11 +37,10 @@ UPDATE HISTORY:
 """
 from __future__ import print_function
 
-import sys
-import os
 import re
 import pyproj
 import logging
+import pathlib
 import argparse
 import datetime
 import warnings
@@ -72,16 +72,17 @@ warnings.filterwarnings("ignore")
 def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
 
     # read data from FILE
+    FILE = pathlib.Path(FILE).expanduser().absolute()
     IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = \
         is2tk.io.ATL06.read_granule(FILE, ATTRIBUTES=True)
-    DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX=rx.findall(FILE).pop()
+    SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX=rx.findall(FILE.name).pop()
 
     # open ATL14 DEM file for reading
-    fileID = netCDF4.Dataset(os.path.expanduser(DEM_MODEL), mode='r')
+    DEM_MODEL = pathlib.Path(DEM_MODEL).expanduser().absolute()
+    fileID = netCDF4.Dataset(DEM_MODEL, mode='r')
     # get coordinate reference system attributes
     crs = {}
     grid_mapping = fileID.variables['h'].getncattr('grid_mapping')
@@ -301,16 +302,16 @@ def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
         # output HDF5 files with output masks
         fargs = ('ATL14',YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX)
         file_format = '{0}_{1}{2}{3}{4}{5}{6}_{7}{8}{9}_{10}_{11}{12}.h5'
-        output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
+        output_file = FILE.with_name(file_format.format(*fargs))
         # print file information
-        logging.info(f'\t{output_file}')
+        logging.info(f'\t{str(output_file)}')
         # write to output HDF5 file
         HDF5_ATL06_dem_write(IS2_atl06_dem, IS2_atl06_dem_attrs,
-            CLOBBER=True, INPUT=os.path.basename(FILE),
+            CLOBBER=True, INPUT=FILE.name,
             FILL_VALUE=IS2_atl06_fill, DIMENSIONS=IS2_atl06_dims,
             FILENAME=output_file)
         # change the permissions mode
-        os.chmod(output_file, MODE)
+        output_file.chmod(mode=MODE)
 
 # PURPOSE: outputting the interpolated DEM data for ICESat-2 data to HDF5
 def HDF5_ATL06_dem_write(IS2_atl06_dem, IS2_atl06_attrs, INPUT=None,
@@ -322,7 +323,8 @@ def HDF5_ATL06_dem_write(IS2_atl06_dem, IS2_atl06_attrs, INPUT=None,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
 
     # create HDF5 records
     h5 = {}
@@ -433,7 +435,7 @@ def HDF5_ATL06_dem_write(IS2_atl06_dem, IS2_atl06_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL06 file
-    fileID.attrs['lineage'] = os.path.basename(INPUT)
+    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for gtx in beams:
@@ -487,12 +489,11 @@ def arguments():
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('file',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        type=pathlib.Path,
         help='ICESat-2 ATL06 file to run')
     # full path to ATL14 digital elevation file
-    parser.add_argument('--dem-model','-,',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+    parser.add_argument('--dem-model','-m',
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='ICESat-2 ATL14 DEM file to run')
     # verbosity settings
     # verbose will output information about each output file

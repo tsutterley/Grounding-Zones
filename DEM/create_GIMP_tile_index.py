@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 create_GIMP_tile_index.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 
 Reads GIMP 30m DEM tiles from the OSU Greenland Ice Mapping Project
     https://nsidc.org/data/nsidc-0645/versions/1
@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place GDAL import within try/except statement
     Updated 05/2022: use argparse descriptions within documentation
@@ -60,11 +61,9 @@ import os
 import re
 import time
 import uuid
-import netrc
 import zipfile
-import getpass
 import logging
-import builtins
+import pathlib
 import argparse
 import warnings
 import posixpath
@@ -83,9 +82,10 @@ warnings.filterwarnings("ignore")
 # PURPOSE: read GIMP image mosaic and create tile shapefile
 def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
     # Directory Setup
-    ddir = os.path.join(base_dir,'GIMP','30m')
+    base_dir = pathlib.Path(base_dir).expanduser().absolute()
+    ddir = base_dir.joinpath('GIMP', '30m')
     # recursively create directories if not currently available
-    os.makedirs(ddir,MODE) if not os.access(ddir,os.F_OK) else None
+    ddir.mkdir(mode=MODE, parents=True, exist_ok=True)
     # remote https server
     remote_dir = posixpath.join('https://n5eil01u.ecs.nsidc.org',
         'MEASURES',f'NSIDC-0645.{VERSION:03.0f}','2003.02.20')
@@ -99,7 +99,8 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
 
      # save DEM tile outlines to ESRI shapefile
     driver = osgeo.ogr.GetDriverByName('Esri Shapefile')
-    ds = driver.CreateDataSource(os.path.join(ddir,ff.format(VERSION,'shp')))
+    output_shapefile = ddir.joinpath(ff.format(VERSION,'shp'))
+    ds = driver.CreateDataSource(str(output_shapefile))
     # set the spatial reference info
     # EPSG: 3413 (NSIDC Sea Ice Polar Stereographic North, WGS84)
     SpatialReference = osgeo.osr.SpatialReference()
@@ -127,10 +128,10 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
     id = 1
     # read and parse request for remote files (columns and dates)
     colnames,collastmod,_ = gz.utilities.nsidc_list(remote_dir,
-        build=False, parser=parser, pattern=rx,sort=True)
+        build=False, parser=parser, pattern=rx, sort=True)
 
     # read each GIMP DEM file
-    for colname,remote_mtime in zip(colnames,collastmod):
+    for colname, remote_mtime in zip(colnames, collastmod):
         # print input file to track progress
         logging.info(colname)
         # extract tile number
@@ -185,7 +186,7 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
         feature.SetField('tile', tile)
         feature.SetField('nd_value', fill_value)
         feature.SetField('resolution', info_geotiff[1])
-        lastmodtm = time.strftime('%Y-%m-%d',time.gmtime(remote_mtime))
+        lastmodtm = time.strftime('%Y-%m-%d', time.gmtime(remote_mtime))
         feature.SetField('lastmodtm', lastmodtm)
         feature.SetField('fileurl', posixpath.join(remote_dir,colname))
         feature.SetField('rel_ver', VERSION)
@@ -196,8 +197,8 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
 
         # create LineString object and add x/y points
         ring_obj = osgeo.ogr.Geometry(osgeo.ogr.wkbLinearRing)
-        for x,y in zip(xbox,ybox):
-            ring_obj.AddPoint(x,y)
+        for x, y in zip(xbox, ybox):
+            ring_obj.AddPoint(x, y)
         # create Polygon object for LineString of tile
         poly_obj = osgeo.ogr.Geometry(osgeo.ogr.wkbPolygon)
         poly_obj.AddGeometry(ring_obj)
@@ -216,14 +217,16 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
     poly_obj = None
 
     # create zip file of shapefile objects
-    zp = zipfile.ZipFile(os.path.join(ddir,ff.format(VERSION,'zip')),'w')
+    output_zipfile = ddir.joinpath(ff.format(VERSION,'zip'))
+    zp = zipfile.ZipFile(str(output_zipfile), mode='w')
     for s in ['dbf','prj','shp','shx']:
         # change the permissions mode of the output shapefiles
-        os.chmod(os.path.join(ddir,ff.format(VERSION,s)),MODE)
+        output_file = ddir.joinpath(ff.format(VERSION,s))
+        output_file.chmod(mode=MODE)
         # write to zip file
-        zp.write(os.path.join(ddir,ff.format(VERSION,s)),ff.format(VERSION,s))
+        zp.write(output_file, output_file.name)
     # change the permissions mode of the output zip file
-    os.chmod(os.path.join(ddir,ff.format(VERSION,'zip')),MODE)
+    output_zipfile.chmod(mode=MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -242,13 +245,11 @@ def arguments():
         type=str, default=os.environ.get('EARTHDATA_PASSWORD'),
         help='Password for NASA Earthdata Login')
     parser.add_argument('--netrc','-N',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.path.join(os.path.expanduser('~'),'.netrc'),
+        type=pathlib.Path, default=pathlib.Path.home().joinpath('.netrc'),
         help='Path to .netrc file for authentication')
     # working data directory
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # GIMP data version
     parser.add_argument('--version','-v',
@@ -277,21 +278,11 @@ def main():
 
     # NASA Earthdata hostname
     HOST = 'urs.earthdata.nasa.gov'
-    # get authentication
-    if not args.user and not os.access(args.netrc,os.F_OK):
-        # check that NASA Earthdata credentials were entered
-        args.user = builtins.input(f'Username for {HOST}: ')
-        # enter password securely from command-line
-        args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
-    elif os.access(args.netrc, os.F_OK):
-        args.user,_,args.password = netrc.netrc(args.netrc).authenticators(HOST)
-    elif args.user and not args.password:
-        # enter password securely from command-line
-        args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
-
-    # build a urllib opener for NSIDC
-    # Add the username and password for NASA Earthdata Login system
-    gz.utilities.build_opener(args.user,args.password)
+    # build a urllib opener for NASA Earthdata
+    # check internet connection before attempting to run program
+    opener = gz.utilities.attempt_login(HOST,
+        username=args.user, password=args.password,
+        netrc=args.netrc)
 
     # check internet connection before attempting to run program
     # check NASA earthdata credentials before attempting to run program

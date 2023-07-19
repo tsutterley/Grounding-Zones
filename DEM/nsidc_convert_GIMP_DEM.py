@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 nsidc_convert_GIMP_DEM.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 
 Reads GIMP 30m DEM tiles from the OSU Greenland Ice Mapping Project
     https://nsidc.org/data/nsidc-0645/versions/1
@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place GDAL import within try/except statement
     Updated 05/2022: use argparse descriptions within documentation
@@ -60,11 +61,9 @@ import os
 import re
 import io
 import uuid
-import netrc
 import tarfile
-import getpass
 import logging
-import builtins
+import pathlib
 import argparse
 import warnings
 import posixpath
@@ -83,6 +82,8 @@ warnings.filterwarnings("ignore")
 # PURPOSE: read GIMP image mosaic and output as gzipped tar file
 def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
 
+    # directory setup
+    base_dir = pathlib.Path(base_dir).expanduser().absolute()
     # remote https server
     remote_dir = posixpath.join('https://n5eil01u.ecs.nsidc.org',
         'MEASURES',f'NSIDC-0645.{VERSION:03.0f}','2003.02.20')
@@ -105,8 +106,8 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         # extract tile number
         tile, = rx.findall(colname)
         # recursively create directories if not currently available
-        d = os.path.join(base_dir,'GIMP','30m',tile)
-        os.makedirs(d,MODE) if not os.access(d,os.F_OK) else None
+        d = base_dir.joinpath('GIMP','30m',tile)
+        d.mkdir(mode=MODE, parents=True, exist_ok=True)
 
         # Create and submit request. There are a wide range of exceptions
         # that can be thrown here, including HTTPError and URLError.
@@ -121,8 +122,8 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         fileID.seek(0)
 
         # open gzipped tar file
-        FILE = colname.replace('.tif','.tar.gz')
-        tar = tarfile.open(name=os.path.join(d,FILE),mode='w:gz')
+        FILE = d.joinpath(colname.replace('.tif','.tar.gz'))
+        tar = tarfile.open(name=str(FILE), mode='w:gz')
         # add directory
         subdir = f'{tile}_{res}'
         info1 = tarfile.TarInfo(name=subdir)
@@ -250,9 +251,9 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         # close tar file
         tar.close()
         # set permissions level to MODE
-        os.chmod(os.path.join(d,FILE), MODE)
+        FILE.chmod(mode=MODE)
         # keep remote modification time of directory and local access time
-        os.utime(d, (os.stat(d).st_atime, remote_mtime))
+        os.utime(d, (d.stat().st_atime, remote_mtime))
 
 # PURPOSE: create argument parser
 def arguments():
@@ -270,13 +271,11 @@ def arguments():
         type=str, default=os.environ.get('EARTHDATA_PASSWORD'),
         help='Password for NASA Earthdata Login')
     parser.add_argument('--netrc','-N',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.path.join(os.path.expanduser('~'),'.netrc'),
+        type=pathlib.Path, default=pathlib.Path().home().joinpath('.netrc'),
         help='Path to .netrc file for authentication')
     # working data directory
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # GIMP data version
     parser.add_argument('--version','-v',
@@ -305,21 +304,11 @@ def main():
 
     # NASA Earthdata hostname
     HOST = 'urs.earthdata.nasa.gov'
-    # get authentication
-    if not args.user and not os.access(args.netrc,os.F_OK):
-        # check that NASA Earthdata credentials were entered
-        args.user = builtins.input(f'Username for {HOST}: ')
-        # enter password securely from command-line
-        args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
-    elif os.access(args.netrc, os.F_OK):
-        args.user,_,args.password = netrc.netrc(args.netrc).authenticators(HOST)
-    elif args.user and not args.password:
-        # enter password securely from command-line
-        args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
-
     # build a urllib opener for NSIDC
     # Add the username and password for NASA Earthdata Login system
-    gz.utilities.build_opener(args.user,args.password)
+    opener = gz.utilities.attempt_login(HOST,
+        username=args.user, password=args.password,
+        netrc=args.netrc)
 
     # check internet connection before attempting to run program
     # check NASA earthdata credentials before attempting to run program

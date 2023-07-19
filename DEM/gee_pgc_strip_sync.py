@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 gee_pgc_strip_sync.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (07/2023)
 
 Processes and syncs Reference Elevation Map of Antarctica (REMA) DEM
     or ArcticDEM strip tar files from Google Earth Engine
@@ -40,6 +40,7 @@ PYTHON DEPENDENCIES:
         https://dateutil.readthedocs.io/en/stable/
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 07/2022: made COG output optional and not the default
         place some imports within try/except statements
         added option to use a georeferenced polygon file
@@ -50,10 +51,12 @@ UPDATE HISTORY:
     Written 05/2022
 """
 from __future__ import print_function
+
 import sys
 import os
 import time
 import logging
+import pathlib
 import argparse
 import warnings
 import dateutil.parser
@@ -74,7 +77,7 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: keep track of threads
 def info(args):
-    logging.info(os.path.basename(sys.argv[0]))
+    logging.info(pathlib.Path(sys.argv[0]).name)
     logging.info(args)
     logging.info(f'module name: {__name__}')
     if hasattr(os, 'getppid'):
@@ -163,8 +166,9 @@ def gee_pgc_strip_sync(model, version, resolution,
     # reduce image collection to spatial geometry
     if POLYGON is not None:
         # read georeferenced file
-        logging.info(f'Georeferenced File: {POLYGON}')
-        shape = fiona.open(os.path.expanduser(POLYGON))
+        POLYGON = pathlib.Path(POLYGON).expanduser().absolute()
+        logging.info(f'Georeferenced File: {str(POLYGON)}')
+        shape = fiona.open(str(POLYGON))
         # convert input polygons into a list of geometries
         polys = [ee.Geometry(rec['geometry'], shape.crs['init'])
             for i,rec in enumerate(shape)]
@@ -282,7 +286,7 @@ def arguments():
         metavar=('lon_min','lat_min','lon_max','lat_max'),
         help='Bounding box for reducing image collection')
     parser.add_argument('--polygon','-P',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        type=pathlib.Path,
         help='Georeferenced file for reducing image collection')
     # restart sync at a particular image
     parser.add_argument('--restart', '-R',
