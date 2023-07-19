@@ -270,13 +270,13 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                     latitude[track], constituents, model.projection, type=model.type,
                     method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
                 # use delta time at 2000.0 to match TMD outputs
-                deltat = np.zeros((nt))
+                deltat = np.zeros_like(timescale.tt_ut1)
             elif (model.format == 'netcdf'):
                 amp,ph,D = pyTMD.io.ATLAS.interpolate_constants(longitude[track],
                     latitude[track], constituents, type=model.type, method=METHOD,
                     extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
                 # use delta time at 2000.0 to match TMD outputs
-                deltat = np.zeros((nt))
+                deltat = np.zeros_like(timescale.tt_ut1)
             elif (model.format == 'GOT'):
                 amp,ph = pyTMD.io.GOT.interpolate_constants(longitude[track],
                     latitude[track], constituents, method=METHOD,
