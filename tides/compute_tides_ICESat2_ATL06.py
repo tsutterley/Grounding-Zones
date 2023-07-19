@@ -550,8 +550,8 @@ def HDF5_ATL06_tide_write(IS2_atl06_tide, IS2_atl06_attrs, INPUT=None,
         epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
     dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
-    fileID.attrs['time_coverage_start'] = dt[0]
-    fileID.attrs['time_coverage_end'] = dt[1]
+    fileID.attrs['time_coverage_start'] = str(dt[0])
+    fileID.attrs['time_coverage_end'] = str(dt[1])
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     # add software information
     fileID.attrs['software_reference'] = pyTMD.version.project_name
