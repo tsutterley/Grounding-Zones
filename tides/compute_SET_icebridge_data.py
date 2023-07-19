@@ -88,8 +88,6 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
     else:
         input_subsetter = None
 
-    # output directory for input_file
-    DIRECTORY = input_file.parent
     # calculate if input files are from ATM or LVIS (+GH)
     regex = {}
     regex['ATM'] = r'(BLATM2|ILATM2)_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
@@ -228,7 +226,7 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
     args = (hem_flag[HEM],'SOLID_EARTH_TIDE',OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}_WGS84_{2}{3}{4}{5}{6:05.0f}.H5'.format(*args)
     # print file information
-    output_file = DIRECTORY.joinpath(FILENAME)
+    output_file = input_file.with_name(FILENAME)
     logger.info(f'\t{str(output_file)}')
 
     # open output HDF5 file
@@ -260,7 +258,7 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
     fid.attrs['processing_level'] = '4'
     fid.attrs['date_created'] = time.strftime('%Y-%m-%d',time.localtime())
     # add attributes for input file
-    fid.attrs['elevation_file'] = input_file.name
+    fid.attrs['lineage'] = input_file.name
     # add geospatial and temporal attributes
     fid.attrs['geospatial_lat_min'] = dinput['lat'].min()
     fid.attrs['geospatial_lat_max'] = dinput['lat'].max()

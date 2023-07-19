@@ -171,8 +171,6 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     else:
         input_subsetter = None
 
-    # output directory for input_file
-    DIRECTORY = input_file.parent
     # calculate if input files are from ATM or LVIS (+GH)
     regex = {}
     regex['ATM'] = r'(BLATM2|ILATM2)_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
@@ -302,7 +300,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     args = (hem_flag[HEM],model.name,flexure_flag,OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}{2}_TIDES_WGS84_{3}{4}{5}{6}{7:05.0f}.H5'.format(*args)
     # print file information
-    output_file = DIRECTORY.joinpath(FILENAME)
+    output_file = input_file.with_name(FILENAME)
     logger.info(f'\t{str(output_file)}')
 
     # open output HDF5 file

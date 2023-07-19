@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_ICESat2_ATL11.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 Computes geoid undulations for correcting ICESat-2 annual land ice height data
 
 COMMAND LINE OPTIONS:
@@ -35,6 +35,7 @@ PROGRAM DEPENDENCIES:
     gauss_weights.py: Computes Gaussian weights as a function of degree
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
@@ -49,10 +50,9 @@ UPDATE HISTORY:
 """
 from __future__ import print_function
 
-import sys
-import os
 import re
 import logging
+import pathlib
 import argparse
 import datetime
 import warnings
@@ -89,15 +89,17 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     logging.basicConfig(level=loglevel)
 
     # read data from input file
-    logging.info(f'{INPUT_FILE} -->')
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+    logging.info(f'{str(INPUT_FILE)} -->')
     IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
         is2tk.io.ATL11.read_granule(INPUT_FILE,
                                     ATTRIBUTES=True,
                                     CROSSOVERS=True)
-    DIRECTORY = os.path.dirname(INPUT_FILE)
 
     # read gravity model Ylms and change tide to tide free
+    model_file = pathlib.Path(model_file).expanduser().absolute()
     Ylms = geoidtk.read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
+    model = Ylms['modelname']
     R = np.float64(Ylms['radius'])
     GM = np.float64(Ylms['earth_gravity_constant'])
     LMAX = np.int64(Ylms['max_degree'])
@@ -108,17 +110,18 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$')
     try:
-        SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(INPUT_FILE).pop()
+        SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = \
+            rx.findall(INPUT_FILE.name).pop()
     except:
         # output geoid HDF5 file (generic)
-        fileBasename,fileExtension = os.path.splitext(INPUT_FILE)
-        args = (fileBasename,Ylms['modelname'],fileExtension)
-        OUTPUT_FILE = '{0}_{1}_GEOID{2}'.format(*args)
+        FILENAME = f'{INPUT_FILE.stem}_{model}_GEOID{INPUT_FILE.suffix}'
     else:
         # output geoid HDF5 file for ASAS/NSIDC granules
-        args = (PRD,Ylms['modelname'],TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
+        args = (PRD,model,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_{1}_GEOID_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
-        OUTPUT_FILE = file_format.format(*args)
+        FILENAME = file_format.format(*args)
+    # full path to output file
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
     # copy variables for outputting to HDF5 file
     IS2_atl11_geoid = {}
@@ -312,13 +315,13 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
             "../ref_pt ../cycle_number ../delta_time ../latitude ../longitude"
 
     # print file information
-    logging.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
+    logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL11_geoid_write(IS2_atl11_geoid, IS2_atl11_geoid_attrs,
-        CLOBBER=True, INPUT=os.path.basename(INPUT_FILE),
+        CLOBBER=True, INPUT=INPUT_FILE.name,
         FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE))
+        FILENAME=OUTPUT_FILE)
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,OUTPUT_FILE), MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the geoid values for ICESat-2 data to HDF5
 def HDF5_ATL11_geoid_write(IS2_atl11_geoid, IS2_atl11_attrs, INPUT=None,
@@ -330,7 +333,8 @@ def HDF5_ATL11_geoid_write(IS2_atl11_geoid, IS2_atl11_attrs, INPUT=None,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
 
     # create HDF5 records
     h5 = {}
@@ -437,7 +441,7 @@ def HDF5_ATL11_geoid_write(IS2_atl11_geoid, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL11 files
-    fileID.attrs['lineage'] = os.path.basename(INPUT)
+    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for ptx in pairs:
@@ -493,12 +497,11 @@ def arguments():
     # command line parameters
     # input ICESat-2 annual land ice height files
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL11 file to run')
     # set gravity model file to use
     parser.add_argument('--gravity','-G',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path,
         help='Gravity model file to use')
     # maximum spherical harmonic degree (level of truncation)
     parser.add_argument('--lmax','-l',

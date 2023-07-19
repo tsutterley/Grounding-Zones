@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_icebridge_data.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 Calculates geoid undulations for correcting Operation IceBridge elevation data
 
 INPUTS:
@@ -35,8 +35,8 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
-    Updated 05/2023: using pathlib to define and operate on paths
-        move icebridge data inputs to a separate module in io
+    Updated 07/2023: using pathlib to define and operate on paths
+    Updated 05/2023: move icebridge data inputs to a separate module in io
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
         place some imports within try/except statements
@@ -62,6 +62,7 @@ import os
 import re
 import time
 import logging
+import pathlib
 import argparse
 import warnings
 import collections
@@ -98,7 +99,7 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
 
     # extract file name and subsetter indices lists
     match_object = re.match(r'(.*?)(\[(.*?)\])?$',arg)
-    input_file = os.path.expanduser(match_object.group(1))
+    input_file = pathlib.Path(match_object.group(1)).expanduser().absolute()
     # subset input file to indices
     if match_object.group(2):
         # decompress ranges and add to list
@@ -110,15 +111,15 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
         input_subsetter = None
 
     # read gravity model Ylms and change tide to tide free
+    model_file = pathlib.Path(model_file).expanduser().absolute()
     Ylms = geoidtk.read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
+    model = Ylms['modelname']
     R = np.float64(Ylms['radius'])
     GM = np.float64(Ylms['earth_gravity_constant'])
     LMAX = np.int64(Ylms['max_degree'])
     # reference to WGS84 ellipsoid
     REFERENCE = 'WGS84'
 
-    # output directory for input_file
-    DIRECTORY = os.path.dirname(input_file)
     # calculate if input files are from ATM or LVIS (+GH)
     regex = {}
     regex['ATM'] = r'(BLATM2|ILATM2)_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
@@ -126,7 +127,7 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     regex['LVIS'] = r'(BLVIS2|BVLIS2|ILVIS2)_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5$'
     regex['LVGH'] = r'(ILVGH2)_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5$'
     for key,val in regex.items():
-        if re.match(val, os.path.basename(input_file)):
+        if re.match(val, input_file.name):
             OIB = key
 
     # HDF5 file attributes
@@ -181,7 +182,7 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     # number of points
     # instrument (PRE-OIB ATM or LVIS, OIB ATM or LVIS)
     if OIB in ('ATM','ATM1b'):
-        M1,YYMMDD1,HHMMSS1,AX1,SF1 = re.findall(regex[OIB], input_file).pop()
+        M1,YYMMDD1,HHMMSS1,AX1,SF1 = re.findall(regex[OIB], input_file.name).pop()
         # early date strings omitted century and millenia (e.g. 93 for 1993)
         if (len(YYMMDD1) == 6):
             year_two_digit,MM1,DD1 = YYMMDD1[:2],YYMMDD1[2:4],YYMMDD1[4:]
@@ -193,7 +194,7 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
         elif (len(YYMMDD1) == 8):
             YY1,MM1,DD1 = YYMMDD1[:4],YYMMDD1[4:6],YYMMDD1[6:]
     elif OIB in ('LVIS','LVGH'):
-        M1,RG1,YY1,MMDD1,RLD1,SS1 = re.findall(regex[OIB], input_file).pop()
+        M1,RG1,YY1,MMDD1,RLD1,SS1 = re.findall(regex[OIB], input_file.name).pop()
         MM1,DD1 = MMDD1[:2],MMDD1[2:]
 
     # read data from input_file
@@ -214,7 +215,7 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     # output tidal HDF5 file
     # form: rg_NASA_model_GEOID_WGS84_fl1yyyymmddjjjjj.H5
     # where rg is the hemisphere flag (GR or AN) for the region
-    # model is the tidal model name flag (e.g. CATS0201)
+    # model is the geoid model name flag
     # fl1 and fl2 are the data flags (ATM, LVIS, GLAS)
     # yymmddjjjjj is the year, month, day and second of the input file
     # output region flags: GR for Greenland and AN for Antarctica
@@ -222,13 +223,14 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     # use starting second to distinguish between files for the day
     JJ1 = np.min(dinput['time']) % 86400
     # output file format
-    args = (hem_flag[HEM],Ylms['modelname'],OIB,YY1,MM1,DD1,JJ1)
+    args = (hem_flag[HEM],model,OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}_GEOID_WGS84_{2}{3}{4}{5}{6:05.0f}.H5'.format(*args)
+    output_file = input_file.with_name(FILENAME)
     # print file information
-    logging.info(f'\t{os.path.join(DIRECTORY,FILENAME)}')
+    logging.info(f'\t{str(output_file)}')
 
     # open output HDF5 file
-    fid = h5py.File(os.path.join(DIRECTORY,FILENAME), 'w')
+    fid = h5py.File(output_file, mode='w')
 
     # colatitude in radians
     theta = (90.0 - dinput['lat'])*np.pi/180.0
@@ -267,7 +269,7 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     fid.attrs['processing_level'] = '4'
     fid.attrs['date_created'] = time.strftime('%Y-%m-%d',time.localtime())
     # add attributes for input file
-    fid.attrs['elevation_file'] = os.path.basename(input_file)
+    fid.attrs['lineage'] = input_file.name
     fid.attrs['gravity_model'] = Ylms['modelname']
     # add geospatial and temporal attributes
     fid.attrs['geospatial_lat_min'] = dinput['lat'].min()
@@ -302,7 +304,7 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     # close the output HDF5 dataset
     fid.close()
     # change the permissions level to MODE
-    os.chmod(os.path.join(DIRECTORY,FILENAME), MODE)
+    output_file.chmod(mode=MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -316,12 +318,11 @@ def arguments():
     # command line parameters
     # input operation icebridge files
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
-        help='Input Operation IceBridge file')
+        type=str, nargs='+',
+        help='Input Operation IceBridge file to run')
     # set gravity model file to use
     parser.add_argument('--gravity','-G',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path,
         help='Gravity model file to use')
     # maximum spherical harmonic degree (level of truncation)
     parser.add_argument('--lmax','-l',

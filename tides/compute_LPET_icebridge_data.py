@@ -99,8 +99,6 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     else:
         input_subsetter = None
 
-    # output directory for input_file
-    DIRECTORY = input_file.parent
     # calculate if input files are from ATM or LVIS (+GH)
     regex = {}
     regex['ATM'] = r'(BLATM2|ILATM2)_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
@@ -195,7 +193,7 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     file_format = '{0}_NASA_EQUILIBRIUM_TIDES_WGS84_{1}{2}{3}{4}{5:05.0f}.H5'
     FILENAME = file_format.format(hem_flag[HEM],OIB,YY1,MM1,DD1,JJ1)
     # print file information
-    output_file = DIRECTORY.joinpath(FILENAME)
+    output_file = input_file.with_name(FILENAME)
     logger.info(f'\t{str(output_file)}')
 
     # open output HDF5 file

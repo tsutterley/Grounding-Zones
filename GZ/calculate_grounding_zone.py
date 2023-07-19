@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_grounding_zone.py
-Written by Tyler Sutterley (11/2022)
+Written by Tyler Sutterley (07/2023)
 Calculates ice sheet grounding zones following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 11/2022: verify coordinate reference system attribute from shapefile
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
@@ -67,6 +68,7 @@ import sys
 import os
 import re
 import pyproj
+import pathlib
 import argparse
 import operator
 import warnings
@@ -111,7 +113,7 @@ grounded_reference['S'] = 'https://doi.org/10.5067/IKBWW4RYHF1Q'
 # PURPOSE: reading the number of file lines removing commented lines
 def file_length(input_file):
     # read the input file, split at lines and remove all commented lines
-    with open(input_file, mode='r', encoding='utf8') as f:
+    with input_file.open(mode='r', encoding='utf8') as f:
         i = [i for i in f.readlines() if re.match(r'^(?!\#|\n)',i)]
     # return the number of lines
     return len(i)
@@ -119,7 +121,8 @@ def file_length(input_file):
 # PURPOSE: find if segment crosses previously-known grounding line position
 def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # reading grounded ice shapefile
-    shape = fiona.open(os.path.join(base_dir,grounded_shapefile[HEM]))
+    input_shapefile = base_dir.joinpath(grounded_shapefile[HEM])
+    shape = fiona.open(str(input_shapefile))
     # extract coordinate reference system
     if ('init' in shape.crs.keys()):
         epsg = pyproj.CRS(shape.crs['init']).to_epsg()
@@ -353,17 +356,14 @@ def conf_interval(x,f,p):
 def calculate_grounding_zone(base_dir, input_file, output_file,
     DEM_MODEL=None, FORMAT='csv', VARIABLES=['time','lat','lon','data'],
     HEADER=0, PROJECTION='4326', VERBOSE=False, MODE=0o775):
-    # get directory from input_file
-    DIRECTORY = os.path.dirname(input_file)
     # set hemisphere flag based on digital elevation model
     hem_flag = dict(ArcticDEM='N', GIMP='N', REMA='S')
     HEM = hem_flag[DEM_MODEL]
 
     # read input file to extract time, spatial coordinates and data
-    # read dem file from MPI_interpolate_DEM.py
-    # output text file
-    fileBasename,fileExtension = os.path.splitext(input_file)
-    f2 = '{0}_{1}{2}'.format(fileBasename,DEM_MODEL,fileExtension)
+    # read dem file for reference elevation
+    dem_file = f'{input_file.stem}_{DEM_MODEL}{input_file.suffix}'
+    f2 = input_file.with_name(dem_file)
     if (FORMAT == 'csv'):
         d1 = pyTMD.spatial.from_ascii(input_file, columns=VARIABLES,
             header=HEADER, verbose=VERBOSE)
@@ -458,15 +458,14 @@ def arguments():
     # command line options
     # input and output file
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='?',
+        type=pathlib.Path, nargs='?',
         help='Input file')
     parser.add_argument('outfile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='?',
+        type=pathlib.Path, nargs='?',
         help='Output file')
     # working data directory for shapefiles
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # Digital elevation model (REMA, ArcticDEM, GIMP) to run
     # set the DEM model to run for a given granule (else set automatically)
@@ -509,9 +508,8 @@ def main():
 
     # set output file from input filename if not entered
     if not args.outfile:
-        fileBasename,fileExtension = os.path.splitext(args.infile)
-        vars = (fileBasename,'gz',fileExtension)
-        args.outfile = '{0}_{1}{2}'.format(*vars)
+        output_file = f'{args.infile.stem}_gz{args.infile.suffix}'
+        args.outfile = args.infile.with_name(output_file)
 
     # run grounding zone program for input file
     calculate_grounding_zone(args.directory, args.infile, args.outfile,

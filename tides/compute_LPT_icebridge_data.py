@@ -113,8 +113,6 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
     else:
         input_subsetter = None
 
-    # output directory for input_file
-    DIRECTORY = input_file.parent
     # calculate if input files are from ATM or LVIS (+GH)
     regex = {}
     regex['ATM'] = r'(BLATM2|ILATM2)_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
@@ -232,7 +230,6 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
     # Normal gravity at height h. p. 82, Eqn.(2-215)
     gamma_h = units.gamma_h(theta, h1)
 
-
     # output load pole tide HDF5 file
     # form: rg_NASA_LOAD_POLE_TIDE_WGS84_fl1yyyymmddjjjjj.H5
     # where rg is the hemisphere flag (GR or AN) for the region
@@ -246,7 +243,7 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
     args = (hem_flag[HEM],'LOAD_POLE_TIDE',OIB,YY1,MM1,DD1,JJ1)
     FILENAME = '{0}_NASA_{1}_WGS84_{2}{3}{4}{5}{6:05.0f}.H5'.format(*args)
     # print file information
-    output_file = DIRECTORY.joinpath(FILENAME)
+    output_file = input_file.with_name(FILENAME)
     logger.info(f'\t{str(output_file)}')
 
     # open output HDF5 file

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_ICESat_GLA12.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 Computes geoid undulations for correcting ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     gauss_weights.py: Computes Gaussian weights as a function of degree
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         use reference ellipsoid function from geoid toolkit for parameters
     Updated 07/2022: place some imports within try/except statements
@@ -54,10 +55,9 @@ UPDATE HISTORY:
 """
 from __future__ import print_function
 
-import sys
-import os
 import re
 import logging
+import pathlib
 import argparse
 import warnings
 import numpy as np
@@ -87,11 +87,13 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     logging.basicConfig(level=loglevel)
 
     # get directory from INPUT_FILE
-    logging.info(f'{INPUT_FILE} -->')
-    DIRECTORY = os.path.dirname(INPUT_FILE)
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+    logging.info(f'{str(INPUT_FILE)} -->')
 
     # read gravity model Ylms and change tide to tide free
+    model_file = pathlib.Path(model_file).expanduser().absolute()
     Ylms = geoidtk.read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
+    model = Ylms['modelname']
     R = np.float64(Ylms['radius'])
     GM = np.float64(Ylms['earth_gravity_constant'])
     LMAX = np.int64(Ylms['max_degree'])
@@ -115,17 +117,17 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     # GRAN:  Granule version number
     # TYPE:  File type
     try:
-        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(INPUT_FILE).pop()
+        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(INPUT_FILE.name).pop()
     except:
         # output geoid HDF5 file (generic)
-        fileBasename,fileExtension = os.path.splitext(INPUT_FILE)
-        args = (fileBasename,Ylms['modelname'],fileExtension)
-        OUTPUT_FILE = '{0}_{1}_GEOID{2}'.format(*args)
+        FILENAME = f'{INPUT_FILE.stem}_{model}_GEOID{INPUT_FILE.suffix}'
     else:
         # output geoid HDF5 file for NSIDC granules
-        args = (PRD,RL,Ylms['modelname'],RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
+        args = (PRD,RL,model,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_{2}_GEOID_{3}{4}{5}_{6}_{7}_{8}_{9}_{10}.h5'
-        OUTPUT_FILE = file_format.format(*args)
+        FILENAME = file_format.format(*args)
+    # full path to output file
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE, mode='r')
@@ -193,7 +195,7 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     IS_gla12_geoid_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     # add attributes for input GLA12 file
-    IS_gla12_geoid_attrs['lineage'] = os.path.basename(INPUT_FILE)
+    IS_gla12_geoid_attrs['lineage'] = INPUT_FILE.name
     # update geospatial ranges for ellipsoid
     IS_gla12_geoid_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
     IS_gla12_geoid_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
@@ -283,12 +285,12 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     fileID.close()
 
     # print file information
-    logging.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
+    logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_geoid_attrs,
-        FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
+        FILENAME=OUTPUT_FILE,
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,OUTPUT_FILE), MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the geoid values for ICESat data to HDF5
 def HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_attrs,
@@ -300,7 +302,8 @@ def HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_attrs,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
     # create 40HZ HDF5 records
     h5 = dict(Data_40HZ={})
 
@@ -381,12 +384,11 @@ def arguments():
     # command line parameters
     # input ICESat GLAS files
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat GLA12 file to run')
     # set gravity model file to use
     parser.add_argument('--gravity','-G',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path,
         help='Gravity model file to use')
     # maximum spherical harmonic degree (level of truncation)
     parser.add_argument('--lmax','-l',
