@@ -103,6 +103,7 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     model_file = pathlib.Path(model_file).expanduser().absolute()
     Ylms = geoidtk.read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
     model = Ylms['modelname']
+    R = np.float64(Ylms['radius'])
     GM = np.float64(Ylms['earth_gravity_constant'])
     LMAX = np.int64(Ylms['max_degree'])
     # reference to WGS84 ellipsoid

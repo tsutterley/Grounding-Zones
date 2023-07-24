@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL11_grounding_zone.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 
 Create masks for reducing ICESat-2 annual land ice height data to within
     a buffer region near the ice sheet grounding zone
@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: verify coordinate reference system of shapefile
     Updated 10/2022: simplied HDF5 file output to match other reduction programs
@@ -58,6 +59,7 @@ import os
 import re
 import pyproj
 import logging
+import pathlib
 import argparse
 import datetime
 import warnings
@@ -124,12 +126,11 @@ def arguments():
     )
     # command line parameters
     parser.add_argument('file',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        type=pathlib.Path,
         help='ICESat-2 ATL11 file to run')
     # working data directory for shapefiles
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=gz.utilities.get_data_path('data'),
+        type=pathlib.Path, default=gz.utilities.get_data_path('data'),
         help='Working data directory')
     # buffer in kilometers for extracting grounding zone
     parser.add_argument('--buffer','-B',
@@ -158,19 +159,19 @@ def set_hemisphere(GRANULE):
 # PURPOSE: load the polygon object for the buffered estimated grounding zone
 def load_grounding_zone(base_dir, HEM, BUFFER):
     # buffered shapefile for region
-    buffered_shapefile = buffer_shapefile[HEM].format(BUFFER)
-    logging.info(os.path.join(base_dir,buffered_shapefile))
+    input_shapefile = base_dir.joinpath(buffer_shapefile[HEM].format(BUFFER))
     # read buffered shapefile
-    shape_input = fiona.open(os.path.join(base_dir,buffered_shapefile))
+    logging.info(str(input_shapefile))
+    shape = fiona.open(str(input_shapefile))
     # extract coordinate reference system
-    if ('init' in shape_input.crs.keys()):
-        epsg = pyproj.CRS(shape_input.crs['init']).to_epsg()
+    if ('init' in shape.crs.keys()):
+        epsg = pyproj.CRS(shape.crs['init']).to_epsg()
     else:
-        epsg = pyproj.CRS(shape_input.crs).to_epsg()
+        epsg = pyproj.CRS(shape.crs).to_epsg()
     # create list of polygons
     polygons = []
     # extract the entities and assign by tile name
-    for i,ent in enumerate(shape_input.values()):
+    for i,ent in enumerate(shape.values()):
         # list of coordinates
         poly_list = []
         # extract coordinates for entity
@@ -187,9 +188,9 @@ def load_grounding_zone(base_dir, HEM, BUFFER):
     # create shapely multipolygon object
     mpoly_obj = shapely.geometry.MultiPolygon(polygons)
     # close the shapefile
-    shape_input.close()
+    shape.close()
     # return the polygon object for the ice sheet
-    return (mpoly_obj,buffered_shapefile,epsg)
+    return (mpoly_obj, epsg)
 
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11)
 # reduce data to within buffer of grounding zone
@@ -206,17 +207,16 @@ def main():
     logging.basicConfig(level=loglevel)
 
     # output module information for process
-    info(comm.rank,comm.size)
+    info(comm.rank, comm.size)
     if (comm.rank == 0):
-        logging.info(r'{args.file} -->')
+        logging.info(f'{str(args.file)} -->')
 
     # Open the HDF5 file for reading
     fileID = h5py.File(args.file, 'r', driver='mpio', comm=comm)
-    DIRECTORY = os.path.dirname(args.file)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(args.file).pop()
+    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(args.file.name).pop()
     # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRAN)
 
@@ -234,7 +234,7 @@ def main():
     # read data on rank 0
     if (comm.rank == 0):
         # read shapefile and create shapely multipolygon objects
-        mpoly_obj,_,epsg = load_grounding_zone(args.directory,HEM,args.buffer)
+        mpoly_obj, epsg = load_grounding_zone(args.directory, HEM, args.buffer)
     else:
         # create empty object for list of shapely objects
         mpoly_obj = None
@@ -435,16 +435,16 @@ def main():
         # output HDF5 files with ice shelf masks
         fargs = (PRD,'GROUNDING_ZONE_MASK',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_{1}_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
-        output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
+        output_file = args.file.with_name(file_format.format(*fargs))
         # print file information
         logging.info(f'\t{output_file}')
         # write to output HDF5 file
         HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_mask_attrs,
-            CLOBBER=True, INPUT=os.path.basename(args.file),
+            CLOBBER=True, INPUT=args.file.name,
             FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
             FILENAME=output_file)
         # change the permissions mode
-        os.chmod(output_file, args.mode)
+        output_file.chmod(mode=args.mode)
     # close the input file
     fileID.close()
 
@@ -458,7 +458,8 @@ def HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_attrs, INPUT=None,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
 
     # create HDF5 records
     h5 = {}
@@ -559,7 +560,7 @@ def HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL11 files
-    fileID.attrs['lineage'] = ','.join([os.path.basename(i) for i in INPUT])
+    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for ptx in pairs:

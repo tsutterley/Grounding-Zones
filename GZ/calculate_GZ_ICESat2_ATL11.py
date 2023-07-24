@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/20232)
+Written by Tyler Sutterley (07/2023)
 
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
@@ -1481,7 +1481,7 @@ def arguments():
     )
     # command line parameters
     parser.add_argument('infile',
-        typepathlib.Path, nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL11 file to run')
     # directory with mask data
     parser.add_argument('--directory','-D',
