@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_IB_ICESat2_ATL06.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Calculates and interpolates inverse-barometer responses to times and
     locations of ICESat-2 ATL06 land ice elevation data
     This data will be interpolated for all valid points
@@ -44,6 +44,8 @@ REFERENCES:
         Rev. A, 84 pp., (1994)
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
+        using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
         use constants class from pyTMD for ellipsoidal parameters
@@ -59,10 +61,10 @@ UPDATE HISTORY:
 """
 from __future__ import print_function
 
-import os
 import re
 import pyproj
 import logging
+import pathlib
 import argparse
 import datetime
 import warnings
@@ -95,14 +97,16 @@ except (ImportError, ModuleNotFoundError) as exc:
 warnings.filterwarnings("ignore")
 
 # PURPOSE: read land sea mask to get indices of oceanic values
-def ncdf_landmask(FILENAME,MASKNAME,OCEAN):
-    with netCDF4.Dataset(FILENAME,'r') as fileID:
+def ncdf_landmask(FILENAME, MASKNAME, OCEAN):
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    with netCDF4.Dataset(FILENAME, mode='r') as fileID:
         landsea = np.squeeze(fileID.variables[MASKNAME][:].copy())
     return (landsea == OCEAN)
 
 # PURPOSE: read reanalysis mean sea level pressure
-def ncdf_mean_pressure(FILENAME,VARNAME,LONNAME,LATNAME):
-    with netCDF4.Dataset(FILENAME,'r') as fileID:
+def ncdf_mean_pressure(FILENAME, VARNAME, LONNAME, LATNAME):
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    with netCDF4.Dataset(FILENAME, mode='r') as fileID:
         # extract pressure and remove singleton dimensions
         mean_pressure = np.array(fileID.variables[VARNAME][:].squeeze())
         longitude = fileID.variables[LONNAME][:].squeeze()
@@ -111,6 +115,8 @@ def ncdf_mean_pressure(FILENAME,VARNAME,LONNAME,LATNAME):
 
 # PURPOSE: find pressure files in a directory
 def find_pressure_files(ddir, MODEL, MJD):
+    # verify input directory exists
+    ddir = pathlib.Path(ddir).expanduser().absolute()
     # regular expression pattern for finding files
     if (MODEL == 'ERA-Interim'):
         regex_pattern = r'ERA\-Interim\-Hourly\-MSL\-({0})\.nc$'
@@ -135,7 +141,7 @@ def find_pressure_files(ddir, MODEL, MJD):
             dates.append(joiner.join([str(y),str(m).zfill(2),str(d).zfill(2)]))
     # compile regular expression pattern for finding dates
     rx = re.compile(regex_pattern.format('|'.join(dates)))
-    flist = [os.path.join(ddir,f) for f in os.listdir(ddir) if rx.match(f)]
+    flist = [f for f in ddir.iterdir() if rx.match(f.name)]
     # return the sorted list of unique files
     return sorted(set(flist))
 
@@ -160,7 +166,8 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
     c = 0
     # for each file
     for FILENAME in FILENAMES:
-        with netCDF4.Dataset(FILENAME,'r') as fileID:
+        FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+        with netCDF4.Dataset(FILENAME, mode='r') as fileID:
             # extract coordinates
             latitude = fileID.variables[LATNAME][:].squeeze()
             # convert time to Modified Julian Days
@@ -210,11 +217,11 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
     TPX = TPX[itime,:,:]
     MJD = MJD[itime]
     # return the sea level pressure anomalies and times
-    return (SLP,TPX,latitude,MJD)
+    return (SLP, TPX, latitude, MJD)
 
 # PURPOSE: read ICESat-2 land ice data (ATL06) from NSIDC
 # calculate and interpolate the instantaneous inverse barometer response
-def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
+def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL, RANGE=None,
     DENSITY=None, VERBOSE=False, MODE=0o775):
 
     # create logger
@@ -222,7 +229,8 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
     logging.basicConfig(level=loglevel)
 
     # directory setup for reanalysis model
-    ddir = os.path.join(base_dir,MODEL)
+    base_dir = pathlib.Path(base_dir).expanduser().absolute()
+    ddir = base_dir.joinpath(MODEL)
     # set model specific parameters
     if (MODEL == 'ERA-Interim'):
         # mean sea level pressure file
@@ -269,22 +277,30 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
         # projection string
         proj4_params = 'epsg:4326'
 
-    # read data from input_file
-    logging.info(f'{FILE} -->')
+    # full path to input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
     IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = \
-        is2tk.io.ATL06.read_granule(FILE, ATTRIBUTES=True)
-    DIRECTORY = os.path.dirname(FILE)
+        is2tk.io.ATL06.read_granule(INPUT_FILE, ATTRIBUTES=True)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = rx.findall(FILE).pop()
-
-    # number of GPS seconds between the GPS epoch
-    # and ATLAS Standard Data Product (SDP) epoch
-    atlas_sdp_gps_epoch = IS2_atl06_mds['ancillary_data']['atlas_sdp_gps_epoch']
+    try:
+        SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = \
+            rx.findall(INPUT_FILE).pop()
+    except:
+        # output inverse barometer response HDF5 file (generic)
+        FILENAME = f'{INPUT_FILE.stem}_{MODEL}_IB{INPUT_FILE.suffix}'
+    else:
+        # output inverse barometer response HDF5 file for ASAS/NSIDC granules
+        args = (PRD,MODEL,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
+        file_format = '{0}{1}_IB_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
+        FILENAME = file_format.format(*args)
+    # full path to output file
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
     # read mean pressure field
-    mean_file = os.path.join(ddir,input_mean_file.format(RANGE[0],RANGE[1]))
+    mean_file = ddir.joinpath(input_mean_file.format(RANGE[0], RANGE[1]))
     mean_pressure,lon,lat=ncdf_mean_pressure(mean_file,VARNAME,LONNAME,LATNAME)
 
     # pyproj transformer for converting from input coordinates (EPSG)
@@ -314,15 +330,15 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
         (a_axis**4)*(np.cos(gridtheta)**2))
     # read land-sea mask to find ocean values
     # ocean pressure points will be based on reanalysis mask
-    MASK = ncdf_landmask(os.path.join(ddir,input_mask_file),MASKNAME,OCEAN)
+    MASK = ncdf_landmask(ddir.joinpath(input_mask_file), MASKNAME, OCEAN)
 
     # find and read each reanalysis pressure field
     MJD = is2tk.time.convert_calendar_dates(int(YY),int(MM),int(DD),
         epoch=(1858,11,17,0,0,0), scale=1.0)
-    FILENAMES = find_pressure_files(ddir,MODEL,MJD)
+    FILENAMES = find_pressure_files(ddir, MODEL, MJD)
     # read sea level pressure and calculate anomalies
-    islp,itpx,ilat,imjd = ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,
-        mean_pressure,MASK,AREA)
+    islp,itpx,ilat,imjd = ncdf_pressure(FILENAMES, VARNAME, TIMENAME,
+        LATNAME, mean_pressure, MASK, AREA)
     # create an interpolator for sea level pressure anomalies
     R1 = scipy.interpolate.RegularGridInterpolator((imjd,ilat,lon), islp,
         bounds_error=False)
@@ -361,11 +377,10 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
         fv = IS2_atl06_attrs[gtx]['land_ice_segments']['h_li']['_FillValue']
         valid, = np.nonzero(val['h_li'] != fv)
 
-        # convert time from ATLAS SDP to Modified Julian Days
-        gps_seconds = atlas_sdp_gps_epoch + val['delta_time']
-        leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
-        MJD = is2tk.time.convert_delta_time(gps_seconds - leap_seconds,
-            epoch1=(1980,1,6,0,0,0),epoch2=(1858,11,17,0,0,0),scale=1.0/86400.0)
+        # create timescale from ATLAS Standard Epoch time
+        # GPS seconds since 2018-01-01 00:00:00 UTC
+        timescale = pyTMD.time.timescale().from_deltatime(val['delta_time'],
+            epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
 
         # calculate projected coordinates of input coordinates
         ix,iy = transformer.transform(val['longitude'], val['latitude'])
@@ -379,13 +394,13 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
         gs = ge*(1.0 + 5.2885e-3*np.cos(th)**2 - 5.9e-6*np.cos(2.0*th)**2)
 
         # interpolate sea level pressure anomalies to points
-        SLP = R1.__call__(np.c_[MJD[valid],iy[valid],ix[valid]])
+        SLP = R1.__call__(np.c_[timescale.MJD[valid], iy[valid], ix[valid]])
         # calculate inverse barometer response
         IB = np.ma.zeros((n_seg),fill_value=fv)
         IB.data[valid] = -SLP*(DENSITY*gs[valid])**-1
         # interpolate conventional inverse barometer response to points
         TPX = np.ma.zeros((n_seg),fill_value=fv)
-        TPX.data[valid] = R2.__call__(np.c_[MJD[valid],iy[valid],ix[valid]])
+        TPX.data[valid] = R2.__call__(np.c_[timescale.MJD[valid],iy[valid],ix[valid]])
         # replace any nan values with fill value
         IB.mask = (val['h_li'] == fv) | np.isnan(IB.data)
         TPX.mask = (val['h_li'] == fv) | np.isnan(TPX.data)
@@ -515,18 +530,14 @@ def interp_IB_response_ICESat2(base_dir, FILE, MODEL, RANGE=None,
         IS2_atl06_corr_attrs[gtx]['land_ice_segments']['geophysical']['tpx']['coordinates'] = \
             "../segment_id ../delta_time ../latitude ../longitude"
 
-    # output HDF5 files with interpolated inverse barometer data
-    fargs = (PRD,MODEL,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
-    file_format = '{0}_{1}_IB_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
-    output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
     # print file information
-    logging.info(f'\t{output_file}')
+    logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_corr_attrs,
-        CLOBBER=True, INPUT=os.path.basename(FILE),
+        CLOBBER=True, INPUT=INPUT_FILE.name,
         FILL_VALUE=IS2_atl06_fill, DIMENSIONS=IS2_atl06_dims,
-        FILENAME=output_file)
+        FILENAME=OUTPUT_FILE)
     # change the permissions mode
-    os.chmod(output_file, MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the correction values for ICESat-2 data to HDF5
 def HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_attrs, INPUT=None,
@@ -538,7 +549,8 @@ def HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_attrs, INPUT=None,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
 
     # create HDF5 records
     h5 = {}
@@ -649,7 +661,7 @@ def HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL06 file
-    fileID.attrs['input_files'] = os.path.basename(INPUT)
+    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for gtx in beams:
@@ -673,24 +685,13 @@ def HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_attrs, INPUT=None,
     fileID.attrs['geospatial_ellipsoid'] = "WGS84"
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
-    # convert start and end time from ATLAS SDP seconds into GPS seconds
-    atlas_sdp_gps_epoch=IS2_atl06_corr['ancillary_data']['atlas_sdp_gps_epoch']
-    gps_seconds = atlas_sdp_gps_epoch + np.array([tmn,tmx])
-    # calculate leap seconds
-    leaps = is2tk.time.count_leap_seconds(gps_seconds)
-    # convert from seconds since 1980-01-06T00:00:00 to Modified Julian days
-    MJD = is2tk.time.convert_delta_time(gps_seconds - leaps,
-        epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
-    # convert to calendar date
-    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(MJD + 2400000.5,
-        FORMAT='tuple')
+    # convert start and end time from ATLAS SDP seconds into timescale
+    timescale = pyTMD.time.timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
-    tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
-        int(HH[0]), int(MN[0]), int(SS[0]), int(1e6*(SS[0] % 1)))
-    fileID.attrs['time_coverage_start'] = tcs.isoformat()
-    tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
-        int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
-    fileID.attrs['time_coverage_end'] = tce.isoformat()
+    fileID.attrs['time_coverage_start'] = str(dt[0])
+    fileID.attrs['time_coverage_end'] = str(dt[1])
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name
@@ -710,12 +711,11 @@ def arguments():
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL06 file to run')
     # directory with reanalysis data
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     choices = ['ERA-Interim','ERA5','MERRA-2']
     parser.add_argument('--reanalysis','-R',

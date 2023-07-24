@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_inverse_barometer.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (04/2023)
 Reads hourly mean sea level pressure fields from reanalysis and
     calculates the inverse-barometer response
 
@@ -38,6 +38,7 @@ REFERENCES:
         https://doi.org/10.1007/978-3-211-33545-1
 
 UPDATE HISTORY:
+    Updated 04/2023: using pathlib to define and expand paths
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
     Updated 05/2022: use argparse descriptions within sphinx documentation
@@ -49,9 +50,9 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import sys
-import os
 import re
 import logging
+import pathlib
 import argparse
 import datetime
 import warnings
@@ -92,7 +93,8 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
     DENSITY=None, MODE=0o775):
 
     # directory setup for reanalysis model
-    ddir = os.path.join(base_dir,MODEL)
+    base_dir = pathlib.Path(base_dir).expanduser().absolute()
+    ddir = base_dir.joinpath(MODEL)
     # set model specific parameters
     if (MODEL == 'ERA-Interim'):
         # regular expression pattern for finding files
@@ -158,7 +160,7 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
         OCEAN = 1
 
     # read mean pressure field
-    mean_file = os.path.join(ddir,input_mean_file.format(RANGE[0],RANGE[1]))
+    mean_file = ddir.joinpath(input_mean_file.format(RANGE[0],RANGE[1]))
     mean_pressure,lon,lat=ncdf_mean_pressure(mean_file,VARNAME,LONNAME,LATNAME)
     # shape of mean pressure field
     ny,nx = np.shape(mean_pressure)
@@ -184,7 +186,7 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
         (a_axis**4)*(np.cos(gridtheta)**2))
     # read land-sea mask to find ocean values
     # ocean pressure points will be based on reanalysis mask
-    MASK = ncdf_landmask(os.path.join(ddir,input_mask_file),MASKNAME,OCEAN)
+    MASK = ncdf_landmask(ddir.joinpath(input_mask_file), MASKNAME, OCEAN)
     # calculate total area of reanalysis ocean
     # ocean pressure points will be based on reanalysis mask
     ii,jj = np.nonzero(MASK)
@@ -199,22 +201,24 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
     # read each reanalysis pressure field for each year
     regex_years = r'\d{4}' if (YEAR is None) else '|'.join(map(str,YEAR))
     rx = re.compile(regex_pattern.format(regex_years), re.VERBOSE)
-    input_files = [fi for fi in os.listdir(ddir) if rx.match(fi)]
+    input_files = [fi for fi in ddir.iterdir() if rx.match(fi.name)]
     # for each reanalysis file
-    for fi in sorted(input_files):
+    for INPUT_FILE in sorted(input_files):
         # extract parameters from filename
-        if MODEL in ('MERRA-2'):
+        if MODEL in ('MERRA-2',):
             # extract date from hourly files
-            MOD,YEAR,MONTH,DAY,AUX = rx.findall(fi).pop()
+            MOD,YEAR,MONTH,DAY,AUX = rx.findall(INPUT_FILE.name).pop()
             # output inverse barometer filename
             FILENAME = output_file_format.format(MOD,YEAR,MONTH,DAY,AUX)
         elif MODEL in ('ERA-Interim','ERA5'):
             # extract date from hourly files
-            YEAR,MONTH,DAY = rx.findall(fi).pop()
+            YEAR,MONTH,DAY = rx.findall(INPUT_FILE.name).pop()
             # output inverse barometer filename
             FILENAME = output_file_format.format(YEAR,MONTH,DAY)
+        # full path to output file
+        OUTPUT_FILE = ddir.joinpath(FILENAME)
         # read netCDF4 mean sea level file
-        with netCDF4.Dataset(os.path.join(ddir,fi),'r') as fileID:
+        with netCDF4.Dataset(INPUT_FILE, 'r') as fileID:
             # number of time points in file
             nt, = fileID.variables[TIMENAME].shape
             # extract time and time units
@@ -229,7 +233,7 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
             # reduced sea level pressure field
             SLP = np.ma.zeros((nt,ny,nx),fill_value=fill_value)
             # calculate reduced sea level pressure for each time
-            for t,dt in enumerate(dinput[TIMENAME]):
+            for t, dt in enumerate(dinput[TIMENAME]):
                 # check dimensions for expver slice
                 if (fileID.variables[VARNAME].ndim == 4):
                     _,nexp,_,_ = fileID.variables[VARNAME].shape
@@ -253,21 +257,23 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
                 SLP[t,:,:] = AveRmvd - AVERAGE
                 # clear temp variables for iteration to free up memory
                 pressure,AveRmvd = (None,None)
-            # calculate inverse barometer response
-            dinput[IBNAME] = -SLP*(DENSITY*gs)**-1
-            # output to file
-            ncdf_IB_write(dinput, fill_value,
-                FILENAME=os.path.join(ddir,FILENAME), IBNAME=IBNAME,
-                LONNAME=LONNAME, LATNAME=LATNAME, TIMENAME=TIMENAME,
-                TIME_UNITS=TIME_UNITS, TIME_LONGNAME=TIME_LONGNAME,
-                UNITS=UNITS, DENSITY=DENSITY)
-            # change permissions mode
-            os.chmod(os.path.join(ddir,FILENAME),MODE)
+        # calculate inverse barometer response
+        dinput[IBNAME] = -SLP*(DENSITY*gs)**-1
+        # output to file
+        ncdf_IB_write(dinput, fill_value,
+            FILENAME=OUTPUT_FILE, IBNAME=IBNAME,
+            LONNAME=LONNAME, LATNAME=LATNAME, TIMENAME=TIMENAME,
+            TIME_UNITS=TIME_UNITS, TIME_LONGNAME=TIME_LONGNAME,
+            UNITS=UNITS, DENSITY=DENSITY)
+        # change permissions mode
+        OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: write output inverse barometer fields data to file
 def ncdf_IB_write(dinput, fill_value, FILENAME=None, IBNAME=None,
     LONNAME=None, LATNAME=None, TIMENAME=None, TIME_UNITS=None,
     TIME_LONGNAME=None, UNITS=None, DENSITY=None):
+    # validate input path
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
     # opening NetCDF file for writing
     fileID = netCDF4.Dataset(FILENAME, 'w', format="NETCDF4")
 
@@ -302,10 +308,10 @@ def ncdf_IB_write(dinput, fill_value, FILENAME=None, IBNAME=None,
     # add software information
     fileID.software_reference = gz.version.project_name
     fileID.software_version = gz.version.full_version
-    fileID.reference = f'Output from {os.path.basename(sys.argv[0])}'
+    fileID.reference = f'Output from {pathlib.Path(sys.argv[0]).name}'
 
     # Output NetCDF structure information
-    logging.info(os.path.basename(FILENAME))
+    logging.info(FILENAME)
     logging.info(list(fileID.variables.keys()))
 
     # Closing the NetCDF file
@@ -331,8 +337,7 @@ def arguments():
         help='Reanalysis Model')
     # directory with reanalysis data
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # years to run
     now = datetime.datetime.now()

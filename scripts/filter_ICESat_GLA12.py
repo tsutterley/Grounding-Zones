@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 filter_ICESat_GLA12.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Calculates quality summary flags for ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -48,6 +48,7 @@ L. S. Sorensen, S. B. Simonsen, K. Nielsen, P. Lucas-Picher,
     https://doi.org/10.5194/tc-5-173-2011
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 05/2022: use argparse descriptions within documentation
     Forked 02/2022 from icesat_glas_correct.py
@@ -55,9 +56,9 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import sys
-import os
 import re
 import logging
+import pathlib
 import argparse
 import warnings
 import numpy as np
@@ -87,8 +88,8 @@ def filter_ICESat_GLA12(INPUT_FILE,
     logging.basicConfig(level=loglevel)
 
     # get directory from INPUT_FILE
-    logging.info(f'{INPUT_FILE} -->')
-    DIRECTORY = os.path.dirname(INPUT_FILE)
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+    logging.info(f'{str(INPUT_FILE)} -->')
 
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
@@ -107,19 +108,21 @@ def filter_ICESat_GLA12(INPUT_FILE,
     # GRAN:  Granule version number
     # TYPE:  File type
     try:
-        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(INPUT_FILE).pop()
-    except:
+        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
+            rx.findall(INPUT_FILE.name).pop()
+    except (ValueError, IndexError):
         # output quality summary HDF5 file (generic)
-        fileBasename,fileExtension = os.path.splitext(INPUT_FILE)
-        OUTPUT_FILE = '{0}_{1}{2}'.format(fileBasename,'MASK',fileExtension)
+        FILENAME = f'{INPUT_FILE.stem}_MASK{INPUT_FILE.suffix}'
     else:
         # output quality summary HDF5 file for NSIDC granules
         args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_MASK_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
-        OUTPUT_FILE = file_format.format(*args)
+        FILENAME = file_format.format(*args)
+    # full path to output file
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
     # read GLAH12 HDF5 file
-    f = h5py.File(os.path.expanduser(INPUT_FILE), 'r')
+    f = h5py.File(INPUT_FILE, mode='r')
     # copy variables for outputting to HDF5 file
     IS_gla12_mask = dict(Data_40HZ={})
     IS_gla12_attrs = dict(Data_40HZ={})
@@ -261,13 +264,24 @@ def filter_ICESat_GLA12(INPUT_FILE,
         "best_quality potential_problem"
     IS_gla12_attrs['Data_40HZ']['Quality']['quality_summary']['flag_values'] = [0,1]
 
+    # add global attributes for input GLA12 file
+    IS_gla12_attrs['lineage'] = INPUT_FILE.name
+    # update geospatial ranges for ellipsoid
+    IS_gla12_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
+    IS_gla12_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
+    IS_gla12_attrs['geospatial_lon_min'] = np.min(lon_40HZ)
+    IS_gla12_attrs['geospatial_lon_max'] = np.max(lon_40HZ)
+    IS_gla12_attrs['geospatial_lat_units'] = "degrees_north"
+    IS_gla12_attrs['geospatial_lon_units'] = "degrees_east"
+    IS_gla12_attrs['geospatial_ellipsoid'] = "WGS84"
+
     # print file information
-    logging.info(f'\t{OUTPUT_FILE}')
+    logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_GLA12_mask_write(IS_gla12_mask, IS_gla12_attrs,
-        FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
+        FILENAME=OUTPUT_FILE,
         CLOBBER=True)
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,OUTPUT_FILE), MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the mask values for ICESat data to HDF5
 def HDF5_GLA12_mask_write(IS_gla12_tide, IS_gla12_attrs,
@@ -279,7 +293,8 @@ def HDF5_GLA12_mask_write(IS_gla12_tide, IS_gla12_attrs,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
     # create 40HZ HDF5 records
     h5 = dict(Data_40HZ={})
 
@@ -303,9 +318,9 @@ def HDF5_GLA12_mask_write(IS_gla12_tide, IS_gla12_attrs,
     val = IS_gla12_tide['Data_40HZ']['DS_UTCTime_40']
     attrs = IS_gla12_attrs['Data_40HZ']['DS_UTCTime_40']
     # Defining the HDF5 dataset variables
-    var = '{0}/{1}'.format('Data_40HZ','DS_UTCTime_40')
-    h5['Data_40HZ']['DS_UTCTime_40'] = fileID.create_dataset(var,
-        np.shape(val), data=val, dtype=val.dtype, compression='gzip')
+    h5['Data_40HZ']['DS_UTCTime_40'] = fileID.create_dataset(
+        'Data_40HZ/DS_UTCTime_40', np.shape(val),
+        data=val, dtype=val.dtype, compression='gzip')
     # make dimension
     h5['Data_40HZ']['DS_UTCTime_40'].make_scale('DS_UTCTime_40')
     # add HDF5 variable attributes
@@ -317,7 +332,7 @@ def HDF5_GLA12_mask_write(IS_gla12_tide, IS_gla12_attrs,
         # add group to dict
         h5['Data_40HZ'][group] = {}
         # create Data_40HZ group
-        fileID.create_group('Data_40HZ/{0}'.format(group))
+        fileID.create_group(f'Data_40HZ/{group}')
         # add HDF5 group attributes
         for att_name,att_val in IS_gla12_attrs['Data_40HZ'][group].items():
             if not isinstance(att_val,dict):
@@ -326,7 +341,7 @@ def HDF5_GLA12_mask_write(IS_gla12_tide, IS_gla12_attrs,
         for key,val in IS_gla12_tide['Data_40HZ'][group].items():
             attrs = IS_gla12_attrs['Data_40HZ'][group][key]
             # Defining the HDF5 dataset variables
-            var = '{0}/{1}/{2}'.format('Data_40HZ',group,key)
+            var = f'Data_40HZ/{group}/{key}'
             h5['Data_40HZ'][group][key] = fileID.create_dataset(var,
                 np.shape(val), data=val, dtype=val.dtype,
                 compression='gzip')
@@ -351,7 +366,7 @@ def arguments():
     )
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat GLA12 file to run')
     # filter flag criteria
     parser.add_argument('--IceSVar',

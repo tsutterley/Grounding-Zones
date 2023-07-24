@@ -36,6 +36,8 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/aviso_dac_sync.rst
     api_reference/calculate_inverse_barometer.rst
     api_reference/cds_mslp_sync.rst
+    api_reference/interp_DAC_ICESat_GLA12.rst
+    api_reference/interp_IB_response_ICESat)GLA12.rst
     api_reference/interp_IB_response_ICESat2_ATL06.rst
     api_reference/interp_IB_response_ICESat2_ATL07.rst
     api_reference/interp_IB_response_ICESat2_ATL11.rst

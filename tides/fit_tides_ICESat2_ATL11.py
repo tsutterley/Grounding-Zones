@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -50,6 +50,8 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
+        using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
     Updated 07/2022: place some imports within try/except statements
@@ -61,9 +63,9 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import sys
-import os
 import re
 import logging
+import pathlib
 import argparse
 import datetime
 import warnings
@@ -103,7 +105,7 @@ def common_reference_points(XT, AT):
 # calculate inflexion point using elevation surface slopes
 # use mean elevation to calculate elevation anomalies
 # use anomalies to calculate inward and seaward limits of tidal flexure
-def fit_tides_ICESat2(tide_dir, FILE,
+def fit_tides_ICESat2(tide_dir, INPUT_FILE,
     TIDE_MODEL=None,
     REANALYSIS=None,
     VERBOSE=False,
@@ -117,27 +119,25 @@ def fit_tides_ICESat2(tide_dir, FILE,
     model = pyTMD.io.model(tide_dir, verify=False).elevation(TIDE_MODEL)
 
     # print file information
-    logging.info(os.path.basename(FILE))
+    logging.info(f'{str(INPUT_FILE)} -->')
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
     # read data from FILE
-    mds1,attr1,pairs1 = is2tk.io.ATL11.read_granule(FILE, REFERENCE=True,
-        CROSSOVERS=True, ATTRIBUTES=True, VERBOSE=VERBOSE)
-    DIRECTORY = os.path.dirname(FILE)
+    mds1,attr1,pairs1 = is2tk.io.ATL11.read_granule(INPUT_FILE,
+        REFERENCE=True, CROSSOVERS=True, ATTRIBUTES=True)
+
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(FILE).pop()
+    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = \
+        rx.findall(INPUT_FILE.name).pop()
     # file format for associated auxiliary files
     file_format = '{0}_{1}_{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
 
     # height threshold (filter points below 0m elevation)
     THRESHOLD = 0.0
-    #  maximum height sigmas allowed in tidal adjustment fit
+    # maximum height sigmas allowed in tidal adjustment fit
     sigma_tolerance = 0.5
     output_tolerance = 0.5
-
-    # number of GPS seconds between the GPS epoch
-    # and ATLAS Standard Data Product (SDP) epoch
-    atlas_sdp_gps_epoch = mds1['ancillary_data']['atlas_sdp_gps_epoch']
 
     # copy variables for outputting to HDF5 file
     IS2_atl11_tide = {}
@@ -265,7 +265,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
 
         # read buffered grounding zone mask
         a2 = (PRD,'GROUNDING_ZONE','MASK',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-        f3 = os.path.join(DIRECTORY,file_format.format(*a2))
+        f3 = INPUT_FILE.with_name(file_format.format(*a2))
         # create data mask for grounding zone
         mds1[ptx]['subsetting'] = {}
         mds1[ptx]['subsetting'].setdefault('ice_gz',
@@ -285,7 +285,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
         if TIDE_MODEL:
             # read tide model HDF5 file
             a3 = (PRD,TIDE_MODEL,'TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-            f3 = os.path.join(DIRECTORY,file_format.format(*a3))
+            f3 = INPUT_FILE.with_name(file_format.format(*a3))
             # check that tide model file exists
             try:
                 mds3,attr3 = is2tk.io.ATL11.read_pair(f3,ptx,
@@ -314,7 +314,7 @@ def fit_tides_ICESat2(tide_dir, FILE,
         if REANALYSIS:
             # read inverse barometer HDF5 file
             a4 = (PRD,REANALYSIS,'IB',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-            f4 = os.path.join(DIRECTORY,file_format.format(*a4))
+            f4 = INPUT_FILE.with_name(file_format.format(*a4))
             # check that inverse barometer file exists
             try:
                 mds4,attr4 = is2tk.io.ATL11.read_pair(f4,ptx,
@@ -333,17 +333,15 @@ def fit_tides_ICESat2(tide_dir, FILE,
             val.mask[:] |= (h_corr[group].data == h_corr[group].fill_value)
             val.data[val.mask] = val.fill_value
 
-        # allocate for output tide times
-        tide_time = {}
+        # allocate for output timescales
+        timescale = {}
         # calculate tides for along-track and across-track data
         for track in ['AT','XT']:
-            # convert time from ATLAS SDP to days relative to Jan 1, 1992
-            gps_seconds = atlas_sdp_gps_epoch + delta_time[track]
-            leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
-            utc_seconds = gps_seconds - leap_seconds
-            tide_time[track] = is2tk.time.convert_delta_time(utc_seconds,
-                epoch1=pyTMD.time._gps_epoch, epoch2=pyTMD.time._tide_epoch,
-                scale=1.0/86400.0)
+            # create timescale from ATLAS Standard Epoch time
+            # GPS seconds since 2018-01-01 00:00:00 UTC
+            timescale[track] = pyTMD.time.timescale().from_deltatime(
+                delta_time[track], epoch=pyTMD.time._atlas_sdp_epoch,
+                standard='GPS')
 
         # for each ATL11 segment
         for s in range(n_points):
@@ -371,9 +369,9 @@ def fit_tides_ICESat2(tide_dir, FILE,
             # height referenced to geoid
             h1 = h_corr['AT'].data[s,i1] - geoid_h[s]
             h2 = np.atleast_1d(h_corr['XT'].data[i2]) - geoid_h[s]
-            # tide time
-            t1 = tide_time['AT'].data[s,i1]
-            t2 = np.atleast_1d(tide_time['XT'].data[i2])
+            # tide times
+            t1 = timescale['AT'].tide[s,i1]
+            t2 = timescale['XT'].tide[i2]
             # combined tide and dac height
             ot1 = tide_ocean['AT'].data[s,i1] + IB['AT'].data[s,i1]
             ot2 = np.atleast_1d(tide_ocean['XT'].data[i2] + IB['XT'].data[i2])
@@ -763,15 +761,15 @@ def fit_tides_ICESat2(tide_dir, FILE,
     # output flexure correction HDF5 file
     args = (PRD,TIDE_MODEL,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
     file_format = '{0}_{1}_FIT_TIDES_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
-    OUTPUT_FILE = os.path.join(DIRECTORY,file_format.format(*args))
+    OUTPUT_FILE = INPUT_FILE.with_name(file_format.format(*args))
     # print file information
-    logging.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
+    logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL11_corr_write(IS2_atl11_tide, IS2_atl11_tide_attrs,
-        CLOBBER=True, INPUT=os.path.basename(FILE),
+        CLOBBER=True, INPUT=INPUT_FILE.name,
         CROSSOVERS=True, FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
         FILENAME=OUTPUT_FILE)
     # change the permissions mode
-    os.chmod(OUTPUT_FILE, MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the correction values for ICESat-2 data to HDF5
 def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
@@ -784,7 +782,8 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
 
     # create HDF5 records
     h5 = {}
@@ -901,7 +900,7 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL11 files
-    fileID.attrs['input_files'] = os.path.basename(INPUT)
+    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for ptx in pairs:
@@ -925,25 +924,13 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['geospatial_lon_units'] = "degrees_east"
     fileID.attrs['geospatial_ellipsoid'] = "WGS84"
     fileID.attrs['date_type'] = 'UTC'
-    fileID.attrs['time_type'] = 'CCSDS UTC-A'
-    # convert start and end time from ATLAS SDP seconds into GPS seconds
-    atlas_sdp_gps_epoch=IS2_atl11_corr['ancillary_data']['atlas_sdp_gps_epoch']
-    gps_seconds = atlas_sdp_gps_epoch + np.array([tmn,tmx])
-    # calculate leap seconds
-    leaps = is2tk.time.count_leap_seconds(gps_seconds)
-    # convert from seconds since 1980-01-06T00:00:00 to Julian days
-    MJD = is2tk.time.convert_delta_time(gps_seconds - leaps,
-        epoch1=pyTMD.time._gps_epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
-    # convert to calendar date
-    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(MJD + 2400000.5,
-        FORMAT='tuple')
+    # convert start and end time from ATLAS SDP seconds into timescale
+    timescale = pyTMD.time.timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
-    tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
-        int(HH[0]), int(MN[0]), int(SS[0]), int(1e6*(SS[0] % 1)))
-    fileID.attrs['time_coverage_start'] = tcs.isoformat()
-    tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
-        int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
-    fileID.attrs['time_coverage_end'] = tce.isoformat()
+    fileID.attrs['time_coverage_start'] = str(dt[0])
+    fileID.attrs['time_coverage_end'] = str(dt[1])
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     # add software information
     fileID.attrs['software_reference'] = pyTMD.version.project_name
@@ -971,12 +958,11 @@ def arguments():
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
-        help='ICESat-2 ATL11 file to run')
+        type=pathlib.Path, nargs='+',
+        help='ICESat GLA12 file to run')
     # directory with tide data
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # tide model to use
     parser.add_argument('--tide','-T',

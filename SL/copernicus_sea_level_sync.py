@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 copernicus_sea_level_sync.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 
 Syncs sea surface anomalies calculated from AVISO and distributed by the EU
     ftp://my.cmems-du.eu/Core/SEALEVEL_GLO_PHY_L4_REP_OBSERVATIONS_008_047/
@@ -26,6 +26,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the directories and files synced
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and expand paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 06/2022: using argparse to set command line parameters
         use logging for verbose and log output
@@ -40,6 +41,7 @@ import os
 import netrc
 import getpass
 import logging
+import pathlib
 import argparse
 import builtins
 import posixpath
@@ -63,13 +65,16 @@ def copernicus_sea_level_sync(DIRECTORY,
     ftp = ftplib.FTP('my.cmems-du.eu')
     ftp.login(USER, PASSWORD)
 
+    # output directory
+    DIRECTORY = pathlib.Path(DIRECTORY).expanduser().absolute()
+    DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
+
     # output of synchronized files
     if LOG:
         # format: Copernicus_Sea_Level_sync_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
-        LOGFILE = f'Copernicus_Sea_Level_sync_{today}.log'
-        logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
-            level=logging.INFO)
+        LOGFILE = DIRECTORY.joinpath(f'Copernicus_Sea_Level_sync_{today}.log')
+        logging.basicConfig(filename=LOGFILE, level=logging.INFO)
         logging.info(f'Copernicus Sea Level Sync Log ({today})')
 
     else:
@@ -97,9 +102,9 @@ def copernicus_sea_level_sync(DIRECTORY,
         basename=True, pattern=R1, sort=True)
     for Y in YEARS:
         # remote and local directory for data product of year
-        local_dir = os.path.join(DIRECTORY,Y)
+        local_dir = DIRECTORY.joinpath(Y)
         # check if local directory exists and recursively create if not
-        os.makedirs(local_dir,MODE) if not os.path.exists(local_dir) else None
+        local_dir.mkdir(mode=MODE, parents=True, exist_ok=True)
         # get filenames from remote directory
         remote_files,remote_mtimes = gz.utilities.ftp_list(
             [ftp.host,RD[0],RD[1],RD[2],Y],
@@ -108,14 +113,14 @@ def copernicus_sea_level_sync(DIRECTORY,
         for fi,remote_mtime in zip(remote_files,remote_mtimes):
             # extract filename from regex object
             remote_path = [ftp.host,RD[0],RD[1],RD[2],Y,fi]
-            local_file = os.path.join(local_dir,fi)
+            local_file = local_dir.joinpath(fi)
             ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
                 LIST=LIST, CLOBBER=CLOBBER, MODE=MODE)
     # close the ftp connection
     ftp.quit()
     # close log file and set permissions level to MODE
     if LOG:
-        os.chmod(os.path.join(DIRECTORY,LOGFILE), MODE)
+        LOGFILE.chmod(mode=MODE)
 
 # PURPOSE: pull file from a remote host checking if file exists locally
 # and if the remote file is newer than the local file
@@ -125,9 +130,10 @@ def ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
     TEST = False
     OVERWRITE = ' (clobber)'
     # check if local version of file exists
-    if os.access(local_file, os.F_OK):
+    local_file = pathlib.Path(local_file).expanduser().absolute()
+    if local_file.exists():
         # check last modification time of local file
-        local_mtime = os.stat(local_file).st_mtime
+        local_mtime = local_file.stat().st_mtime
         # if remote file is newer: overwrite the local file
         if (gz.utilities.even(remote_mtime) >
             gz.utilities.even(local_mtime)):
@@ -148,10 +154,10 @@ def ftp_mirror_file(ftp, remote_path, remote_mtime, local_file,
             remote_file = posixpath.join(*remote_path[1:])
             # copy remote file contents to local file
             with open(local_file, 'wb') as f:
-                ftp.retrbinary('RETR {0}'.format(remote_file), f.write)
+                ftp.retrbinary(f'RETR {remote_file}', f.write)
             # keep remote modification time of file and local access time
-            os.utime(local_file, (os.stat(local_file).st_atime, remote_mtime))
-            os.chmod(local_file, MODE)
+            os.utime(local_file, (local_file.stat().st_atime, remote_mtime))
+            local_file.chmod(mode=MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -170,13 +176,11 @@ def arguments():
         type=str, default=os.environ.get('COPERNICUS_PASSWORD'),
         help='Password for Copernicus Login')
     parser.add_argument('--netrc','-N',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.path.join(os.path.expanduser('~'),'.netrc'),
+        type=pathlib.Path, default=pathlib.Path().home().joinpath('.netrc'),
         help='Path to .netrc file for authentication')
     # working data directory
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # dates of data to sync
     parser.add_argument('--year','-Y',
@@ -216,18 +220,18 @@ def main():
     # Copernicus ftp hostname
     HOST = 'my.cmems-du.eu'
     # get authentication
-    if not args.user and not os.access(args.netrc,os.F_OK):
-        # check that AVISO credentials were entered
-        args.user= builtins.input(f'Username for {HOST}: ')
+    if not args.user and not args.netrc.exists():
+        # check that Copernicus credentials were entered
+        args.user = builtins.input(f'Username for {HOST}: ')
         # enter password securely from command-line
         args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
-    elif os.access(args.netrc, os.F_OK):
-        args.user,_,args.password=netrc.netrc(args.netrc).authenticators(HOST)
+    elif args.netrc.exists():
+        args.user,_,args.password = netrc.netrc(args.netrc).authenticators(HOST)
     elif args.user and not args.password:
         # enter password securely from command-line
         args.password = getpass.getpass(f'Password for {args.user}@{HOST}: ')
 
-    # check AVISO credentials before attempting to run program
+    # check Copernicus credentials before attempting to run program
     if gz.utilities.check_ftp_connection(HOST,
             username=args.user,password=args.password):
         copernicus_sea_level_sync(args.directory,

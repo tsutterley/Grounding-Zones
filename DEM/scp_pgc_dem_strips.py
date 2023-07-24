@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 scp_pgc_dem_strips.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 Copies PGC REMA DEM and ArcticDEM strip data between a
     local host and a remote host
 
@@ -33,16 +33,17 @@ PYTHON DEPENDENCIES:
         https://github.com/jbardin/scp.py
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: place some imports behind try/except statements
     Written 06/2022
 """
 from __future__ import print_function, division
 
 import sys
-import os
 import re
 import getpass
 import logging
+import pathlib
 import argparse
 import builtins
 import warnings
@@ -79,8 +80,7 @@ def arguments():
         help='Remote server username')
     # working data directories
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Local working directory')
     parser.add_argument('--remote','-d',
         type=str, default='',
@@ -130,14 +130,14 @@ def main():
 
     # use entered host and username
     client_kwds = {}
-    client_kwds.setdefault('hostname',args.host)
-    client_kwds.setdefault('username',args.user)
+    client_kwds.setdefault('hostname', args.host)
+    client_kwds.setdefault('username', args.user)
     # use ssh configuration file to extract hostname, user and identityfile
-    user_config_file = os.path.join(os.environ['HOME'],".ssh","config")
-    if os.path.exists(user_config_file):
+    user_config_file = pathlib.Path().home().joinpath('.ssh','config')
+    if user_config_file.exists():
         # read ssh configuration file and parse with paramiko
         ssh_config = paramiko.SSHConfig()
-        with open(user_config_file) as f:
+        with user_config_file.open(mode='r') as f:
             ssh_config.parse(f)
         # lookup hostname from list of hosts
         user_config = ssh_config.lookup(args.host)
@@ -223,18 +223,20 @@ def scp_pgc_dem_strips(client, client_ftp, DIRECTORY, REMOTE,
     regex_pattern = (r'SETSM_({0})_({1})(\d{{2}})(\d{{2}})_(\w+)_(\w+)_'
         r'(seg\d+)_(\d+m)_(v\d+\.\d+)_(\w+).tif$')
     rx = re.compile(regex_pattern.format(RXI,RXY), re.VERBOSE)
-    file_list = [fi for fi in os.listdir(DIRECTORY) if rx.match(fi)]
+    file_list = [f for f in DIRECTORY.iterdir() if rx.match(f.name)]
     # for each file to run
     for fi in sorted(file_list):
         # extract parameters from file
-        INST,YY,MM,DD,S1,S2,SEG,RES,VERS,TYPE = rx.findall(fi).pop()
+        INST,YY,MM,DD,S1,S2,SEG,RES,VERS,TYPE = rx.fssindall(fi.name).pop()
+        # remote files
         # SUBDIRECTORY = f'{YY}.{MM}.{DD}'
         SUBDIRECTORY = f'{YY}'
-        remote_path = os.path.join(REMOTE,SUBDIRECTORY)
+        remote_file = posixpath.join(REMOTE, SUBDIRECTORY, fi.name)
         # check if data directory exists and recursively create if not
-        remote_makedirs(client_ftp, remote_path, LIST=LIST, MODE=MODE)
+        remote_makedirs(client_ftp, posixpath.dirname(remote_file),
+            LIST=LIST, MODE=MODE)
         # push file from local to remote
-        scp_push_file(client, client_ftp, fi, DIRECTORY, remote_path,
+        scp_push_file(client, client_ftp, remote_file, fi,
             CLOBBER=CLOBBER, LIST=LIST, TIMEOUT=TIMEOUT, RETRY=RETRY,
             MODE=MODE)
 
@@ -256,16 +258,14 @@ def remote_makedirs(client_ftp, remote_dir, LIST=False, MODE=0o775):
 # PURPOSE: push a local file to a remote host checking if file exists
 # and if the local file is newer than the remote file (reprocessed)
 # set the permissions mode of the remote transferred file to MODE
-def scp_push_file(client, client_ftp, transfer_file, local_dir, remote_dir,
+def scp_push_file(client, client_ftp, remote_file, local_file,
     CLOBBER=False, LIST=False, TIMEOUT=None, RETRY=None, MODE=0o775):
-    # local and remote versions of file
-    local_file = os.path.join(local_dir,transfer_file)
-    remote_file = posixpath.join(remote_dir,transfer_file)
     # check if local file is newer than the remote file
     TEST = False
     OVERWRITE = 'clobber'
-    if (transfer_file in client_ftp.listdir(remote_dir)):
-        local_mtime = os.stat(local_file).st_mtime
+    remote_dir = posixpath.dirname(remote_file)
+    if (local_file.name in client_ftp.listdir(remote_dir)):
+        local_mtime = local_file.stat().st_mtime
         remote_mtime = client_ftp.stat(remote_file).st_mtime
         # if local file is newer: overwrite the remote file
         if (even(local_mtime) > even(remote_mtime)):
@@ -276,7 +276,7 @@ def scp_push_file(client, client_ftp, transfer_file, local_dir, remote_dir,
         OVERWRITE = 'new'
     # if file does not exist remotely, is to be overwritten, or CLOBBER is set
     if TEST or CLOBBER:
-        logging.info(f'{local_file} --> ')
+        logging.info(f'{str(local_file)} --> ')
         logging.info(f'\t{remote_file} ({OVERWRITE})\n')
         # if not only listing files
         if not LIST:
@@ -296,7 +296,7 @@ def retry_scp_push(client, client_ftp, local_file, remote_file,
             # copy local files to remote server
             with scp.SCPClient(client.get_transport(), socket_timeout=TIMEOUT) as s:
                 s.put(local_file, remote_file, preserve_times=True)
-            local_length = os.path.getsize(local_file)
+            local_length = local_file.stat().st_size
         except Exception as exc:
             pass
         else:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_sea_level_ICESat2_ATL07.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Interpolates sea level anomalies (sla), absolute dynamic topography (adt) and
     mean dynamic topography (mdt) to times and locations of ICESat-2 ATL07 data
 
@@ -37,6 +37,8 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2023: use timescale class for time conversion operations
+        using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
     Updated 05/2022: use argparse descriptions within sphinx documentation
@@ -48,11 +50,11 @@ UPDATE HISTORY:
 """
 from __future__ import print_function
 
-import os
 import re
 import gzip
 import pyproj
 import logging
+import pathlib
 import argparse
 import datetime
 import warnings
@@ -76,6 +78,11 @@ except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
 try:
+    import pyTMD.time
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyTMD not available", ImportWarning)
+try:
     import sklearn.neighbors
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
@@ -86,9 +93,9 @@ warnings.filterwarnings("ignore")
 # PURPOSE: set the hemisphere of interest based on ATL07 hemisphere code
 # HH Hemisphere code. Northern Hemisphere = 01, Southern Hemisphere = 02
 def set_hemisphere(HH):
-    if (HH == '01'):
+    if (int(HH) == 1):
         projection_flag = 'N'
-    elif (HH == '02'):
+    elif (int(HH) == 2):
         projection_flag = 'S'
     return projection_flag
 
@@ -112,7 +119,7 @@ def inverse_distance(x, y, z, xi, yi, SEARCH='BallTree', N=10, POWER=2.0):
     return np.sum(w*z[indices],axis=1)
 
 # PURPOSE interpolate sea level anomalies to lat/lon and then to time
-def interpolate_sea_level(base_dir, xi, yi, CJD, HEM):
+def interpolate_sea_level(base_dir, xi, yi, MJD, HEM):
     # EPSG projections for converting lat/lon to polar stereographic
     EPSG = dict(N=3413,S=3031)
     # pyproj transformer for converting to polar stereographic
@@ -121,9 +128,10 @@ def interpolate_sea_level(base_dir, xi, yi, CJD, HEM):
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
     # interpolate mean dynamic topography
-    input_file = 'mdt_cnes_cls2013_global.nc.gz'
+    base_dir = pathlib.Path(base_dir).expanduser().absolute()
+    input_file = base_dir.joinpath('mdt_cnes_cls2013_global.nc.gz')
     # read bytes from compressed file
-    fd = gzip.open(os.path.join(base_dir,input_file),'rb')
+    fd = gzip.open(input_file, mode='rb')
     # dictionary with input fields
     dinput = {}
     # read netCDF file for mean dynamic topography
@@ -138,7 +146,7 @@ def interpolate_sea_level(base_dir, xi, yi, CJD, HEM):
     # create 2-D grid coordinates from longitude and latitude vectors
     gridlon,gridlat = np.meshgrid(dinput['lon'],dinput['lat'])
     # convert from latitude/longitude into polar stereographic
-    xg,yg = transformer.transform(gridlon,gridlat)
+    xg, yg = transformer.transform(gridlon, gridlat)
 
     # reduce to local coordinates to improve computational time
     gridmask = np.logical_not(dinput['mdt'].mask)
@@ -151,29 +159,27 @@ def interpolate_sea_level(base_dir, xi, yi, CJD, HEM):
     MDT = inverse_distance(xg[indy,indx], yg[indy,indx],
         dinput['mdt'].data[indy,indx], xi, yi)
 
-    # CNES Julian Days before and after measurement
-    CJD1 = np.floor(CJD)
     # scale for linearly interpolating to date
-    dt = (CJD - CJD1[0])
+    MJD1 = np.min(np.floor(MJD))
+    dt = (MJD - MJD1)
     # output sea level anomaly and absolute dynamic topography
-    SLA = np.zeros_like(CJD)
-    ADT = np.zeros_like(CJD)
+    SLA = np.zeros_like(dt)
+    ADT = np.zeros_like(dt)
     # for the range of dates
     for day in range(2):
         # convert from CNES Julians Days to calendar dates for time
-        JD1 = CJD1 + day + 2433282.5
-        YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(JD1[0],
+        YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(MJD1 + day + 2400000.5,
             FORMAT='tuple', ASTYPE=int)
         # sea level directory
-        ddir = os.path.join(base_dir, f'{YY:0.0f}')
+        ddir = base_dir.joinpath(f'{YY:4d}')
         # input file for day before the measurement
         regex = re.compile((rf'dt_global_allsat_phy_l4_{YY:4d}{MM:02d}{DD:02d}'
             r'_(\d{4})(\d{2})(\d{2}).nc.gz'))
-        input_file, = [fi for fi in os.listdir(ddir) if regex.match(fi)]
+        input_file, = [fi for fi in ddir.iterdir() if regex.match(fi.name)]
         # dictionary with input fields
         dinput = {}
         # read bytes from compressed file
-        fd = gzip.open(os.path.join(ddir,input_file),'rb')
+        fd = gzip.open(input_file, mode='rb')
         # read netCDF file for time
         with netCDF4.Dataset('sla', mode='r', memory=fd.read()) as fileID:
             dinput['lon'] = fileID['lon'][:].copy()
@@ -201,26 +207,40 @@ def interpolate_sea_level(base_dir, xi, yi, CJD, HEM):
         SLA += out['sla']*(2.0*dt*day - dt - day + 1.0)
         ADT += out['adt']*(2.0*dt*day - dt - day + 1.0)
     # return interpolated values
-    return dict(h_mdt=MDT,h_sla=SLA,h_adt=ADT)
+    return dict(h_mdt=MDT, h_sla=SLA, h_adt=ADT)
 
 # PURPOSE: read ICESat-2 sea ice height (ATL07) from NSIDC
 # interpolate AVISO sea level at points and times
-def interp_sea_level_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
+def interp_sea_level_ICESat2(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
 
     # create logger
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
     # read data from input file
-    logging.info(f'{FILE} -->')
+    logging.info(f'{str(INPUT_FILE)} -->')
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
     IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
-        is2tk.io.ATL07.read_granule(FILE, ATTRIBUTES=True)
-    DIRECTORY = os.path.dirname(FILE)
+        is2tk.io.ATL07.read_granule(INPUT_FILE, ATTRIBUTES=True)
+
     # extract parameters from ICESat-2 ATLAS HDF5 sea ice file name
     rx = re.compile(r'(processed_)?(ATL\d{2})-(\d{2})_(\d{4})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,HMN,YY,MM,DD,HH,MN,SS,TRK,CYCL,SN,RL,VERS,AUX=rx.findall(FILE).pop()
+    try:
+        SUB,PRD,HEM,YY,MM,DD,HH,MN,SS,TRK,CYCL,SN,RL,VERS,AUX = \
+            rx.findall(INPUT_FILE.name).pop()
+    except:
+        # output sea level HDF5 file (generic)
+        FILENAME = f'{INPUT_FILE.stem}_AVISO_SEA_LEVEL{INPUT_FILE.suffix}'
+    else:
+        # output sea level HDF5 file for ASAS/NSIDC granules
+        args = (PRD,HEM,'AVISO_SEA_LEVEL',YY,MM,DD,HH,MN,SS,TRK,CYCL,SN,RL,VERS,AUX)
+        ff = '{0}-{1}_{2}_{3}{4}{5}{6}{7}{8}_{9}{10}{11}_{12}_{13}{14}.h5'
+        FILENAME = ff.format(*args)
+    # full path to output file
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
     # set the hemisphere flag based on ATL07 hemisphere code
+    HMN, = IS2_atl07_mds['ancillary_data']['start_region']
     HEM = set_hemisphere(HMN)
 
     # HDF5 file attributes
@@ -246,15 +266,11 @@ def interp_sea_level_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
         'products/sea-surface-height-products/global/msla-h.html')
 
     # EPSG projections for converting lat/lon to polar stereographic
-    EPSG = dict(N=3413,S=3031)
+    EPSG = dict(N=3413, S=3031)
     # pyproj transformer for converting to polar stereographic
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
-
-    # number of GPS seconds between the GPS epoch
-    # and ATLAS Standard Data Product (SDP) epoch
-    atlas_sdp_gps_epoch = IS2_atl07_mds['ancillary_data']['atlas_sdp_gps_epoch']
 
     # copy variables for outputting to HDF5 file
     IS2_atl07_corr = {}
@@ -286,18 +302,16 @@ def interp_sea_level_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
         val = IS2_atl07_mds[gtx]['sea_ice_segments']
         n_seg = len(val['height_segment_id'])
 
-        # convert time from ATLAS SDP to CNES JD
-        # days relative to 1950-01-01T00:00:00
-        gps_seconds = atlas_sdp_gps_epoch + val['delta_time']
-        leap_seconds = is2tk.time.count_leap_seconds(gps_seconds)
-        cnes_time = is2tk.time.convert_delta_time(gps_seconds-leap_seconds,
-            epoch1=(1980,1,6,0,0,0), epoch2=(1950,1,1,0,0,0), scale=1.0/86400.0)
+        # create timescale from ATLAS Standard Epoch time
+        # GPS seconds since 2018-01-01 00:00:00 UTC
+        timescale = pyTMD.time.timescale().from_deltatime(val['delta_time'],
+            epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
 
         # extract lat/lon and convert to polar stereographic
-        X,Y = transformer.transform(val['longitude'],val['latitude'])
+        X, Y = transformer.transform(val['longitude'], val['latitude'])
 
         # interpolate sea level anomalies and dynamic topographies
-        interp = interpolate_sea_level(base_dir,X,Y,cnes_time,HEM)
+        interp = interpolate_sea_level(base_dir, X, Y, timescale.MJD, HEM)
 
         # group attributes for beam
         IS2_atl07_corr_attrs[gtx]['Description'] = IS2_atl07_attrs[gtx]['Description']
@@ -444,18 +458,14 @@ def interp_sea_level_ICESat2(base_dir, FILE, VERBOSE=False, MODE=0o775):
             IS2_atl07_corr_attrs[gtx]['sea_ice_segments']['geophysical'][key]['coordinates'] = \
                 "../height_segment_id ../delta_time ../latitude ../longitude"
 
-    # output HDF5 files with interpolated sea level data
-    fargs = (PRD,HMN,'AVISO_SEA_LEVEL',YY,MM,DD,HH,MN,SS,TRK,CYCL,SN,RL,VERS,AUX)
-    file_format = '{0}-{1}_{2}_{3}{4}{5}{6}{7}{8}_{9}{10}{11}_{12}_{13}{14}.h5'
-    output_file = os.path.join(DIRECTORY,file_format.format(*fargs))
     # print file information
-    logging.info(f'\t{output_file}')
+    logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_corr_attrs,
-        CLOBBER=True, INPUT=os.path.basename(FILE),
+        CLOBBER=True, INPUT=INPUT_FILE.name,
         FILL_VALUE=IS2_atl07_fill, DIMENSIONS=IS2_atl07_dims,
-        FILENAME=output_file)
+        FILENAME=OUTPUT_FILE)
     # change the permissions mode
-    os.chmod(output_file, MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the correction values for ICESat-2 data to HDF5
 def HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_attrs, INPUT=None,
@@ -467,7 +477,8 @@ def HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_attrs, INPUT=None,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
 
     # create HDF5 records
     h5 = {}
@@ -581,7 +592,7 @@ def HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL07 file
-    fileID.attrs['input_files'] = os.path.basename(INPUT)
+    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for gtx in beams:
@@ -605,24 +616,13 @@ def HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_attrs, INPUT=None,
     fileID.attrs['geospatial_ellipsoid'] = "WGS84"
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
-    # convert start and end time from ATLAS SDP seconds into GPS seconds
-    atlas_sdp_gps_epoch=IS2_atl07_corr['ancillary_data']['atlas_sdp_gps_epoch']
-    gps_seconds = atlas_sdp_gps_epoch + np.array([tmn,tmx])
-    # calculate leap seconds
-    leaps = is2tk.time.count_leap_seconds(gps_seconds)
-    # convert from seconds since 1980-01-06T00:00:00 to Modified Julian days
-    MJD = is2tk.time.convert_delta_time(gps_seconds - leaps,
-        epoch1=(1980,1,6,0,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
-    # convert to calendar date
-    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(MJD + 2400000.5,
-        FORMAT='tuple')
+    # convert start and end time from ATLAS SDP seconds into timescale
+    timescale = pyTMD.time.timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
-    tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
-        int(HH[0]), int(MN[0]), int(SS[0]), int(1e6*(SS[0] % 1)))
-    fileID.attrs['time_coverage_start'] = tcs.isoformat()
-    tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
-        int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
-    fileID.attrs['time_coverage_end'] = tce.isoformat()
+    fileID.attrs['time_coverage_start'] = str(dt[0])
+    fileID.attrs['time_coverage_end'] = str(dt[1])
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name
@@ -642,12 +642,11 @@ def arguments():
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL07 file to run')
     # directory with sea level data
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # verbosity settings
     # verbose will output information about each output file

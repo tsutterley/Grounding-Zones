@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_interpolate_DEM.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 Determines which digital elevation model tiles for an input file
 Reads 3x3 array of tiles for points within bounding box of central mosaic tile
 Interpolates digital elevation model to coordinates
@@ -85,6 +85,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: new ArcticDEM and REMA mosaic index shapefiles
     Updated 09/2022: use tar virtual file system to extract images
@@ -103,6 +104,7 @@ import os
 import re
 import uuid
 import pyproj
+import pathlib
 import tarfile
 import logging
 import argparse
@@ -170,15 +172,14 @@ def arguments():
     # command line parameters
     # input and output file
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='?',
+        type=pathlib.Path, nargs='?',
         help='Input file')
     parser.add_argument('outfile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='?',
+        type=pathlib.Path, nargs='?',
         help='Output file')
     # working data directory for shapefiles
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # Digital elevation model (REMA, ArcticDEM, GIMP) to run
     # set the DEM model to run for a given granule (else set automatically)
@@ -223,8 +224,13 @@ def arguments():
 # PURPOSE: read zip file containing index shapefiles for finding DEM tiles
 def read_DEM_index(index_file, DEM_MODEL):
     # read the compressed shapefile and extract entities
-    shape = fiona.open(f'zip://{os.path.expanduser(index_file)}')
-    epsg = shape.crs['init']
+    index_file = pathlib.Path(index_file).expanduser().absolute()
+    shape = fiona.open(f'zip://{str(index_file)}')
+    # extract coordinate reference system
+    if ('init' in shape.crs.keys()):
+        epsg = pyproj.CRS(shape.crs['init']).to_epsg()
+    else:
+        epsg = pyproj.CRS(shape.crs).to_epsg()
     # extract attribute indice for DEM tile (REMA,GIMP) or name (ArcticDEM)
     if (DEM_MODEL == 'REMA'):
         # REMA index file attributes:
@@ -320,7 +326,7 @@ def read_DEM_index(index_file, DEM_MODEL):
 # PURPOSE: read DEM tile file from gzipped tar files
 def read_DEM_file(elevation_file):
     # open file with tarfile (read)
-    tar = tarfile.open(name=elevation_file, mode='r:gz')
+    tar = tarfile.open(name=str(elevation_file), mode='r:gz')
     # find dem geotiff file within tar file
     member, = [m for m in tar.getmembers() if re.search(r'dem\.tif',m.name)]
     # use GDAL virtual file systems to read dem
@@ -360,7 +366,7 @@ def read_DEM_file(elevation_file):
 # PURPOSE: read DEM tile file from gzipped tar files to buffer main tile
 def read_DEM_buffer(elevation_file, xlimits, ylimits):
     # open file with tarfile (read)
-    tar = tarfile.open(name=elevation_file, mode='r:gz')
+    tar = tarfile.open(name=str(elevation_file), mode='r:gz')
     # find dem geotiff file within tar file
     member, = [m for m in tar.getmembers() if re.search(r'dem\.tif',m.name)]
     # use GDAL virtual file systems to read dem
@@ -420,9 +426,8 @@ def main():
 
     # set output file from input filename if not entered
     if not args.outfile:
-        fileBasename,fileExtension = os.path.splitext(args.infile)
-        vars = (fileBasename,args.model,fileExtension)
-        args.outfile = '{0}_{1}{2}'.format(*vars)
+        output_file = f'{args.infile.stem}_{args.model}{args.infile.suffix}'
+        args.outfile = args.infile.with_name(output_file)
 
     # output netCDF4 and HDF5 file attributes
     # will be added to YAML header in csv files
@@ -439,14 +444,14 @@ def main():
     # regular expression pattern for extracting parameters from ArcticDEM name
     rx1 = re.compile(r'(\d+)_(\d+)_(\d+)_(\d+)_(\d+m)_(.*?)$', re.VERBOSE)
     # full path to DEM directory
-    elevation_directory=os.path.join(args.directory,*elevation_dir[args.model])
+    elevation_directory = args.directory.joinpath(*elevation_dir[args.model])
     # zip file containing index shapefiles for finding DEM tiles
-    index_file=os.path.join(elevation_directory,elevation_tile_index[args.model])
+    index_file = elevation_directory.joinpath(elevation_tile_index[args.model])
 
     # read data on rank 0
     if (comm.rank == 0):
         # read index file for determining which tiles to read
-        tile_dict,tile_attrs,tile_epsg = read_DEM_index(index_file,args.model)
+        tile_dict,tile_attrs,tile_epsg = read_DEM_index(index_file, args.model)
     else:
         # create empty object for list of shapely objects
         tile_dict = None
@@ -562,7 +567,7 @@ def main():
         name = tile_attrs[key]["name"]
         # read central DEM file (geotiff within gzipped tar file)
         tar = f'{name}.tar.gz'
-        elevation_file = os.path.join(elevation_directory,sub,tar)
+        elevation_file = elevation_directory.joinpath(sub,tar)
         DEM,MASK,FV,xi,yi = read_DEM_file(elevation_file)
         # buffer DEM using values from adjacent tiles
         # use 200m (10 geosegs and divisible by ArcticDEM and REMA pixels)
@@ -602,8 +607,8 @@ def main():
                 if bkey in tile_attrs.keys():
                     bsub = tile_attrs[bkey]['tile']
                     btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
-                    buffer_file = os.path.join(elevation_directory,bkey,btar)
-                    if os.access(buffer_file, os.F_OK):
+                    buffer_file = elevation_directory.joinpath(bkey,btar)
+                    if buffer_file.exists():
                         DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)
                         xmin = int((x1[0] - x[0])//dx)
                         xmax = int((x1[-1] - x[0])//dx) + 1
@@ -627,8 +632,8 @@ def main():
                 if bkey in tile_attrs.keys():
                     bsub = tile_attrs[bkey]['tile']
                     btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
-                    buffer_file = os.path.join(elevation_directory,bkey,btar)
-                    if os.access(buffer_file, os.F_OK):
+                    buffer_file = elevation_directory.joinpath(bkey,btar)
+                    if buffer_file.exists():
                         DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)
                         xmin = int((x1[0] - x[0])//dx)
                         xmax = int((x1[-1] - x[0])//dx) + 1
@@ -658,15 +663,14 @@ def main():
             kwargs = (xtiles,ytiles,xsubtiles,ysubtiles,xlimits,ylimits)
             for xtl,ytl,xs,ys,xlim,ylim in zip(*kwargs):
                 # read DEM file (geotiff within gzipped tar file)
-                bargs = (ytl,xtl,xs,ys,res,vers)
                 bkey = f'{ytl:02d}_{xtl:02d}_{xs}_{ys}'
                 # if buffer file is a valid sub-tile within the DEM
                 # if file doesn't exist: all fill value with all mask
                 if bkey in tile_attrs.keys():
                     bsub = tile_attrs[bkey]["tile"]
                     btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
-                    buffer_file = os.path.join(elevation_directory,bsub,btar)
-                    if os.access(buffer_file, os.F_OK):
+                    buffer_file = elevation_directory.joinpath(bsub,btar)
+                    if buffer_file.exists():
                         DEM,MASK,FV,x1,y1=read_DEM_buffer(buffer_file,xlim,ylim)
                         xmin = int((x1[0] - x[0])//dx)
                         xmax = int((x1[-1] - x[0])//dx) + 1
@@ -730,7 +734,7 @@ def main():
             pyTMD.spatial.to_geotiff(output, attrib, args.outfile,
                 varname='dem_h', verbose=args.verbose)
         # change the permissions level to MODE
-        os.chmod(args.outfile, args.mode)
+        args.outfile.chmod(mode=args.mode)
 
 # run main program
 if __name__ == '__main__':

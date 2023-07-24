@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_median_elevation_filter.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 
 Filters elevation change rates from triangulated Operation IceBridge data
     using an interquartile range algorithm described by Pritchard (2009)
@@ -50,6 +50,8 @@ REFERENCE:
     pp. 451-467 (2017).  https://doi.org/10.5194/tc-11-451-2017
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and operate on paths
+        move icebridge data inputs to a separate module in io
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: updated ATM1b read functions for distributed version
@@ -99,17 +101,13 @@ import re
 import time
 import pyproj
 import logging
+import pathlib
 import argparse
 import warnings
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import ATM1b_QFIT.read_ATM1b_QFIT_binary
-except (ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("ATM1b_QFIT not available", ImportWarning)
 try:
     import h5py
 except (ImportError, ModuleNotFoundError) as exc:
@@ -147,7 +145,7 @@ def arguments():
     )
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=str, nargs='+',
         help='Input files')
     # radial distance to determine points to filter (25km)
     parser.add_argument('--distance','-D',
@@ -173,26 +171,6 @@ def set_hemisphere(REGION):
     projection_flag = {'AN':'S', 'GR':'N'}
     return projection_flag[REGION]
 
-# PURPOSE: reading the number of file lines removing commented lines
-def file_length(input_file,input_subsetter,HDF5=False,QFIT=False):
-    # subset the data to indices if specified
-    if input_subsetter:
-        file_lines = len(input_subsetter)
-    elif HDF5:
-        # read the size of an input variable within a HDF5 file
-        with h5py.File(input_file,'r') as fileID:
-            file_lines, = fileID[HDF5].shape
-    elif QFIT:
-        # read the size of a QFIT binary file
-        file_lines = ATM1b_QFIT.ATM1b_QFIT_shape(input_file)
-    else:
-        # read the input file, split at lines and remove all commented lines
-        with open(input_file, mode='r', encoding='utf8') as f:
-            i = [i for i in f.readlines() if re.match(r'^(?!\#|\n)',i)]
-        file_lines = len(i)
-    # return the number of lines
-    return file_lines
-
 # PURPOSE: read input HDF5 data from MPI_triangulate_elevation.py
 def read_HDF5_triangle_data(input_file, input_subsetter):
     # Open the HDF5 file for reading
@@ -217,276 +195,6 @@ def read_HDF5_triangle_data(input_file, input_subsetter):
     fileID.close()
     # return data and attributes
     return HDF5_data,HDF5_attributes
-
-# PURPOSE: read the ATM Level-1b data file for variables of interest
-def read_ATM_qfit_file(input_file, s):
-    # regular expression pattern for extracting parameters
-    mission_flag = r'(BLATM1B|ILATM1B|ILNSA1B)'
-    regex_pattern = rf'{mission_flag}_(\d+)_(\d+)(.*?).(qi|TXT|h5)'
-    # extract mission and other parameters from filename
-    MISSION,YYMMDD,HHMMSS,AUX,SFX = re.findall(regex_pattern,input_file).pop()
-    # early date strings omitted century and millenia (e.g. 93 for 1993)
-    if (len(YYMMDD) == 6):
-        yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
-        year = (yr2d + 1900.0) if (yr2d >= 90) else (yr2d + 2000.0)
-    elif (len(YYMMDD) == 8):
-        year,month,day = np.array([YYMMDD[:4],YYMMDD[4:6],YYMMDD[6:]],dtype='i')
-    # output python dictionary with variables
-    ATM_L1b_input = {}
-    # Version 1 of ATM QFIT files (ascii)
-    # output text file from qi2txt with proper filename format
-    # do not use the shortened output format from qi2txt
-    if (SFX == 'TXT'):
-        # compile regular expression operator for reading lines
-        regex_pattern = r'[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[Ee][+-]?\d+)?'
-        rx = re.compile(regex_pattern, re.VERBOSE)
-        # read the input file, split at lines and remove all commented lines
-        f = open(input_file,'r')
-        file_contents=[i for i in f.readlines() if re.match(r'^(?!\#|\n)',i)]
-        f.close()
-        # number of lines of data within file
-        file_lines = file_length(input_file,s)
-        # subset the data to indices if specified
-        file_contents = [file_contents[i] for i in s] if s else file_contents
-        # create output variables with length equal to the number of lines
-        ATM_L1b_input['lat'] = np.zeros((file_lines),dtype=np.float64)
-        ATM_L1b_input['lon'] = np.zeros((file_lines),dtype=np.float64)
-        ATM_L1b_input['data'] = np.zeros((file_lines),dtype=np.float64)
-        hour = np.zeros((file_lines),dtype=np.float64)
-        minute = np.zeros((file_lines),dtype=np.float64)
-        second = np.zeros((file_lines),dtype=np.float64)
-        # for each line within the file
-        for i,line in enumerate(file_contents):
-            # find numerical instances within the line
-            line_contents = rx.findall(line)
-            ATM_L1b_input['lat'][i] = np.float64(line_contents[1])
-            ATM_L1b_input['lon'][i] = np.float64(line_contents[2])
-            ATM_L1b_input['data'][i] = np.float64(line_contents[3])
-            hour[i] = np.float64(line_contents[-1][:2])
-            minute[i] = np.float64(line_contents[-1][2:4])
-            second[i] = np.float64(line_contents[-1][4:])
-    # Version 1 of ATM QFIT files (binary)
-    elif (SFX == 'qi'):
-        # read input QFIT data file and subset if specified
-        fid,h = ATM1b_QFIT.read_ATM1b_QFIT_binary(input_file, SUBSETTER=s)
-        file_lines, = fid['elevation'].shape
-        ATM_L1b_input['lat'] = fid['latitude'][:]
-        ATM_L1b_input['lon'] = fid['longitude'][:]
-        ATM_L1b_input['data'] = fid['elevation'][:]
-        time_hhmmss = fid['time_hhmmss'][:]
-        # extract hour, minute and second from time_hhmmss
-        hour = np.zeros((file_lines),dtype=np.float64)
-        minute = np.zeros((file_lines),dtype=np.float64)
-        second = np.zeros((file_lines),dtype=np.float64)
-        # for each line within the file
-        for i,packed_time in enumerate(time_hhmmss):
-            # convert to zero-padded string with 3 decimal points
-            line_contents = f'{packed_time:010.3f}'
-            hour[i] = np.float64(line_contents[:2])
-            minute[i] = np.float64(line_contents[2:4])
-            second[i] = np.float64(line_contents[4:])
-    # Version 2 of ATM QFIT files (HDF5)
-    elif (SFX == 'h5'):
-        # Open the HDF5 file for reading
-        fileID = h5py.File(input_file, 'r')
-        # if not using the input subsetter
-        if s is None:
-            # create output variables with length equal to input elevation
-            file_lines, = fileID['elevation'].shape
-            ATM_L1b_input['lat'] = fileID['latitude'][:]
-            ATM_L1b_input['lon'] = fileID['longitude'][:]
-            ATM_L1b_input['data'] = fileID['elevation'][:]
-            time_hhmmss = fileID['instrument_parameters']['time_hhmmss'][:]
-        else:
-            # use subsetted data
-            file_lines = len(s)
-            ATM_L1b_input['lat'] = fileID['latitude'][s]
-            ATM_L1b_input['lon'] = fileID['longitude'][s]
-            ATM_L1b_input['data'] = fileID['elevation'][s]
-            time_hhmmss = fileID['instrument_parameters']['time_hhmmss'][s]
-        # extract hour, minute and second from time_hhmmss
-        hour = np.zeros((file_lines),dtype=np.float64)
-        minute = np.zeros((file_lines),dtype=np.float64)
-        second = np.zeros((file_lines),dtype=np.float64)
-        # for each line within the file
-        for i,packed_time in enumerate(time_hhmmss):
-            # convert to zero-padded string with 3 decimal points
-            line_contents = f'{packed_time:010.3f}'
-            hour[i] = np.float64(line_contents[:2])
-            minute[i] = np.float64(line_contents[2:4])
-            second[i] = np.float64(line_contents[4:])
-        fileID.close()
-    # leap seconds for converting from GPS time to UTC
-    S = calc_GPS_to_UTC(year,month,day,hour,minute,second)
-    # calculation of Julian day taking into account leap seconds
-    JD = calc_julian_day(year,month,day,HOUR=hour,MINUTE=minute,SECOND=second-S)
-    # converting to J2000 seconds
-    ATM_L1b_input['time'] = (JD - 2451545.0)*86400.0
-    # return the output variables
-    return ATM_L1b_input,file_lines
-
-# PURPOSE: read the ATM Level-2 data file for variables of interest
-def read_ATM_icessn_file(input_file, s):
-    # regular expression pattern for extracting parameters
-    regex_pattern = r'(BLATM2|ILATM2)_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
-    # extract mission and other parameters from filename
-    MISSION,YYMMDD,HHMMSS,AUX,SFX = re.findall(regex_pattern,input_file).pop()
-    # early date strings omitted century and millenia (e.g. 93 for 1993)
-    if (len(YYMMDD) == 6):
-        yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
-        year = (yr2d + 1900.0) if (yr2d >= 90) else (yr2d + 2000.0)
-    elif (len(YYMMDD) == 8):
-        year,month,day = np.array([YYMMDD[:4],YYMMDD[4:6],YYMMDD[6:]],dtype='i')
-    # input file column names for variables of interest with column indices
-    # variables not used: (SNslope:4, WEslope:5, npt_used:7, npt_edit:8, d:9)
-    file_dtype = {'seconds':0, 'lat':1, 'lon':2, 'data':3, 'RMS':6, 'track':-1}
-    # compile regular expression operator for reading lines (extracts numbers)
-    regex_pattern = r'[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[Ee][+-]?\d+)?'
-    rx = re.compile(regex_pattern, re.VERBOSE)
-    # read the input file, split at lines and remove all commented lines
-    with open(input_file, mode='r', encoding='utf8') as f:
-        file_contents=[i for i in f.readlines() if re.match(r'^(?!\#|\n)',i)]
-    # number of lines of data within file
-    file_lines = file_length(input_file,s)
-    # subset the data to indices if specified
-    file_contents = [file_contents[i] for i in s] if s else file_contents
-    # output python dictionary with variables
-    ATM_L2_input = {}
-    # create output variables with length equal to the number of file lines
-    for key in file_dtype.keys():
-        ATM_L2_input[key] = np.zeros((file_lines), dtype=np.float64)
-    # for each line within the file
-    for line_number,line_entries in enumerate(file_contents):
-        # find numerical instances within the line
-        line_contents = rx.findall(line_entries)
-        # for each variable of interest: save to dinput as float
-        for key,val in file_dtype.items():
-            ATM_L2_input[key][line_number] = np.float64(line_contents[val])
-    # convert shot time (seconds of day) to J2000
-    hour = np.floor(ATM_L2_input['seconds']/3600.0)
-    minute = np.floor((ATM_L2_input['seconds'] % 3600)/60.0)
-    second = ATM_L2_input['seconds'] % 60.0
-    # First column in Pre-IceBridge and ICESSN Version 1 files is GPS time
-    if (MISSION == 'BLATM2') or (SFX != 'csv'):
-        # leap seconds for converting from GPS time to UTC
-        S = calc_GPS_to_UTC(year,month,day,hour,minute,second)
-    else:
-        S = 0.0
-    # calculation of Julian day
-    JD = calc_julian_day(year,month,day,HOUR=hour,MINUTE=minute,SECOND=second-S)
-    # converting to J2000 seconds
-    ATM_L2_input['time'] = (JD - 2451545.0)*86400.0
-    # convert RMS from centimeters to meters
-    ATM_L2_input['error'] = ATM_L2_input['RMS']/100.0
-    # return the output variables
-    return ATM_L2_input,file_lines
-
-# PURPOSE: read the LVIS Level-2 data file for variables of interest
-def read_LVIS_HDF5_file(input_file, input_subsetter):
-    # LVIS region flags: GL for Greenland and AQ for Antarctica
-    lvis_flag = {'GL':'N','AQ':'S'}
-    # regular expression pattern for extracting parameters from HDF5 files
-    # computed in read_icebridge_lvis.py
-    mission_flag = r'(BLVIS2|BVLIS2|ILVIS2|ILVGH2)'
-    regex_pattern = rf'{mission_flag}_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5'
-    # extract mission, region and other parameters from filename
-    MISSION,REGION,YY,MMDD,RLD,SS = re.findall(regex_pattern,input_file).pop()
-    LDS_VERSION = '2.0.2' if (int(RLD[1:3]) >= 18) else '1.04'
-    # input and output python dictionaries with variables
-    file_input = {}
-    LVIS_L2_input = {}
-    fileID = h5py.File(input_file,'r')
-    # create output variables with length equal to input shot number
-    file_lines = file_length(input_file,input_subsetter,HDF5='Shot_Number')
-    # https://lvis.gsfc.nasa.gov/Data/Data_Structure/DataStructure_LDS104.html
-    # https://lvis.gsfc.nasa.gov/Data/Data_Structure/DataStructure_LDS202.html
-    if (LDS_VERSION == '1.04'):
-        # elevation surfaces
-        file_input['elev'] = fileID['Elevation_Surfaces/Elevation_Centroid'][:]
-        file_input['elev_low'] = fileID['Elevation_Surfaces/Elevation_Low'][:]
-        file_input['elev_high'] = fileID['Elevation_Surfaces/Elevation_High'][:]
-        # latitude
-        file_input['lat'] = fileID['Geolocation/Latitude_Centroid'][:]
-        file_input['lat_low'] = fileID['Geolocation/Latitude_Low'][:]
-        # longitude
-        file_input['lon'] = fileID['Geolocation/Longitude_Centroid'][:]
-        file_input['lon_low'] = fileID['Geolocation/Longitude_Low'][:]
-    elif (LDS_VERSION == '2.0.2'):
-        # elevation surfaces
-        file_input['elev_low'] = fileID['Elevation_Surfaces/Elevation_Low'][:]
-        file_input['elev_high'] = fileID['Elevation_Surfaces/Elevation_High'][:]
-        # heights above lowest detected mode
-        file_input['RH50'] = fileID['Waveform/RH50'][:]
-        file_input['RH100'] = fileID['Waveform/RH100'][:]
-        # calculate centroidal elevation using 50% of waveform energy
-        file_input['elev'] = file_input['elev_low'] + file_input['RH50']
-        # latitude
-        file_input['lat_top'] = fileID['Geolocation/Latitude_Top'][:]
-        file_input['lat_low'] = fileID['Geolocation/Latitude_Low'][:]
-        # longitude
-        file_input['lon_top'] = fileID['Geolocation/Longitude_Top'][:]
-        file_input['lon_low'] = fileID['Geolocation/Longitude_Low'][:]
-        # linearly interpolate latitude and longitude to RH50
-        file_input['lat'] = file_input['lat_low'] + file_input['RH50'] * \
-            (file_input['lat_top'] - file_input['lat_low'])/file_input['RH100']
-        file_input['lon'] = file_input['lon_low'] + file_input['RH50'] * \
-            (file_input['lon_top'] - file_input['lon_low'])/file_input['RH100']
-    # J2000 seconds
-    LVIS_L2_input['time'] = fileID['Time/J2000'][:]
-    # close the input HDF5 file
-    fileID.close()
-    # output combined variables
-    LVIS_L2_input['data'] = np.zeros_like(file_input['elev'],dtype=np.float64)
-    LVIS_L2_input['lon'] = np.zeros_like(file_input['elev'],dtype=np.float64)
-    LVIS_L2_input['lat'] = np.zeros_like(file_input['elev'],dtype=np.float64)
-    LVIS_L2_input['error'] = np.zeros_like(file_input['elev'],dtype=np.float64)
-    # find where elev high is equal to elev low
-    # see note about using LVIS centroid elevation product
-    # http://lvis.gsfc.nasa.gov/OIBDataStructure.html
-    ii = np.nonzero(file_input['elev_low'] == file_input['elev_high'])
-    jj = np.nonzero(file_input['elev_low'] != file_input['elev_high'])
-    # where lowest point of waveform is equal to highest point -->
-    # using the elev_low elevation
-    LVIS_L2_input['data'][ii] = file_input['elev_low'][ii]
-    # for other locations use the centroid elevation
-    # as the centroid is a useful product over rough terrain
-    # when you are calculating ice volume change
-    LVIS_L2_input['data'][jj] = file_input['elev'][jj]
-    # latitude and longitude for each case
-    # elevation low == elevation high
-    LVIS_L2_input['lon'][ii] = file_input['lon_low'][ii]
-    LVIS_L2_input['lat'][ii] = file_input['lat_low'][ii]
-    # centroid elevations
-    LVIS_L2_input['lon'][jj] = file_input['lon'][jj]
-    LVIS_L2_input['lat'][jj] = file_input['lat'][jj]
-    # estimated uncertainty for both cases
-    LVIS_variance_low = (file_input['elev_low'] - file_input['elev'])**2
-    LVIS_variance_high = (file_input['elev_high'] - file_input['elev'])**2
-    LVIS_L2_input['error']=np.sqrt((LVIS_variance_low + LVIS_variance_high)/2.0)
-    # subset the data to indices if specified
-    if input_subsetter:
-        for key,val in LVIS_L2_input.items():
-            LVIS_L2_input[key] = val[input_subsetter]
-    # return the output variables
-    return LVIS_L2_input,file_lines,lvis_flag[REGION]
-
-# PURPOSE: calculate the Julian day from calendar date
-# http://scienceworld.wolfram.com/astronomy/JulianDate.html
-def calc_julian_day(YEAR, MONTH, DAY, HOUR=0, MINUTE=0, SECOND=0):
-    JD = 367.*YEAR - np.floor(7.*(YEAR + np.floor((MONTH+9.)/12.))/4.) - \
-        np.floor(3.*(np.floor((YEAR + (MONTH - 9.)/7.)/100.) + 1.)/4.) + \
-        np.floor(275.*MONTH/9.) + DAY + 1721028.5 + HOUR/24. + MINUTE/1440. + \
-        SECOND/86400.
-    return np.array(JD,dtype=np.float64)
-
-# PURPOSE: calculate the number of leap seconds between GPS time (seconds
-# since Jan 6, 1980 00:00:00) and UTC
-def calc_GPS_to_UTC(YEAR, MONTH, DAY, HOUR, MINUTE, SECOND):
-    GPS = 367.*YEAR - np.floor(7.*(YEAR + np.floor((MONTH+9.)/12.))/4.) - \
-        np.floor(3.*(np.floor((YEAR + (MONTH - 9.)/7.)/100.) + 1.)/4.) + \
-        np.floor(275.*MONTH/9.) + DAY + 1721028.5 - 2444244.5
-    GPS_Time = GPS*86400.0 + HOUR*3600.0 + MINUTE*60.0 + SECOND
-    return is2tk.time.count_leap_seconds(GPS_Time)
 
 # PURPOSE: convert time from delta seconds into Julian and year-decimal
 def convert_delta_time(delta_time, epoch=(2000,1,1,12,0,0)):
@@ -574,7 +282,8 @@ def main():
     for arg in args.infile:
         # extract file name and subsetter indices lists
         match_object = re.match(r'(.*?)(\[(.*?)\])?$',arg)
-        input_files.append(os.path.expanduser(match_object.group(1)))
+        input_file = pathlib.Path(match_object.group(1)).expanduser().absolute()
+        input_files.append(input_file)
         # subset auxiliary files to indices
         if match_object.group(2):
             # decompress ranges and add to list
@@ -603,15 +312,14 @@ def main():
     REG1,TYPE1,OIB1,YMDS1,OIB2,YMD2 = rx1.findall(input_files[0]).pop()
     HEM = set_hemisphere(REG1)
     # get the dimensions of the input HDF5 file (sum auxiliary files)
-    n_1 = file_length(input_files[0], None, HDF5='data')
-    n_2 = np.sum([file_length(f,s,HDF5='data') for f,s in
+    n_1 = gz.io.icebridge.file_length(input_files[0], None, HDF5='data')
+    n_2 = np.sum([gz.io.icebridge.file_length(f,s,HDF5='data') for f,s in
         zip(input_files[1:],input_subsetter[1:])], dtype=np.int64)
 
+    # full path for data directory
+    DIRECTORY = input_files[0].parent
     # output mask format for each type
     file_format = '{0}_NASA_{1}_MASK_{2}{3}-{4}{5}.H5'
-
-    # full path for ATM/LVIS directory
-    DIRECTORY = os.path.dirname(input_files[0])
 
     # lists with input files
     original_files = []
@@ -638,26 +346,25 @@ def main():
         transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
 
         # original data file used in the triangulation
-        elevation_file = att1['elevation_file']#.decode('utf-8')
-        FILENAME = os.path.join(DIRECTORY,os.path.basename(elevation_file))
+        elevation_file = pathlib.Path(att1['elevation_file']).name
+        FILENAME = DIRECTORY.joinpath(elevation_file)
         original_files.append(elevation_file)
         # check that original data file exists locally
-        if not os.access(FILENAME, os.F_OK):
-            raise FileNotFoundError(f'{FILENAME} not found in filesystem')
+        if not FILENAME.exists():
+            raise FileNotFoundError(f'{str(FILENAME)} not found')
         # read the original data file
         if (OIB1 == 'ATM'):
             # load IceBridge ATM data
-            dinput2,file_lines = read_ATM_icessn_file(FILENAME, None)
+            dinput2,file_lines = gz.io.icebridge.read_ATM_icessn_file(FILENAME, None)
         elif (OIB1 == 'ATM1b'):
             # load IceBridge Level-1b ATM data
-            dinput2,file_lines = read_ATM_qfit_file(FILENAME, None)
+            dinput2,file_lines = gz.io.icebridge.read_ATM_qfit_file(FILENAME, None)
         elif OIB1 in ('LVIS','LVGH'):
             # load IceBridge LVIS data
-            dinput2,file_lines = read_LVIS_HDF5_file(FILENAME, None)
+            dinput2,file_lines = gz.io.icebridge.read_LVIS_HDF5_file(FILENAME, None)
         # check that data sizes match
         if (file_lines != n_1):
-            logging.critical(os.path.basename(input_files[0]),
-                os.path.basename(FILENAME))
+            logging.critical(input_files[0].name, FILENAME.name)
             raise RuntimeError(f'Mismatch ({n_1:d} {file_lines:d})')
 
         # if there are secondary files to add to filter (data within DISTANCE)
@@ -669,33 +376,32 @@ def main():
                 error=np.zeros((n_2)), lon=np.zeros((n_2)), lat=np.zeros((n_2)))
             # read data from input_files[1:] and combine into single array
             c = 0
-            for fi,s in zip(input_files[1:],input_subsetter[1:]):
+            for fi,s in zip(input_files[1:], input_subsetter[1:]):
                 file_input,att3 = read_HDF5_triangle_data(fi,s)
-                n_3 = file_length(fi,s,HDF5='data')
+                n_3 = gz.io.icebridge.file_length(fi,s,HDF5='data')
                 # iterate through input keys of iterest
                 for key in ['data','lon','lat','time','error']:
                     dinput3[key][c:c+n_3] = file_input.get(key,None)
                 # original data file used in the triangulation
-                elevation_file = att3['elevation_file']#.decode('utf-8')
-                FILENAME = os.path.join(DIRECTORY,os.path.basename(elevation_file))
+                elevation_file = pathlib.Path(att3['elevation_file']).name
+                FILENAME = DIRECTORY.joinpath(elevation_file)
                 original_files.append(elevation_file)
                 # check that original data file exists locally
-                if not os.access(FILENAME, os.F_OK):
-                    raise FileNotFoundError(f'{FILENAME} not found in filesystem')
+                if not FILENAME.exists():
+                    raise FileNotFoundError(f'{str(FILENAME)} not found')
                 # read the original data file
                 if (OIB1 == 'ATM'):
                     # load IceBridge ATM data from FILENAME
-                    file_input,n_4 = read_ATM_icessn_file(FILENAME,s)
+                    file_input,n_4 = gz.io.icebridge.read_ATM_icessn_file(FILENAME,s)
                 elif (OIB1 == 'ATM1b'):
                     # load IceBridge Level-1b ATM data from FILENAME
-                    file_input,n_4 = read_ATM_qfit_file(FILENAME,s)
+                    file_input,n_4 = gz.io.icebridge.read_ATM_qfit_file(FILENAME,s)
                 elif OIB1 in ('LVIS','LVGH'):
                     # load IceBridge LVIS data from FILENAME
-                    file_input,n_4 = read_LVIS_HDF5_file(FILENAME,s)
+                    file_input,n_4 = gz.io.icebridge.read_LVIS_HDF5_file(FILENAME,s)
                 # check that data sizes match
                 if (n_3 != n_4):
-                    logging.critical(os.path.basename(fi),
-                        os.path.basename(FILENAME))
+                    logging.critical(fi.name, FILENAME.name)
                     raise RuntimeError(f'Mismatch ({n_3:d} {n_4:d})')
                 # iterate through input keys of iterest
                 for key in ['data','lon','lat','time','error']:
@@ -784,15 +490,16 @@ def main():
         # fl1 and fl2 are the data flags (ATM, LVIS)
         # yymmddjjjjj is the year, month, day and second of input file 1
         # yymmdd is the year, month and day of the triangulated files
-        FILE = file_format.format(REG1,TYPE1,OIB1,YMDS1,OIB2,YMD2)
+        fargs = (REG1, TYPE1, OIB1, YMDS1, OIB2, YMD2)
+        FILE = DIRECTORY.joinpath(file_format.format(*fargs))
         median_masks = dict(IQR=associated_IQR, RDE=associated_RDE)
         HDF5_triangulated_mask(median_masks, DISTANCE=args.distance,
             COUNT=args.count, INPUT=input_files, ORIGINAL=original_files,
-            FILENAME=os.path.join(DIRECTORY,FILE))
+            FILENAME=FILE)
         # print file name if verbose output is specified
-        logging.info(os.path.join(DIRECTORY,FILE))
+        logging.info(str(FILE))
         # change the permissions level to MODE
-        os.chmod(os.path.join(DIRECTORY,FILE), args.mode)
+        FILE.chmod(mode=args.mode)
 
 # PURPOSE: outputting the data mask for reducing input data as HDF5 file
 def HDF5_triangulated_mask(valid_mask, DISTANCE=0, COUNT=0, FILENAME='',
@@ -803,6 +510,10 @@ def HDF5_triangulated_mask(valid_mask, DISTANCE=0, COUNT=0, FILENAME='',
     else:
         clobber = 'w-'
 
+    # open output HDF5 file
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
+
     # description and references for each median filter
     description = {}
     reference = {}
@@ -812,8 +523,7 @@ def HDF5_triangulated_mask(valid_mask, DISTANCE=0, COUNT=0, FILENAME='',
     description['RDE'] = ('a_robust_dispersion_estimator_(RDE)_algorithm_'
         'described_by_Smith_et_al.,_The_Cryosphere_(2017)')
     reference['RDE'] = 'http://dx.doi.org/10.5194/tc-11-451-2017'
-    # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+
     # Defining the HDF5 dataset variables
     h5 = {}
     for key, val in valid_mask.items():
@@ -825,16 +535,16 @@ def HDF5_triangulated_mask(valid_mask, DISTANCE=0, COUNT=0, FILENAME='',
             'using_{0}').format(description[key])
         h5[key].attrs['reference'] = reference[key]
         h5[key].attrs['passing_count'] = np.count_nonzero(val)
-        h5[key].attrs['search_radius'] = '{0:0.0f}km'.format(DISTANCE/1e3)
+        h5[key].attrs['search_radius'] = f'{DISTANCE/1e3:0.0f}km'
         h5[key].attrs['threshold_count'] = COUNT
         # attach dimensions
         h5[key].dims[0].label = 'RECORD_SIZE'
     # HDF5 file attributes
     fileID.attrs['date_created'] = time.strftime('%Y-%m-%d',time.localtime())
     # add attributes for input elevation file and files triangulated
-    input_elevation_files = ','.join([os.path.basename(f) for f in ORIGINAL])
+    input_elevation_files = ','.join([pathlib.Path(f).name for f in ORIGINAL])
     fileID.attrs['elevation_files'] = input_elevation_files
-    input_triangulated_files = ','.join([os.path.basename(f) for f in INPUT])
+    input_triangulated_files = ','.join([pathlib.Path(f).name for f in INPUT])
     fileID.attrs['triangulated_files'] = input_triangulated_files
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name

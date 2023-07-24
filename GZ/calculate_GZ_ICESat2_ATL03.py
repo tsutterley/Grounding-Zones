@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL03.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
     Updated 11/2022: verify coordinate reference system attribute from shapefile
@@ -53,10 +54,10 @@ UPDATE HISTORY:
 """
 from __future__ import print_function
 
-import os
 import re
 import pyproj
 import logging
+import pathlib
 import argparse
 import operator
 import warnings
@@ -114,7 +115,8 @@ def set_hemisphere(GRANULE):
 # PURPOSE: find if segment crosses previously-known grounding line position
 def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # reading grounded ice shapefile
-    shape = fiona.open(os.path.join(base_dir,grounded_shapefile[HEM]))
+    input_shapefile = base_dir.joinpath(grounded_shapefile[HEM])
+    shape = fiona.open(str(input_shapefile))
     # extract coordinate reference system
     if ('init' in shape.crs.keys()):
         epsg = pyproj.CRS(shape.crs['init']).to_epsg()
@@ -123,21 +125,18 @@ def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # reduce to variables of interest if specified
     shape_entities = [f for f in shape.values() if int(f['id']) in VARIABLES]
     # create list of polygons
-    polygons = []
+    lines = []
     # extract the entities and assign by tile name
     for i,ent in enumerate(shape_entities):
         # extract coordinates for entity
-        poly_obj = shapely.geometry.Polygon(ent['geometry']['coordinates'])
-        # Valid Polygon cannot have overlapping exterior or interior rings
-        if (not poly_obj.is_valid):
-            poly_obj = poly_obj.buffer(0)
-        polygons.append(poly_obj)
-    # create shapely multipolygon object
-    mpoly_obj = shapely.geometry.MultiPolygon(polygons)
+        line_obj = shapely.geometry.LineString(ent['geometry']['coordinates'])
+        lines.append(line_obj)
+    # create shapely multilinestring object
+    mline_obj = shapely.geometry.MultiLineString(lines)
     # close the shapefile
     shape.close()
-    # return the polygon object for the ice sheet
-    return (mpoly_obj,grounded_shapefile[HEM],epsg)
+    # return the line string object for the ice sheet
+    return (mline_obj, epsg)
 
 # PURPOSE: compress complete list of valid indices into a set of ranges
 def compress_list(i,n):
@@ -345,16 +344,16 @@ def conf_interval(x,f,p):
 # use anomalies to calculate inward and seaward limits of tidal flexure
 def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
     # print file information
-    logging.info(os.path.basename(FILE))
+    FILE = pathlib.Path(FILE).expanduser().absolute()
+    logging.info(str(FILE))
 
     # read data from input_file
     IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
         is2tk.io.ATL03.read_main(FILE, ATTRIBUTES=True)
-    DIRECTORY = os.path.dirname(FILE)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_'
         r'(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$',re.VERBOSE)
-    PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = rx.findall(FILE).pop()
+    PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = rx.findall(FILE.name).pop()
     # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRAN)
     # digital elevation model for each region
@@ -365,16 +364,22 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
     # grounding zone mask file
     args = (PRD,'GROUNDING_ZONE_MASK',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
     # extract mask values for mask flags to create grounding zone mask
-    fid1 = h5py.File(os.path.join(DIRECTORY,file_format.format(*args)), 'r')
+    f1 = FILE.with_name(file_format.format(*args))
+    logging.info(str(f1))
+    fid1 = h5py.File(f1, mode='r')
     # input digital elevation model file (ArcticDEM or REMA)
     args = (PRD,DEM_MODEL[HEM],YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
-    fid2 = h5py.File(os.path.join(DIRECTORY,file_format.format(*args)), 'r')
+    f2 = FILE.with_name(file_format.format(*args))
+    logging.info(str(f2))
+    fid2 = h5py.File(f2, mode='r')
     # # input sea level for mean dynamic topography
     # args = (PRD,'AVISO_SEA_LEVEL',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
-    # fid3 = h5py.File(os.path.join(DIRECTORY,file_format.format(*args)), 'r')
+    # f3 = FILE.with_name(file_format.format(*args))
+    # logging.info(str(f3))
+    # fid3 = h5py.File(f3, mode='r')
 
     # grounded ice line string to determine if segment crosses coastline
-    mpoly_obj,input_file,epsg = read_grounded_ice(base_dir, HEM)
+    mline_obj, epsg = read_grounded_ice(base_dir, HEM)
     # projections for converting lat/lon to polar stereographic
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(epsg)
@@ -468,7 +473,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
         valid, = np.nonzero((~h_ph.mask) & (~dem_h.mask) & ice_gz)
 
         # compress list (separate geosegs into sets of ranges)
-        ice_gz_indices = compress_list(valid,10)
+        ice_gz_indices = compress_list(valid, 10)
         for imin,imax in ice_gz_indices:
             # find valid indices within range
             i = sorted(set(np.arange(imin,imax+1)) & set(valid))
@@ -486,7 +491,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
             # shapely LineString object for altimetry segment
             segment_line = shapely.geometry.LineString(list(zip(X, Y)))
             # determine if line segment intersects previously known GZ
-            if segment_line.intersects(mpoly_obj):
+            if segment_line.intersects(mline_obj):
                 # horizontal eulerian distance from start of segment
                 dist = np.sqrt((X-X[0])**2 + (Y-Y[0])**2)
                 # land ice height for grounding zone
@@ -528,12 +533,11 @@ def arguments():
     )
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL03 file to run')
     # directory with mask data
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=gz.utilities.get_data_path('data'),
+        type=pathlib.Path, default=gz.utilities.get_data_path('data'),
         help='Working data directory')
     # verbosity settings
     # verbose will output information about each output file

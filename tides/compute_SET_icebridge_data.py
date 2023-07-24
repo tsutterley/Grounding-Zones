@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 u"""
-compute_LPET_icebridge_data.py
+compute_SET_icebridge_data.py
 Written by Tyler Sutterley (05/2023)
-Calculates long-period equilibrium tidal elevations for correcting Operation
-    IceBridge elevation data
+Calculates radial solid Earth tide displacements for correcting Operation
+    IceBridge elevation data following IERS Convention (2010) guidelines
+    http://maia.usno.navy.mil/conventions/2010officialinfo.php
+    http://maia.usno.navy.mil/conventions/chapter7.php
 
 INPUTS:
     ATM1B, ATM icessn or LVIS file from NSIDC
 
 COMMAND LINE OPTIONS:
+    -p X, --tide-system X: Permanent tide system for output values
     -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
 
@@ -20,36 +23,21 @@ PYTHON DEPENDENCIES:
         https://docs.scipy.org/doc/
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
-    netCDF4: Python interface to the netCDF C library
-         https://unidata.github.io/netcdf4-python/netCDF4/index.html
-    pyproj: Python interface to PROJ library
-        https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
+    spatial.py: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
-    predict.py: calculates long-period equilibrium ocean tides
+    predict.py: calculates solid Earth tides
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
     Updated 05/2023: use timescale class for time conversion operations
+        add option for using higher resolution ephemerides from JPL
         using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
-    Updated 12/2022: single implicit import of grounding zone tools
-        refactored pyTMD tide model structure
-    Updated 07/2022: update imports of ATM1b QFIT functions to released version
-        place some imports within try/except statements
-    Updated 04/2022: include utf-8 encoding in reads to be windows compliant
-        use argparse descriptions within sphinx documentation
-    Updated 10/2021: using python logging for handling verbose output
-        using collections to store attributes in order of creation
-    Updated 07/2021: can use prefix files to define command line arguments
-    Updated 05/2021: modified import of ATM1b QFIT reader
-    Updated 03/2021: replaced numpy bool/int to prevent deprecation warnings
-    Updated 12/2020: merged time conversion routines into module
-    Updated 10/2020: using argparse to set command line parameters
-    Updated 09/2020: output days since 1992-01-01 as time variable
-    Written 08/2020
+    Updated 04/2023: added permanent tide system offset (free-to-mean)
+    Written 03/2023
 """
 from __future__ import print_function
 
@@ -79,8 +67,9 @@ except (ImportError, ModuleNotFoundError) as exc:
 warnings.filterwarnings("ignore")
 
 # PURPOSE: read Operation IceBridge data from NSIDC
-# compute long-period equilibrium tides at points and times
-def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
+# compute solid earth tide radial displacements at data points and times
+def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
+    VERBOSE=False, MODE=0o775):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
@@ -109,12 +98,16 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
         if re.match(val, input_file.name):
             OIB = key
 
+    # invalid value
+    fill_value = -9999.0
     # HDF5 file attributes
     attrib = collections.OrderedDict()
     # time
     attrib['time'] = {}
     attrib['time']['long_name'] = 'Time'
-    attrib['time']['units'] = 'days since 1992-01-01T00:00:00'
+    attrib['time']['description'] = ('Time_corresponding_to_the_measurement_'
+        'position')
+    attrib['time']['units'] = 'Days since 1992-01-01T00:00:00'
     attrib['time']['standard_name'] = 'time'
     attrib['time']['calendar'] = 'standard'
     # latitude
@@ -129,15 +122,23 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     attrib['lon']['description'] = ('Corresponding_to_the_measurement_'
         'position_at_the_acquisition_time')
     attrib['lon']['units'] = 'Degrees_East'
-    # long-period equilibrium tides
-    attrib['tide_lpe'] = {}
-    attrib['tide_lpe']['long_name'] = 'Equilibrium_Tide'
-    attrib['tide_lpe']['description'] = ('Long-period_equilibrium_tidal_elevation_'
-        'from_the_summation_of_fifteen_tidal_spectral_lines_at_the_measurement_'
-        'position_at_the_acquisition_time')
-    attrib['tide_lpe']['reference'] = ('https://doi.org/10.1111/'
-        'j.1365-246X.1973.tb03420.x')
-    attrib['tide_lpe']['units'] = 'meters'
+    # solid earth tides
+    attrib['tide_earth'] = {}
+    attrib['tide_earth']['long_name'] = 'Solid_Earth_Tide'
+    attrib['tide_earth']['description'] = ('Solid_earth_tides_in_the_'
+        f'{TIDE_SYSTEM}_system')
+    attrib['tide_earth']['reference'] = 'https://doi.org/10.1029/97JB01515'
+    attrib['tide_earth']['units'] = 'meters'
+    attrib['tide_earth']['_FillValue'] = fill_value
+    # solid earth permanent tide offset
+    attrib['tide_earth_free2mean'] = {}
+    attrib['tide_earth_free2mean']['long_name'] = \
+        'Solid_Earth_Tide_Free-to-Mean_conversion'
+    attrib['tide_earth_free2mean']['description'] = ('Additive_value_to_convert_'
+        'solid_earth_tide_from_the_tide_free_system_to_the_mean_tide_system')
+    attrib['tide_earth_free2mean']['reference'] = 'https://doi.org/10.1029/97JB01515'
+    attrib['tide_earth_free2mean']['units'] = 'meters'
+    attrib['tide_earth_free2mean']['_FillValue'] = fill_value
 
     # extract information from input file
     # acquisition year, month and day
@@ -174,14 +175,46 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
         dinput, file_lines, HEM = gz.io.icebridge.read_LVIS_HDF5_file(
             input_file, input_subsetter)
 
+    # earth and physical parameters for WGS84 ellipsoid
+    units = pyTMD.constants('WGS84')
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
     timescale = pyTMD.time.timescale().from_deltatime(dinput['time'],
         epoch=pyTMD.time._j2000_epoch, standard='UTC')
     # convert tide times to dynamical time
     tide_time = timescale.tide + timescale.tt_ut1
 
-    # output tidal HDF5 file
-    # form: rg_NASA_model_EQUILIBRIUM_TIDES_WGS84_fl1yyyymmddjjjjj.H5
+    # convert input coordinates to cartesian
+    X, Y, Z = pyTMD.spatial.to_cartesian(dinput['lon'], dinput['lat'],
+        h=dinput['data'], a_axis=units.a_axis, flat=units.flat)
+    # compute ephemerides for lunisolar coordinates
+    if (EPHEMERIDES.lower() == 'approximate'):
+        # get low-resolution solar and lunar ephemerides
+        SX, SY, SZ = pyTMD.astro.solar_ecef(timescale.MJD)
+        LX, LY, LZ = pyTMD.astro.lunar_ecef(timescale.MJD)
+    elif (EPHEMERIDES.upper() == 'JPL'):
+        # compute solar and lunar ephemerides from JPL kernel
+        SX, SY, SZ = pyTMD.astro.solar_ephemerides(timescale.MJD)
+        LX, LY, LZ = pyTMD.astro.lunar_ephemerides(timescale.MJD)
+    # convert coordinates to column arrays
+    XYZ = np.c_[X, Y, Z]
+    SXYZ = np.c_[SX, SY, SZ]
+    LXYZ = np.c_[LX, LY, LZ]
+    # predict solid earth tides (cartesian)
+    dxi = pyTMD.predict.solid_earth_tide(tide_time,
+        XYZ, SXYZ, LXYZ, a_axis=units.a_axis,
+        tide_system=TIDE_SYSTEM)
+    # calculate radial component of solid earth tides
+    dln, dlt, drad = pyTMD.spatial.to_geodetic(
+        X + dxi[:,0], Y + dxi[:,1], Z + dxi[:,2],
+        a_axis=units.a_axis, flat=units.flat)
+    # remove effects of original topography
+    dinput['tide_earth'] = drad - dinput['data']
+    # calculate permanent tide offset (meters)
+    dinput['tide_earth_free2mean'] = 0.06029 - \
+        0.180873*np.sin(dinput['lat']*np.pi/180.0)**2
+
+    # output solid earth tide HDF5 file
+    # form: rg_NASA_SOLID_EARTH_TIDE_WGS84_fl1yyyymmddjjjjj.H5
     # where rg is the hemisphere flag (GR or AN) for the region
     # fl1 and fl2 are the data flags (ATM, LVIS, GLAS)
     # yymmddjjjjj is the year, month, day and second of the input file
@@ -190,18 +223,14 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     # use starting second to distinguish between files for the day
     JJ1 = np.min(dinput['time']) % 86400
     # output file format
-    file_format = '{0}_NASA_EQUILIBRIUM_TIDES_WGS84_{1}{2}{3}{4}{5:05.0f}.H5'
-    FILENAME = file_format.format(hem_flag[HEM],OIB,YY1,MM1,DD1,JJ1)
+    args = (hem_flag[HEM],'SOLID_EARTH_TIDE',OIB,YY1,MM1,DD1,JJ1)
+    FILENAME = '{0}_NASA_{1}_WGS84_{2}{3}{4}{5}{6:05.0f}.H5'.format(*args)
     # print file information
     output_file = input_file.with_name(FILENAME)
     logger.info(f'\t{str(output_file)}')
 
     # open output HDF5 file
     fid = h5py.File(output_file, mode='w')
-
-    # predict long-period equilibrium tides at time
-    dinput['tide_lpe'] = pyTMD.predict.equilibrium_tide(tide_time,
-        dinput['lat'])
 
     # output dictionary with HDF5 variables
     h5 = {}
@@ -222,10 +251,9 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
 
     # HDF5 file attributes
     fid.attrs['featureType'] = 'trajectory'
-    fid.attrs['title'] = ('Long-Period_Equilibrium_tidal_correction_for_'
-        'elevation_measurements')
-    fid.attrs['summary'] = ('Tidal_correction_computed_at_elevation_'
-        'measurements_using_fifteen_spectral_lines.')
+    fid.attrs['title'] = 'Tidal_correction_for_elevation_measurements'
+    fid.attrs['summary'] = ('Solid_Earth_tide_radial_displacements_'
+        'computed_at_elevation_measurements.')
     fid.attrs['project'] = 'NASA_Operation_IceBridge'
     fid.attrs['processing_level'] = '4'
     fid.attrs['date_created'] = time.strftime('%Y-%m-%d',time.localtime())
@@ -257,8 +285,9 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
-        description="""Calculates long-period equilibrium tidal elevations for
-            correcting Operation IceBridge elevation data
+        description="""Calculates radial solid earth tide displacements for
+            correcting Operation IceBridge elevation data following IERS
+            Convention (2010) guidelines
             """,
         fromfile_prefix_chars="@"
     )
@@ -267,6 +296,14 @@ def arguments():
     parser.add_argument('infile',
         type=str, nargs='+',
         help='Input Operation IceBridge file to run')
+    # permanent tide system for output values
+    parser.add_argument('--tide-system','-p',
+        type=str, choices=('tide_free','mean_tide'), default='tide_free',
+        help='Permanent tide system for output values')
+    # method for calculating lunisolar ephemerides
+    parser.add_argument('--ephemerides','-c',
+        type=str, choices=('approximate','JPL'), default='approximate',
+        help='Method for calculating lunisolar ephemerides')
     # verbosity settings
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -286,7 +323,11 @@ def main():
 
     # run for each input file
     for arg in args.infile:
-        compute_LPET_icebridge_data(arg, VERBOSE=args.verbose, MODE=args.mode)
+        compute_SET_icebridge_data(arg,
+            TIDE_SYSTEM=args.tide_system,
+            EPHEMERIDES=args.ephemerides,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

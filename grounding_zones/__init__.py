@@ -11,7 +11,9 @@ matplotlib and cartopy
 
 Documentation is available at https://grounding-zones.readthedocs.io
 """
+from grounding_zones import io
 import grounding_zones.utilities
 import grounding_zones.version
+
 # get version number
 __version__ = grounding_zones.version.version

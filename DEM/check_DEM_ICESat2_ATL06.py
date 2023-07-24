@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 check_DEM_ICESat2_ATL06.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 Determines which digital elevation model tiles to read for a given ATL06 file
 
 ArcticDEM 2m digital elevation model tiles
@@ -43,6 +43,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
     Updated 11/2022: new ArcticDEM and REMA mosaic index shapefiles
@@ -54,9 +55,9 @@ UPDATE HISTORY:
 """
 from __future__ import print_function
 
-import os
 import re
 import pyproj
+import pathlib
 import argparse
 import warnings
 import numpy as np
@@ -104,7 +105,8 @@ def set_DEM_model(GRANULE):
 # PURPOSE: read zip file containing index shapefiles for finding DEM tiles
 def read_DEM_index(index_file, DEM_MODEL):
     # read the compressed shape file and extract entities
-    shape = fiona.open(f'zip://{os.path.expanduser(index_file)}')
+    index_file = pathlib.Path(index_file).expanduser().absolute()
+    shape = fiona.open(f'zip://{str(index_file)}')
     # extract coordinate reference system
     if ('init' in shape.crs.keys()):
         epsg = pyproj.CRS(shape.crs['init']).to_epsg()
@@ -205,23 +207,27 @@ def read_DEM_index(index_file, DEM_MODEL):
 # PURPOSE: read ICESat-2 data from NSIDC and determine which DEM tiles to read
 def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
     # read data from FILE
+    FILE = pathlib.Path(FILE).expanduser().absolute()
     IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = \
         is2tk.io.ATL06.read_granule(FILE, VERBOSE=True, ATTRIBUTES=True)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = rx.findall(FILE).pop()
+    SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = \
+        rx.findall(FILE.name).pop()
 
     # set the  digital elevation model based on ICESat-2 granule
     DEM_MODEL = set_DEM_model(GRAN) if (DEM_MODEL is None) else DEM_MODEL
     # regular expression pattern for extracting parameters from ArcticDEM name
     rx1 = re.compile(r'(\d+)_(\d+)_(\d+)_(\d+)_(\d+m)_(.*?)$', re.VERBOSE)
+    # directory setup
+    DIRECTORY = pathlib.Path(DIRECTORY).expanduser().absolute()
     # full path to DEM directory
-    elevation_directory=os.path.join(DIRECTORY,*elevation_dir[DEM_MODEL])
+    elevation_directory = DIRECTORY.joinpath(*elevation_dir[DEM_MODEL])
     # zip file containing index shapefiles for finding DEM tiles
-    index_file=os.path.join(elevation_directory,elevation_tile_index[DEM_MODEL])
+    index_file = elevation_directory.joinpath(elevation_tile_index[DEM_MODEL])
     # read index file for determining which tiles to read
-    tile_dict,tile_attrs,tile_epsg = read_DEM_index(index_file,DEM_MODEL)
+    tile_dict, tile_attrs, tile_epsg = read_DEM_index(index_file, DEM_MODEL)
 
     # pyproj transformer for converting from latitude/longitude
     # into DEM tile coordinates
@@ -274,8 +280,8 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
             name = tile_attrs[key]["name"]
             # read central DEM file (geotiff within gzipped tar file)
             tar = f'{name}.tar.gz'
-            elevation_file = os.path.join(elevation_directory,sub,tar)
-            if not os.access(elevation_file, os.F_OK):
+            elevation_file = elevation_directory.joinpath(sub, tar)
+            if not elevation_file.exists():
                 all_tiles.append(sub)
             # buffer using neighbor tiles (REMA/GIMP) or sub-tiles (ArcticDEM)
             if (DEM_MODEL == 'REMA'):
@@ -292,8 +298,8 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
                     if bkey in tile_attrs.keys():
                         bsub = tile_attrs[bkey]["tile"]
                         btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
-                        buffer_file = os.path.join(elevation_directory,bkey,btar)
-                        if not os.access(buffer_file, os.F_OK):
+                        buffer_file = elevation_directory.joinpath(bkey, btar)
+                        if not buffer_file.exists():
                             all_tiles.append(bsub)
             elif (DEM_MODEL == 'GIMP'):
                 # GIMP tiles to read to buffer the image
@@ -309,8 +315,8 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
                     if bkey in tile_attrs.keys():
                         bsub = tile_attrs[bkey]["tile"]
                         btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
-                        buffer_file = os.path.join(elevation_directory,bkey,btar)
-                        if not os.access(buffer_file, os.F_OK):
+                        buffer_file = elevation_directory.joinpath(bkey, btar)
+                        if not buffer_file.exists():
                             all_tiles.append(bsub)
             elif (DEM_MODEL == 'ArcticDEM'):
                 # ArcticDEM sub-tiles to read to buffer the image
@@ -337,8 +343,8 @@ def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
                     if bkey in tile_attrs.keys():
                         bsub = tile_attrs[bkey]["tile"]
                         btar = f'{tile_attrs[bkey]["name"]}.tar.gz'
-                        buffer_file = os.path.join(elevation_directory,bsub,btar)
-                        if not os.access(buffer_file, os.F_OK):
+                        buffer_file = elevation_directory.joinpath(bkey, btar)
+                        if not buffer_file.exists():
                             all_tiles.append(bsub)
 
     # sort and condense list
@@ -353,12 +359,11 @@ def arguments():
     )
     # command line parameters
     parser.add_argument('file',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        nargs='+', help='ICESat-2 ATL06 file to run')
+        type=pathlib.Path, nargs='+',
+        help='ICESat-2 ATL06 file to run')
     # working data directory for location of DEM files
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # Digital elevation model (REMA, ArcticDEM, GIMP) to run
     # set the DEM model to run for a given granule (else set automatically)

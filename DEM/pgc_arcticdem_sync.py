@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 pgc_arcticdem_sync.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (07/2023)
 
 Syncs ArcticDEM tar files from the Polar Geospatial Center (PGC)
     https://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/mosaic
@@ -46,6 +46,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: new ArcticDEM mosaic index shapefile
     Updated 05/2022: use argparse descriptions within documentation
@@ -67,6 +68,7 @@ import ssl
 import time
 import shutil
 import logging
+import pathlib
 import argparse
 import posixpath
 import traceback
@@ -78,17 +80,17 @@ def pgc_arcticdem_sync(base_dir, VERSION, RESOLUTION, TILES=None,
     TIMEOUT=None, RETRY=1, LOG=False, LIST=False, CLOBBER=False,
     MODE=None):
     # data directory
-    DIRECTORY = os.path.join(base_dir,'ArcticDEM')
+    base_dir = pathlib.Path(base_dir).expanduser().absolute()
+    DIRECTORY = base_dir.joinpath('ArcticDEM')
     # check if directory exists and recursively create if not
-    os.makedirs(DIRECTORY,MODE) if not os.path.exists(DIRECTORY) else None
+    DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
 
     # create log file with list of synchronized files (or print to terminal)
     if LOG:
         # format: PGC_ArcticDEM_sync_2002-04-01.log
         today = time.strftime('%Y-%m-%d',time.localtime())
-        LOGFILE = f'PGC_ArcticDEM_sync_{today}.log'
-        logging.basicConfig(filename=os.path.join(DIRECTORY,LOGFILE),
-            level=logging.INFO)
+        LOGFILE = DIRECTORY.joinpath(f'PGC_ArcticDEM_sync_{today}.log')
+        logging.basicConfig(filename=LOGFILE, level=logging.INFO)
         logging.info(f'PGC ArcticDEM Strip Sync Log ({today})')
         logging.info(f'VERSION={VERSION}')
         logging.info(f'RESOLUTION={RESOLUTION}')
@@ -116,9 +118,8 @@ def pgc_arcticdem_sync(base_dir, VERSION, RESOLUTION, TILES=None,
     # for each tile subdirectory
     for sd,lmd in zip(remote_sub,collastmod):
         # check if data directory exists and recursively create if not
-        local_dir = os.path.join(DIRECTORY,sd)
-        if not os.access(local_dir, os.F_OK) and not LIST:
-            os.makedirs(local_dir,MODE)
+        local_dir = DIRECTORY.joinpath(sd)
+        local_dir.mkdir(mode=MODE, parents=True, exist_ok=True)
         # open connection with PGC server at remote directory
         remote_path = [*HOST, 'ArcticDEM', 'mosaic', VERSION, RESOLUTION, sd]
         remote_dir = posixpath.join(*remote_path)
@@ -129,13 +130,13 @@ def pgc_arcticdem_sync(base_dir, VERSION, RESOLUTION, TILES=None,
         for colname,remote_mtime in zip(colnames,collastmod):
             # remote and local versions of the file
             remote_file = posixpath.join(remote_dir,colname)
-            local_file = os.path.join(local_dir,colname)
+            local_file = local_dir.joinpath(colname)
             # sync ArcticDEM tar file
             http_pull_file(remote_file, remote_mtime, local_file,
                 TIMEOUT=TIMEOUT, RETRY=RETRY, LIST=LIST,
                 CLOBBER=CLOBBER, MODE=MODE)
         # keep remote modification time of directory and local access time
-        os.utime(local_dir, (os.stat(local_dir).st_atime, lmd))
+        os.utime(local_dir, (local_dir.stat().st_atime, lmd))
 
     # remote directory for shapefiles of data version
     remote_path = [*HOST, 'ArcticDEM', 'indexes']
@@ -147,7 +148,7 @@ def pgc_arcticdem_sync(base_dir, VERSION, RESOLUTION, TILES=None,
     for colname,remote_mtime in zip(colnames,collastmod):
         # remote and local versions of the file
         remote_file = posixpath.join(remote_dir,colname)
-        local_file = os.path.join(DIRECTORY,colname)
+        local_file = DIRECTORY.joinpath(colname)
         # sync ArcticDEM shapefile
         http_pull_file(remote_file, remote_mtime, local_file,
             TIMEOUT=TIMEOUT, RETRY=RETRY, LIST=LIST,
@@ -155,11 +156,13 @@ def pgc_arcticdem_sync(base_dir, VERSION, RESOLUTION, TILES=None,
 
     # close log file and set permissions level to MODE
     if LOG:
-        os.chmod(os.path.join(DIRECTORY, LOGFILE), MODE)
+        LOGFILE.chmod(mode=MODE)
 
 # PURPOSE: Try downloading a file up to a set number of times
 def retry_download(remote_file, local=None, timeout=None,
     retry=1, chunk=0, context=gz.utilities._default_ssl_context):
+    # verify local is a file path
+    local = pathlib.Path(local)
     # attempt to download up to the number of retries
     retry_counter = 0
     while (retry_counter < retry):
@@ -177,7 +180,7 @@ def retry_download(remote_file, local=None, timeout=None,
             # transfer should work with ascii and binary data formats
             with open(local, 'wb') as f:
                 shutil.copyfileobj(response, f, chunk)
-            local_length = os.path.getsize(local)
+            local_length = local.stat().st_size
         except Exception as exc:
             logging.error(traceback.format_exc())
             pass
@@ -201,9 +204,9 @@ def http_pull_file(remote_file, remote_mtime, local_file, TIMEOUT=None,
     TEST = False
     OVERWRITE = ' (clobber)'
     # check if local version of file exists
-    if os.access(local_file, os.F_OK):
+    if local_file.exists():
         # check last modification time of local file
-        local_mtime = os.stat(local_file).st_mtime
+        local_mtime = local_file.stat().st_mtime
         # if remote file is newer: overwrite the local file
         if (remote_mtime > local_mtime):
             TEST = True
@@ -214,16 +217,16 @@ def http_pull_file(remote_file, remote_mtime, local_file, TIMEOUT=None,
     # if file does not exist locally, is to be overwritten, or CLOBBER is set
     if TEST or CLOBBER:
         # Printing files transferred
-        logging.info(f'{remote_file} -->')
-        logging.info(f'\t{local_file}{OVERWRITE}\n')
+        logging.info(f'{remote_file} --> ')
+        logging.info(f'\t{str(local_file)}{OVERWRITE}\n')
         # if executing copy command (not only printing the files)
         if not LIST:
             # attempt to retry the download
             retry_download(remote_file, local=local_file,
                 timeout=TIMEOUT, retry=RETRY, chunk=CHUNK)
             # keep remote modification time of file and local access time
-            os.utime(local_file, (os.stat(local_file).st_atime, remote_mtime))
-            os.chmod(local_file, MODE)
+            os.utime(local_file, (local_file.stat().st_atime, remote_mtime))
+            local_file.chmod(mode=MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -235,8 +238,7 @@ def arguments():
     # command line parameters
     # working data directory
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     # ArcticDEM model version
     parser.add_argument('--version','-v',

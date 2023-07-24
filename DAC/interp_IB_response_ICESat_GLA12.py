@@ -59,10 +59,10 @@ UPDATE HISTORY:
 """
 from __future__ import print_function
 
-import os
 import re
 import pyproj
 import logging
+import pathlib
 import argparse
 import warnings
 import numpy as np
@@ -94,14 +94,16 @@ except (ImportError, ModuleNotFoundError) as exc:
 warnings.filterwarnings("ignore")
 
 # PURPOSE: read land sea mask to get indices of oceanic values
-def ncdf_landmask(FILENAME,MASKNAME,OCEAN):
-    with netCDF4.Dataset(FILENAME,'r') as fileID:
+def ncdf_landmask(FILENAME, MASKNAME, OCEAN):
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    with netCDF4.Dataset(FILENAME, mode='r') as fileID:
         landsea = np.squeeze(fileID.variables[MASKNAME][:].copy())
     return (landsea == OCEAN)
 
 # PURPOSE: read reanalysis mean sea level pressure
-def ncdf_mean_pressure(FILENAME,VARNAME,LONNAME,LATNAME):
-    with netCDF4.Dataset(FILENAME,'r') as fileID:
+def ncdf_mean_pressure(FILENAME, VARNAME, LONNAME, LATNAME):
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    with netCDF4.Dataset(FILENAME, mode='r') as fileID:
         # extract pressure and remove singleton dimensions
         mean_pressure = np.array(fileID.variables[VARNAME][:].squeeze())
         longitude = fileID.variables[LONNAME][:].squeeze()
@@ -110,6 +112,10 @@ def ncdf_mean_pressure(FILENAME,VARNAME,LONNAME,LATNAME):
 
 # PURPOSE: find pressure files in a directory
 def find_pressure_files(ddir, MODEL, MJD):
+    # verify input directory exists
+    ddir = pathlib.Path(ddir).expanduser().absolute()
+    if not ddir.exists():
+        raise FileNotFoundError(f'Directory {str(ddir)} not found')
     # regular expression pattern for finding files
     if (MODEL == 'ERA-Interim'):
         regex_pattern = r'ERA\-Interim\-Hourly\-MSL\-({0})\.nc$'
@@ -134,7 +140,7 @@ def find_pressure_files(ddir, MODEL, MJD):
             dates.append(joiner.join([str(y),str(m).zfill(2),str(d).zfill(2)]))
     # compile regular expression pattern for finding dates
     rx = re.compile(regex_pattern.format('|'.join(dates)))
-    flist = [os.path.join(ddir,f) for f in os.listdir(ddir) if rx.match(f)]
+    flist = [f for f in ddir.iterdir() if rx.match(f.name)]
     # return the sorted list of unique files
     return sorted(set(flist))
 
@@ -159,7 +165,8 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
     c = 0
     # for each file
     for FILENAME in FILENAMES:
-        with netCDF4.Dataset(FILENAME,'r') as fileID:
+        FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+        with netCDF4.Dataset(FILENAME, mode='r') as fileID:
             # extract coordinates
             latitude = fileID.variables[LATNAME][:].squeeze()
             # convert time to Modified Julian Days
@@ -209,7 +216,7 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
     TPX = TPX[itime,:,:]
     MJD = MJD[itime]
     # return the sea level pressure anomalies and times
-    return (SLP,TPX,latitude,MJD)
+    return (SLP, TPX, latitude, MJD)
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # calculate and interpolate the instantaneous inverse barometer response
@@ -221,7 +228,8 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     logging.basicConfig(level=loglevel)
 
     # directory setup for reanalysis model
-    ddir = os.path.join(base_dir,MODEL)
+    base_dir = pathlib.Path(base_dir).expanduser().absolute()
+    ddir = base_dir.joinpath(MODEL)
     # set model specific parameters
     if (MODEL == 'ERA-Interim'):
         # mean sea level pressure file
@@ -268,9 +276,9 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
         # projection string
         proj4_params = 'epsg:4326'
 
-    # get directory from INPUT_FILE
-    logging.info(f'{INPUT_FILE} -->')
-    DIRECTORY = os.path.dirname(INPUT_FILE)
+    # full path to input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
 
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
@@ -289,20 +297,21 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     # GRAN:  Granule version number
     # TYPE:  File type
     try:
-        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(INPUT_FILE).pop()
+        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
+            rx.findall(INPUT_FILE.name).pop()
     except:
         # output inverse-barometer response  HDF5 file (generic)
-        fileBasename,fileExtension = os.path.splitext(INPUT_FILE)
-        args = (fileBasename,MODEL,fileExtension)
-        OUTPUT_FILE = '{0}_{1}_IB{2}'.format(*args)
+        FILENAME = f'{INPUT_FILE.stem}_{MODEL}_IB{INPUT_FILE.suffix}'
     else:
         # output inverse-barometer response HDF5 file for NSIDC granules
         args = (PRD,RL,MODEL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_{2}_IB_{3}{4}{5}_{6}_{7}_{8}_{9}_{10}.h5'
-        OUTPUT_FILE = file_format.format(*args)
+        FILENAME = file_format.format(*args)
+    # full path to output file
+    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
 
     # read GLAH12 HDF5 file
-    fileID = h5py.File(INPUT_FILE,'r')
+    fileID = h5py.File(INPUT_FILE, mode='r')
     # get variables and attributes
     rec_ndx_40HZ = fileID['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
     # seconds since 2000-01-01 12:00:00 UTC (J2000)
@@ -315,9 +324,9 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     elev_TPX = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'][:].copy()
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
-    # convert time from UTC time of day to Modified Julian Days (MJD)
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    MJD = DS_UTCTime_40HZ[:]/86400.0 + 51544.5
+    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
+    timescale = pyTMD.time.timescale().from_deltatime(DS_UTCTime_40HZ[:],
+        epoch=pyTMD.time._j2000_epoch, standard='UTC')
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
     topex = pyTMD.constants('TOPEX')
@@ -338,7 +347,7 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     ix,iy = transformer.transform(lon_40HZ, lat_40HZ)
 
     # read mean pressure field
-    mean_file = os.path.join(ddir,input_mean_file.format(RANGE[0],RANGE[1]))
+    mean_file = ddir.joinpath(input_mean_file.format(RANGE[0],RANGE[1]))
     mean_pressure,lon,lat = ncdf_mean_pressure(mean_file,VARNAME,LONNAME,LATNAME)
 
     # grid step size in radians
@@ -359,10 +368,10 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
         (wgs84.a_axis**4)*(np.cos(gridtheta)**2))
     # read land-sea mask to find ocean values
     # ocean pressure points will be based on reanalysis mask
-    MASK = ncdf_landmask(os.path.join(ddir,input_mask_file),MASKNAME,OCEAN)
+    MASK = ncdf_landmask(ddir.joinpath(input_mask_file),MASKNAME,OCEAN)
 
     # find and read each reanalysis pressure field
-    FILENAMES = find_pressure_files(ddir, MODEL, np.floor(np.min(MJD)))
+    FILENAMES = find_pressure_files(ddir, MODEL, timescale.MJD)
     # read sea level pressure and calculate anomalies
     islp,itpx,ilat,imjd = ncdf_pressure(FILENAMES, VARNAME, TIMENAME,
         LATNAME, mean_pressure, MASK, AREA)
@@ -379,13 +388,13 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     gs = ge*(1.0 + 5.2885e-3*np.cos(theta_40HZ)**2 - 5.9e-6*np.cos(2.0*theta_40HZ)**2)
 
     # interpolate sea level pressure anomalies to points
-    SLP = R1.__call__(np.c_[MJD, iy, ix])
+    SLP = R1.__call__(np.c_[timescale.MJD, iy, ix])
     # calculate inverse barometer response
     IB = np.ma.zeros((rec_ndx_40HZ), fill_value=fv)
     IB.data = -SLP*(DENSITY*gs)**-1
     # interpolate conventional inverse barometer response to points
     TPX = np.ma.zeros((rec_ndx_40HZ), fill_value=fv)
-    TPX.data = R2.__call__(np.c_[MJD,iy,ix])
+    TPX.data = R2.__call__(np.c_[timescale.MJD, iy, ix])
     # replace any nan values with fill value
     IB.mask = np.isnan(IB.data)
     TPX.mask = np.isnan(TPX.data)
@@ -425,7 +434,7 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     IS_gla12_corr_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     # add attributes for input GLA12 file
-    IS_gla12_corr_attrs['input_files'] = os.path.basename(INPUT_FILE)
+    IS_gla12_corr_attrs['lineage'] = INPUT_FILE.name
     # update geospatial ranges for ellipsoid
     IS_gla12_corr_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
     IS_gla12_corr_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
@@ -509,12 +518,12 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     fileID.close()
 
     # print file information
-    logging.info(f'\t{os.path.join(DIRECTORY,OUTPUT_FILE)}')
+    logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_GLA12_corr_write(IS_gla12_corr, IS_gla12_corr_attrs,
-        FILENAME=os.path.join(DIRECTORY,OUTPUT_FILE),
+        FILENAME=OUTPUT_FILE,
         FILL_VALUE=IS_gla12_fill, CLOBBER=True)
     # change the permissions mode
-    os.chmod(os.path.join(DIRECTORY,OUTPUT_FILE), MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the correction values for ICESat data to HDF5
 def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
@@ -526,7 +535,8 @@ def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
         clobber = 'w-'
 
     # open output HDF5 file
-    fileID = h5py.File(os.path.expanduser(FILENAME), clobber)
+    FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
+    fileID = h5py.File(FILENAME, clobber)
     # create 40HZ HDF5 records
     h5 = dict(Data_40HZ={})
 
@@ -550,9 +560,9 @@ def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
     val = IS_gla12_tide['Data_40HZ']['DS_UTCTime_40']
     attrs = IS_gla12_attrs['Data_40HZ']['DS_UTCTime_40']
     # Defining the HDF5 dataset variables
-    var = '{0}/{1}'.format('Data_40HZ','DS_UTCTime_40')
-    h5['Data_40HZ']['DS_UTCTime_40'] = fileID.create_dataset(var,
-        np.shape(val), data=val, dtype=val.dtype, compression='gzip')
+    h5['Data_40HZ']['DS_UTCTime_40'] = fileID.create_dataset(
+        'Data_40HZ/DS_UTCTime_40', np.shape(val),
+        data=val, dtype=val.dtype, compression='gzip')
     # make dimension
     h5['Data_40HZ']['DS_UTCTime_40'].make_scale('DS_UTCTime_40')
     # add HDF5 variable attributes
@@ -564,7 +574,7 @@ def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
         # add group to dict
         h5['Data_40HZ'][group] = {}
         # create Data_40HZ group
-        fileID.create_group('Data_40HZ/{0}'.format(group))
+        fileID.create_group(f'Data_40HZ/{group}')
         # add HDF5 group attributes
         for att_name,att_val in IS_gla12_attrs['Data_40HZ'][group].items():
             if not isinstance(att_val,dict):
@@ -574,7 +584,7 @@ def HDF5_GLA12_corr_write(IS_gla12_tide, IS_gla12_attrs,
             fillvalue = FILL_VALUE['Data_40HZ'][group][key]
             attrs = IS_gla12_attrs['Data_40HZ'][group][key]
             # Defining the HDF5 dataset variables
-            var = '{0}/{1}/{2}'.format('Data_40HZ',group,key)
+            var = f'Data_40HZ/{group}/{key}'
             # use variable compression if containing fill values
             if fillvalue:
                 h5['Data_40HZ'][group][key] = fileID.create_dataset(var,
@@ -607,12 +617,11 @@ def arguments():
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat GLA12 file to run')
     # directory with reanalysis data
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
     choices = ['ERA-Interim','ERA5','MERRA-2']
     parser.add_argument('--reanalysis','-R',

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_ICESat2_ATL11.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (05/2023)
 Creates tile index files of ICESat-2 annual land ice elevation data
 
 COMMAND LINE OPTIONS:
@@ -25,6 +25,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
@@ -40,6 +41,7 @@ import re
 import time
 import pyproj
 import logging
+import pathlib
 import argparse
 import warnings
 import collections
@@ -72,8 +74,9 @@ def set_hemisphere(GRANULE):
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
     # check that file exists if entering with read mode
-    if kwargs['mode'] in ('r','r+') and not os.access(filename, os.F_OK):
-        raise FileNotFoundError(filename)
+    filename = pathlib.Path(filename).expanduser().absolute()
+    if kwargs['mode'] in ('r','r+') and not filename.exists():
+        raise FileNotFoundError(str(filename))
     # attempt to open HDF5 file
     while True:
         try:
@@ -95,22 +98,24 @@ def tile_ICESat2_ATL11(FILE,
     logging.basicConfig(level=loglevel)
 
     # read data from input file
-    logging.info(FILE)
+    logging.info(str(FILE))
+    FILE = pathlib.Path(FILE).expanduser().absolute()
     IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
         is2tk.io.ATL11.read_granule(FILE, ATTRIBUTES=True)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(FILE).pop()
+    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(FILE.name).pop()
     # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRAN)
 
     # index directory for hemisphere
     index_directory = 'north' if (HEM == 'N') else 'south'
     # output directory and index file
-    DIRECTORY = os.path.dirname(FILE)
-    BASENAME = os.path.basename(FILE)
-    output_file = os.path.join(DIRECTORY, index_directory, BASENAME)
+    DIRECTORY = FILE.parent
+    output_file = DIRECTORY.joinpath(index_directory, FILE.name)
+    # create index directory for hemisphere
+    output_file.parent.mkdir(parents=True, exist_ok=True)
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413,S=3031)
@@ -139,11 +144,6 @@ def tile_ICESat2_ATL11(FILE,
         'poly_max_degree_AT','poly_max_degree_XT','xy_scale','t_scale',
         'max_fit_iterations','equatorial_radius','polar_radius',
         'seg_number_skip','pair_yatc_ctr_tol','N_poly_coeffs','N_coeffs']
-
-    # create index directory for hemisphere
-    if not os.access(os.path.join(DIRECTORY,index_directory),os.F_OK):
-        os.makedirs(os.path.join(DIRECTORY,index_directory),
-            mode=MODE, exist_ok=True)
 
     # open output index file
     f2 = h5py.File(output_file,'w')
@@ -174,7 +174,7 @@ def tile_ICESat2_ATL11(FILE,
         longitude = np.ma.array(IS2_atl11_mds[ptx]['longitude'],
             fill_value=IS2_atl11_attrs[ptx]['longitude']['_FillValue'])
         # convert latitude and longitude to regional projection
-        x,y = transformer.transform(longitude,latitude)
+        x, y = transformer.transform(longitude, latitude)
         # large-scale tiles
         xtile = (x-0.5*SPACING)//SPACING
         ytile = (y-0.5*SPACING)//SPACING
@@ -202,16 +202,16 @@ def tile_ICESat2_ATL11(FILE,
             g1.attrs['spacing'] = SPACING
 
             # create merged tile file if not existing
-            tile_file = os.path.join(DIRECTORY,index_directory,
+            tile_file = DIRECTORY.joinpath(index_directory,
                 f'{tile_group}.h5')
-            clobber = 'a' if os.access(tile_file,os.F_OK) else 'w'
+            clobber = 'a' if tile_file.exists() else 'w'
             # open output merged tile file
             f3 = multiprocess_h5py(tile_file, mode=clobber)
             # create group for file
-            if BASENAME not in f3:
-                g3 = f3.create_group(BASENAME)
+            if FILE.name not in f3:
+                g3 = f3.create_group(FILE.name)
             else:
-                g3 = f3[BASENAME]
+                g3 = f3[FILE.name]
             # add file-level variables and attributes
             if (clobber == 'w'):
                 # create projection variable
@@ -245,7 +245,7 @@ def tile_ICESat2_ATL11(FILE,
 
             # groups for beam pair
             tile_pair_group = '{0}/{1}'.format(tile_group,ptx)
-            pair_group = '{0}/{1}'.format(BASENAME,ptx)
+            pair_group = '{0}/{1}'.format(FILE.name,ptx)
             # try to create groups for each beam pair
             if tile_pair_group not in f2:
                 g2 = f2.create_group(tile_pair_group)
@@ -287,7 +287,7 @@ def tile_ICESat2_ATL11(FILE,
     # close the output file
     f2.close()
     # change the permissions mode of the output file
-    os.chmod(output_file, mode=MODE)
+    output_file.chmod(mode=MODE)
 
 # PURPOSE: create argument parser
 def arguments():
@@ -299,7 +299,7 @@ def arguments():
     # command line parameters
     # input ICESat-2 annual land ice height files
     parser.add_argument('infile',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)), nargs='+',
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL11 file to run')
     # output grid spacing
     parser.add_argument('--spacing','-S',

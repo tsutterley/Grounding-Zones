@@ -61,7 +61,7 @@ def model_grounding_zone(DATASET, n_years, dhdt, reorient, VERBOSE=False):
 
     # create simulated flight line
     glacier_length = 150000
-    x = np.linspace(0,glacier_length,1000).astype(np.float)
+    x = np.linspace(0,glacier_length,1000).astype(np.float64)
     z = np.zeros_like(x)
     z[:475] = 240.0 - 2e-8*x[:475]**2
     z[474:525] = z[474] - 6.0*np.sin(np.arange(51)*np.pi/50)

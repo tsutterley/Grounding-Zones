@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 symbolic_icebridge_files.py
-Written by Tyler Sutterley (05/2022)
+Written by Tyler Sutterley (05/2023)
 Creates symbolic links for Operation IceBridge files organized by date
 
 CALLING SEQUENCE:
@@ -18,6 +18,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: permission mode of directories
 
 UPDATE HISTORY:
+    Updated 05/2023: using pathlib to define and operate on paths
     Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: using python logging for handling verbose output
     Updated 10/2020: using argparse to set command line parameters
@@ -26,9 +27,9 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import sys
-import os
 import re
 import logging
+import pathlib
 import argparse
 import numpy as np
 
@@ -42,8 +43,7 @@ def arguments():
     # command line parameters
     # working data directory
     parser.add_argument('--directory','-D',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
-        default=os.getcwd(),
+        type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory for symbolic link')
     # Operation IceBridge product
     choices = ('BLATM1B','BLATM2','ILATM1B','ILATM2','ILVGH2','ILVIS2')
@@ -53,7 +53,7 @@ def arguments():
         help='OIB data product to create symbolic links')
     # incoming directory with Operation IceBridge data
     parser.add_argument('--incoming',
-        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        type=pathlib.Path,
         help='Directory with Operation IceBridge data')
     # verbose will output information about each symbolic link
     parser.add_argument('--verbose','-V',
@@ -95,46 +95,49 @@ def symbolic_icebridge_files(base_dir, incoming, PRODUCT, MODE=0o775):
     R['ILVGH2'] = r'(ILVGH2)_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).(H5|TXT)$'
     rx2 = re.compile(R[PRODUCT],re.VERBOSE)
     # find subdirectories within incoming
-    subdirectories = [s for s in os.listdir(incoming) if rx1.match(s) and
-        os.path.isdir(os.path.join(incoming,s))]
+    incoming = pathlib.Path(incoming).expanduser().absolute()
+    subdirectories = [s for s in incoming.iterdir() if rx1.match(s.name) and
+        s.is_dir()]
     for sd in sorted(subdirectories):
         # put symlinks in directories similar to NSIDC
-        local_dir = os.path.join(base_dir,sd)
-        os.makedirs(local_dir,MODE) if not os.path.exists(local_dir) else None
+        local_dir = base_dir.joinpath(sd.name)
+        local_dir.mkdir(mode=MODE, parents=True, exist_ok=True)
         # find each operation icebridge file within the subdirectory
-        files = [f for f in os.listdir(os.path.join(incoming,sd)) if rx2.match(f)]
+        files = [f for f in sd.iterdir() if rx2.match(f.name)]
         # for each operation icebridge file
         for f in sorted(files):
             # attempt to create the symbolic link else continue
             try:
                 # create symbolic link of file from scf_outgoing to local
-                os.symlink(os.path.join(incoming,sd,f), os.path.join(local_dir,f))
+                outgoing = local_dir.joinpath(f.name)
+                f.symlink_to(outgoing)
             except FileExistsError:
                 continue
             else:
                 # print original and symbolic link of file
-                args = (os.path.join(incoming,sd,f),os.path.join(local_dir,f))
-                logging.info('{0} -->\n\t{1}'.format(*args))
+                logging.info(f'{str(f)} -->\n\t{str(outgoing)}')
+
     # find files within incoming (if flattened)
     # find each operation icebridge file within the subdirectory
-    files = [f for f in os.listdir(incoming) if rx2.match(f)]
+    files = [f for f in incoming.iterdir() if rx2.match(f.name)]
     for f in sorted(files):
         # get the date information from the input file
-        year,month,day = parse_icebridge_file(f, PRODUCT)
+        year, month, day = parse_icebridge_file(f.name, PRODUCT)
         # put symlinks in directories similar to NSIDC
-        sd = '{year:4d}.{month:02d}.{day:02d}'.format(year,month,day)
-        local_dir = os.path.join(base_dir,sd)
-        os.makedirs(local_dir,MODE) if not os.path.exists(local_dir) else None
+        sd = f'{year:4d}.{month:02d}.{day:02d}'
+        # put symlinks in directories similar to NSIDC
+        local_dir = base_dir.joinpath(sd.name)
+        local_dir.mkdir(mode=MODE, parents=True, exist_ok=True)
         # attempt to create the symbolic link else continue
         try:
             # create symbolic link of file from scf_outgoing to local
-            os.symlink(os.path.join(incoming,f), os.path.join(local_dir,f))
+            outgoing = local_dir.joinpath(f.name)
+            f.symlink_to(outgoing)
         except FileExistsError:
             continue
         else:
             # print original and symbolic link of file
-            args = (os.path.join(incoming,f),os.path.join(local_dir,f))
-            logging.info('{0} -->\n\t{1}'.format(*args))
+            logging.info(f'{str(f)} -->\n\t{str(outgoing)}')
 
 # PURPOSE: wrapper function for parsing files
 def parse_icebridge_file(input_file, PRODUCT):
@@ -145,7 +148,7 @@ def parse_icebridge_file(input_file, PRODUCT):
     elif PRODUCT in ('ILVIS2','ILVGH2'):
         year,month,day = parse_LVIS_elevation_file(input_file)
     # return the elevations
-    return (year,month,day)
+    return (year, month, day)
 
 # PURPOSE: extract information from ATM Level-1B QFIT files
 def parse_ATM_qfit_file(input_file):
@@ -161,7 +164,7 @@ def parse_ATM_qfit_file(input_file):
     elif (len(YYMMDD) == 8):
         year,month,day = np.array([YYMMDD[:4],YYMMDD[4:6],YYMMDD[6:]],dtype='i')
     # return the year, month and day
-    return (int(year),month,day)
+    return (int(year), month, day)
 
 # PURPOSE: extract information from ATM Level-2 icessn files
 def parse_ATM_icessn_file(input_file):
@@ -178,7 +181,7 @@ def parse_ATM_icessn_file(input_file):
     elif (len(YYMMDD) == 8):
         year,month,day = np.array([YYMMDD[:4],YYMMDD[4:6],YYMMDD[6:]],dtype='i')
     # return the year, month and day
-    return (int(year),month,day)
+    return (int(year), month, day)
 
 # PURPOSE: extract information from LVIS HDF5 files
 def parse_LVIS_elevation_file(input_file):
@@ -188,9 +191,8 @@ def parse_LVIS_elevation_file(input_file):
     rx = re.compile(regex_pattern, re.VERBOSE)
     # extract mission, region and other parameters from filename
     MISSION,REGION,YY,MM,DD,RLD,SS,SFX = rx.findall(input_file).pop()
-    LDS_VERSION = '2.0.2' if (int(RLD[1:3]) >= 18) else '1.04'
     # return the year, month and day
-    return (int(YY),int(MM),int(DD))
+    return (int(YY), int(MM), int(DD))
 
 # run main program
 if __name__ == '__main__':
