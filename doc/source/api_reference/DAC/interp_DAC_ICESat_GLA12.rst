@@ -9,7 +9,7 @@ interp_DAC_ICESat_GLA12.py
 .. __: https://github.com/tsutterley/Grounding-Zones/blob/main/DAC/interp_DAC_ICESat_GLA12.py
 
 .. argparse::
-    :filename: interp_DAC_ICESat_GLAH12.py
+    :filename: interp_DAC_ICESat_GLA12.py
     :func: arguments
     :prog: interp_DAC_ICESat_GLA12.py
     :nodescription:

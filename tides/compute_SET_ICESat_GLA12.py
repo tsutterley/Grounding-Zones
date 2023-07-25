@@ -410,7 +410,7 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    # run for each input GLA12 file
+    # run for each input GLAH12 file
     for FILE in args.infile:
         compute_SET_ICESat(FILE,
             TIDE_SYSTEM=args.tide_system,

@@ -73,8 +73,8 @@ except (ImportError, ModuleNotFoundError) as exc:
 # ignore warnings
 warnings.filterwarnings("ignore")
 
-# PURPOSE: Calculates quality summary flags for ICESat/GLAS L2 GLA12
-# Antarctic and Greenland Ice Sheet elevation data
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# Calculates quality summary flags for ice sheet elevation data
 def filter_ICESat_GLA12(INPUT_FILE,
     IceSVar=0.03,
     gval_rcv=200,
@@ -399,7 +399,7 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    # run for each input GLA12 file
+    # run for each input GLAH12 file
     for FILE in args.infile:
         filter_ICESat_GLA12(FILE, IceSVar=args.IceSVar,
             gval_rcv=args.gval_rcv, reflctUC=args.reflctUC,

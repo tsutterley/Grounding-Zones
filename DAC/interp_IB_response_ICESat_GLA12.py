@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 u"""
-interp_IB_ICESat_GLAH12.py
+interp_IB_ICESat_GLA12.py
 Written by Tyler Sutterley (12/2022)
 Calculates and interpolates inverse-barometer responses for ICESat/GLAS
     L2 GLA12 Antarctic and Greenland Ice Sheet elevation data

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 u"""
-interp_DAC_ICESat_GLAH12.py
+interp_DAC_ICESat_GLA12.py
 Written by Tyler Sutterley (12/2022)
 Interpolates AVISO dynamic atmospheric corrections (DAC) for ICESat/GLAS
     L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
@@ -86,7 +86,7 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # calculate and interpolate the dynamic atmospheric correction
-def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
+def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
 
     # create logger
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
@@ -95,8 +95,8 @@ def interp_DAC_ICESat_GLAH12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     # directory setup
     base_dir = pathlib.Path(base_dir).expanduser().absolute()
     # full path to input file
-    logging.info(f'{str(INPUT_FILE)} -->')
     INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+    logging.info(f'{str(INPUT_FILE)} -->')
 
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
@@ -425,7 +425,7 @@ def main():
 
     # run for each input GLAH12 file
     for FILE in args.infile:
-        interp_DAC_ICESat_GLAH12(args.directory, FILE,
+        interp_DAC_ICESat_GLA12(args.directory, FILE,
             VERBOSE=args.verbose, MODE=args.mode)
 
 # run main program
