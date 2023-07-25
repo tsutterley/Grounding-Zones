@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 u"""
 icebridge.py
+Written by Tyler Sutterley (07/2023)
 Read altimetry data files from NASA Operation IceBridge (OIB)
 
 PYTHON DEPENDENCIES:
@@ -15,7 +16,8 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
-    Written 05/2013: moved icebridge data inputs to a separate module
+    Updated 07/2023: add function docstrings in numpydoc format
+    Written 05/2023: moved icebridge data inputs to a separate module
 """
 
 from __future__ import print_function
@@ -46,6 +48,25 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: reading the number of file lines removing commented lines
 def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
+    """
+    Retrieves the number of data points in a file
+
+    Parameters
+    ----------
+    input_file: str
+        Full path of input file to be read
+    input_subsetter: np.ndarray or None
+        Subsetting array of indices to be read from input file
+    HDF5: bool, default False
+        Input file is HDF5 format
+    QFIT: bool, default False
+        Input file is QFIT binary format
+
+    Returns
+    -------
+    file_lines: int
+        Number of lines within the input file
+    """
     # verify input file is path
     input_file = pathlib.Path(input_file).expanduser().absolute()
     # subset the data to indices if specified
@@ -68,6 +89,30 @@ def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
 
 ## PURPOSE: read the ATM Level-1b data file for variables of interest
 def read_ATM_qfit_file(input_file, input_subsetter):
+    """
+    Reads ATM Level-1b QFIT data files
+
+    Parameters
+    ----------
+    input_file: str
+        Full path of input QFIT file to be read
+    input_subsetter: np.ndarray or None
+        Subsetting array of indices to be read from input file
+
+    Returns
+    -------
+    ATM_L1b_input: dict
+        Level-1b variables from input file
+
+        - ``lat``: latitude of each shot
+        - ``lon``: longitude of each shot
+        - ``data``: elevation of each shot
+        - ``time``: seconds since J2000 epoch of each shot
+    file_lines: int
+        Number of lines within the input file
+    HEM: str
+        Hemisphere of the input file (``'N'`` or ``'S'``)
+    """
     # verify input file is path
     input_file = pathlib.Path(input_file).expanduser().absolute()
     # regular expression pattern for extracting parameters
@@ -186,6 +231,32 @@ def read_ATM_qfit_file(input_file, input_subsetter):
 
 # PURPOSE: read the ATM Level-2 data file for variables of interest
 def read_ATM_icessn_file(input_file, input_subsetter):
+    """
+    Reads ATM Level-2 icessn data files
+
+    Parameters
+    ----------
+    input_file: str
+        Full path of input icessn file to be read
+    input_subsetter: np.ndarray or None
+        Subsetting array of indices to be read from input file
+
+    Returns
+    -------
+    ATM_L2_input: dict
+        Level-2 variables from input file
+
+        - ``lat``: latitude of each segment
+        - ``lon``: longitude of each segment
+        - ``data``: elevation of each segment
+        - ``error``: estimated elevation uncertainty of each segment
+        - ``time``: seconds since J2000 epoch of each segment
+        - ``track``: track number of each segment
+    file_lines: int
+        Number of lines within the input file
+    HEM: str
+        Hemisphere of the input file (``'N'`` or ``'S'``)
+    """
     # verify input file is path
     input_file = pathlib.Path(input_file).expanduser().absolute()
     # regular expression pattern for extracting parameters
@@ -260,6 +331,31 @@ def read_ATM_icessn_file(input_file, input_subsetter):
 
 # PURPOSE: read the LVIS Level-2 data file for variables of interest
 def read_LVIS_HDF5_file(input_file, input_subsetter):
+    """
+    Reads LVIS Level-2 HDF5 data files
+
+    Parameters
+    ----------
+    input_file: str
+        Full path of input LVIS file to be read
+    input_subsetter: np.ndarray or None
+        Subsetting array of indices to be read from input file
+
+    Returns
+    -------
+    LVIS_L2_input: dict
+        Level-2 variables from input file
+
+        - ``lat``: latitude of each waveform
+        - ``lon``: longitude of each waveform
+        - ``data``: average elevation of each waveform
+        - ``error``: estimated elevation uncertainty of each waveform
+        - ``time``: seconds since J2000 epoch of each waveform
+    file_lines: int
+        Number of lines within the input file
+    HEM: str
+        Hemisphere of the input file (``'N'`` or ``'S'``)
+    """
     # verify input file is path
     input_file = pathlib.Path(input_file).expanduser().absolute()
     # LVIS region flags: GL for Greenland and AQ for Antarctica
