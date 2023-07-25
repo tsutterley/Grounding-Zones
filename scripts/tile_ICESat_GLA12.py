@@ -342,7 +342,7 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    # run program for each file
+    # run for each input GLAH12 file
     for FILE in args.infile:
         tile_ICESat_GLA12(FILE,
             SPACING=args.spacing,

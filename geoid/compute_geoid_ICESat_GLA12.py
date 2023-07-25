@@ -415,7 +415,7 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    # run for each input GLA12 file
+    # run for each input GLAH12 file
     for FILE in args.infile:
         compute_geoid_ICESat(args.gravity, FILE, LMAX=args.lmax,
             LOVE=args.love, VERBOSE=args.verbose, MODE=args.mode)

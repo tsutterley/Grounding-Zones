@@ -37,7 +37,7 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/calculate_inverse_barometer.rst
     api_reference/cds_mslp_sync.rst
     api_reference/interp_DAC_ICESat_GLA12.rst
-    api_reference/interp_IB_response_ICESat)GLA12.rst
+    api_reference/interp_IB_response_ICESat_GLA12.rst
     api_reference/interp_IB_response_ICESat2_ATL06.rst
     api_reference/interp_IB_response_ICESat2_ATL07.rst
     api_reference/interp_IB_response_ICESat2_ATL11.rst
@@ -51,6 +51,8 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/check_DEM_ICESat2_ATL06.rst
     api_reference/create_GIMP_tile_index.rst
     api_reference/gee_pgc_strip_sync.rst
+    api_reference/interp_ATL14_DEM_ICESat2_ATL06.rst
+    api_reference/interp_ATL14_DEM_ICESat2_ATL11.rst
     api_reference/MPI_interpolate_DEM.rst
     api_reference/nsidc_convert_GIMP_DEM.rst
     api_reference/pgc_arcticdem_strip_sync.rst
@@ -111,6 +113,7 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/compute_LPET_ICESat2_ATL10.rst
     api_reference/compute_LPET_ICESat2_ATL11.rst
     api_reference/compute_LPET_ICESat2_ATL12.rst
+    api_reference/compute_LPT_icebridge_data.rst
     api_reference/compute_LPT_ICESat_GLA12.rst
     api_reference/compute_OPT_icebridge_data.rst
     api_reference/compute_OPT_ICESat_GLA12.rst
