@@ -388,6 +388,15 @@ def HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_attrs,
     # Closing the HDF5 file
     fileID.close()
 
+# PURPOSE: create a list of available EOP conventions
+def get_available_conventions():
+    """Create a list of available EOP conventions
+    """
+    try:
+        return pyTMD.eop._conventions
+    except (NameError, AttributeError):
+        return ('2003', '2010', '2015', '2018')
+
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
@@ -404,7 +413,7 @@ def arguments():
         help='ICESat GLA12 file to run')
     # Earth orientation parameters
     parser.add_argument('--convention','-c',
-        type=str, choices=pyTMD.eop._conventions, default='2018',
+        type=str, choices=get_available_conventions(), default='2018',
         help='IERS mean or secular pole convention')
     # verbosity settings
     parser.add_argument('--verbose','-V',
