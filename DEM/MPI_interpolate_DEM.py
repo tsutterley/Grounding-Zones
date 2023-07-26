@@ -86,6 +86,7 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 07/2023: using pathlib to define and operate on paths
+        use geoms attribute for shapely 2.0 compliance
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: new ArcticDEM and REMA mosaic index shapefiles
     Updated 09/2022: use tar virtual file system to extract images
@@ -543,7 +544,7 @@ def main():
         int_test = poly_obj.intersects(xy_point)
         if int_test:
             # extract intersected points
-            int_map = list(map(poly_obj.intersects,xy_point))
+            int_map = list(map(poly_obj.intersects, xy_point.geoms))
             int_indices, = np.nonzero(int_map)
             # set distributed_map indices to True for intersected points
             distributed_map[ind[int_indices]] = True
