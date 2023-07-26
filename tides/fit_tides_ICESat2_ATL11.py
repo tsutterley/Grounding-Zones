@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (07/2023)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -50,6 +50,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 07/2023: verify crossover timescales are at least 1d
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -371,7 +372,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             h2 = np.atleast_1d(h_corr['XT'].data[i2]) - geoid_h[s]
             # tide times
             t1 = timescale['AT'].tide[s,i1]
-            t2 = timescale['XT'].tide[i2]
+            t2 = np.atleast_1d(timescale['XT'].tide[i2])
             # combined tide and dac height
             ot1 = tide_ocean['AT'].data[s,i1] + IB['AT'].data[s,i1]
             ot2 = np.atleast_1d(tide_ocean['XT'].data[i2] + IB['XT'].data[i2])

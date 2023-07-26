@@ -42,6 +42,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 07/2023: using pathlib to define and operate on paths
+        use geoms attribute for shapely 2.0 compliance
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: verify coordinate reference system of shapefile
     Updated 10/2022: simplied HDF5 file output to match other reduction programs
@@ -309,12 +310,12 @@ def main():
         # create empty intersection map array for receiving
         associated_map = np.zeros((n_seg),dtype=bool)
         # for each polygon
-        for poly_obj in mpoly_obj:
+        for poly_obj in mpoly_obj.geoms:
             # finds if points are encapsulated (in grounding zone)
             int_test = poly_obj.intersects(xy_point)
             if int_test:
                 # extract intersected points
-                int_map = list(map(poly_obj.intersects,xy_point))
+                int_map = list(map(poly_obj.intersects, xy_point.geoms))
                 int_indices, = np.nonzero(int_map)
                 # set distributed_map indices to True for intersected points
                 distributed_map[ind[int_indices]] = True
