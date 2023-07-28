@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 07/2023: verify crossover timescales are at least 1d
+        initially set tide adjustment data and error masks to True
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -217,10 +218,10 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         tide_ocean['AT'].mask = (tide_ocean['AT'] == tide_ocean['AT'].fill_value)
         tide_adj['AT'] = np.ma.ones((n_points,n_cycles),
             fill_value=tide_ocean['AT'].fill_value)
-        tide_adj['AT'].mask = (tide_ocean['AT'] == tide_ocean['AT'].fill_value)
+        tide_adj['AT'].mask = np.ones((n_points,n_cycles), dtype=bool)
         tide_adj_sigma['AT'] = np.ma.zeros((n_points,n_cycles),
             fill_value=tide_ocean['AT'].fill_value)
-        tide_adj_sigma['AT'].mask = (tide_ocean['AT'] == tide_ocean['AT'].fill_value)
+        tide_adj_sigma['AT'].mask = np.ones((n_points,n_cycles), dtype=bool)
         # inverse barometer correction
         IB['AT'] = np.ma.array(mds1[ptx]['cycle_stats']['dac'],fill_value=0.0)
         IB['AT'].mask = (IB['AT'] == attr1[ptx]['cycle_stats']['dac']['_FillValue'])
@@ -254,10 +255,10 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         tide_ocean['XT'].mask = (tide_ocean['XT'] == tide_ocean['XT'].fill_value)
         tide_adj['XT'] = np.ma.ones((n_cross),
             fill_value=tide_ocean['XT'].fill_value)
-        tide_adj['XT'].mask = (tide_ocean['XT'] == tide_ocean['XT'].fill_value)
+        tide_adj['XT'].mask = np.ones((n_cross), dtype=bool)
         tide_adj_sigma['XT'] = np.ma.zeros((n_cross),
             fill_value=tide_ocean['XT'].fill_value)
-        tide_adj_sigma['XT'].mask = (tide_ocean['XT'] == tide_ocean['XT'].fill_value)
+        tide_adj_sigma['XT'].mask = np.ones((n_cross), dtype=bool)
         # inverse barometer correction
         IB['XT'] = np.ma.array(mds1[ptx][XT]['dac'],fill_value=0.0)
         IB['XT'].mask = (IB['XT'] == attr1[ptx][XT]['dac']['_FillValue'])
@@ -357,12 +358,6 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             segment_mask &= (h_sigma['AT'].data[s,:] < sigma_tolerance)
             segment_mask &= mds1[ptx]['subsetting']['ice_gz'][s]
             if not np.any(segment_mask):
-                # set masks
-                tide_adj['AT'].mask[s,:] = True
-                tide_adj_sigma['AT'].mask[s,:] = True
-                if np.any(i2):
-                    tide_adj['XT'].mask[i2] = True
-                    tide_adj_sigma['XT'].mask[i2] = True
                 # continue to next iteration
                 continue
             # indices for valid points within segment
@@ -395,12 +390,6 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             # check if there are enough unique dates for fit
             u_days = np.unique(np.round(p1)/365.25)
             if (len(u_days) <= 3):
-                # set masks
-                tide_adj['AT'].mask[s,:] = True
-                tide_adj_sigma['AT'].mask[s,:] = True
-                if np.any(i2):
-                    tide_adj['XT'].mask[i2] = True
-                    tide_adj_sigma['XT'].mask[i2] = True
                 # continue to next iteration
                 continue
             n_max,n_terms = np.shape(DMAT)
@@ -418,12 +407,6 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
                 # Multiplying the design matrix by itself
                 Hinv = np.linalg.inv(np.dot(np.transpose(DMAT),DMAT))
             except Exception as exc:
-                # set masks
-                tide_adj['AT'].mask[s,:] = True
-                tide_adj_sigma['AT'].mask[s,:] = True
-                if np.any(i2):
-                    tide_adj['XT'].mask[i2] = True
-                    tide_adj_sigma['XT'].mask[i2] = True
                 # continue to next iteration
                 continue
             else:
@@ -440,12 +423,22 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             tide_ocean['AT'].data[s,i1] *= adj
             IB['AT'].data[s,i1] *= adj
             tide_adj['AT'][s,i1] = np.copy(adj)
+            tide_adj['AT'].mask[s,i1] = False
             tide_adj_sigma['AT'][s,i1] = np.copy(adj_sigma)
+            tide_adj_sigma['AT'].mask[s,i1] = False
             if np.any(i2):
                 tide_ocean['XT'].data[i2] *= adj
                 IB['XT'].data[i2] *= adj
                 tide_adj['XT'][i2] = np.copy(adj)
+                tide_adj['XT'].mask[i2] = False
                 tide_adj_sigma['XT'][i2] = np.copy(adj_sigma)
+                tide_adj_sigma['XT'].mask[i2] = False
+
+        # set fill values for invalid data
+        tide_adj['AT'].data[tide_adj['AT'].mask] = tide_adj['AT'].fill_value
+        tide_adj_sigma['AT'].data[tide_adj_sigma['AT'].mask] = tide_adj_sigma['AT'].fill_value
+        tide_adj['XT'].data[tide_adj['XT'].mask] = tide_adj['XT'].fill_value
+        tide_adj_sigma['XT'].data[tide_adj_sigma['XT'].mask] = tide_adj_sigma['XT'].fill_value
 
         # group attributes for beam
         IS2_atl11_tide_attrs[ptx]['description'] = ('Contains the primary science parameters '
