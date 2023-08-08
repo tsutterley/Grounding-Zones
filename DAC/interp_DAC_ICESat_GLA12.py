@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_DAC_ICESat_GLA12.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (08/2023)
 Interpolates AVISO dynamic atmospheric corrections (DAC) for ICESat/GLAS
     L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
 
@@ -15,6 +15,7 @@ Note that the AVISO DAC data are bz2 compressed netCDF4 files
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
 
@@ -37,6 +38,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 11/2022: use f-strings for formatting verbose or ascii output
     Updated 05/2022: use argparse descriptions within sphinx documentation
@@ -86,17 +88,22 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # calculate and interpolate the dynamic atmospheric correction
-def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
+def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
+    VERBOSE=False,
+    MODE=0o775):
 
     # create logger
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
+    # log input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
+
     # directory setup
     base_dir = pathlib.Path(base_dir).expanduser().absolute()
-    # full path to input file
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
-    logging.info(f'{str(INPUT_FILE)} -->')
 
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
@@ -115,8 +122,7 @@ def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     # GRAN:  Granule version number
     # TYPE:  File type
     try:
-        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
-            rx.findall(INPUT_FILE.name).pop()
+        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(GRANULE).pop()
     except:
         # output dynamic atmospheric correction HDF5 file (generic)
         FILENAME = f'{INPUT_FILE.stem}_DAC{INPUT_FILE.suffix}'
@@ -125,8 +131,20 @@ def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
         args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_DAC_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
 
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE, mode='r')
@@ -303,7 +321,8 @@ def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     logging.info(f'\t{OUTPUT_FILE}')
     HDF5_GLA12_corr_write(IS_gla12_corr, IS_gla12_corr_attrs,
         FILENAME=OUTPUT_FILE,
-        FILL_VALUE=IS_gla12_fill, CLOBBER=True)
+        FILL_VALUE=IS_gla12_fill,
+        CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 

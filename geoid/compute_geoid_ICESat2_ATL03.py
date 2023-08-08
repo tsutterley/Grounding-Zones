@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_ICESat2_ATL03.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 Computes geoid undulations for correcting ICESat-2 photon height data
 Calculated at ATL03 segment level using reference photon geolocation and time
 Segment level corrections can be applied to the individual photon events (PEs)
 
 COMMAND LINE OPTIONS:
+    -O X, --output-directory X: input/output data directory
     -G X, --gravity X: Gravity model file to use (.gfc format)
     -l X, --lmax X: maximum spherical harmonic degree (level of truncation)
     -M X, --mode X: Permission mode of directories and files created
@@ -37,6 +38,7 @@ PROGRAM DEPENDENCIES:
     gauss_weights.py: Computes Gaussian weights as a function of degree
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
@@ -86,18 +88,21 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: read ICESat-2 geolocated photon data (ATL03) from NSIDC
 # and computes geoid undulation at points
-def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
-    VERBOSE=False, MODE=0o775):
+def compute_geoid_ICESat2(model_file, INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
+    LMAX=None,
+    LOVE=None,
+    VERBOSE=False,
+    MODE=0o775):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
-    # read data from input file
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+    # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
-    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
-        is2tk.io.ATL03.read_main(INPUT_FILE, ATTRIBUTES=True)
+    # input granule basename
+    GRANULE = INPUT_FILE.name
 
     # read gravity model Ylms and change tide to tide free
     model_file = pathlib.Path(model_file).expanduser().absolute()
@@ -114,7 +119,7 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
         r'(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
     try:
         SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = \
-            rx.findall(INPUT_FILE.name).pop()
+            rx.findall(GRANULE).pop()
     except:
         # output geoid HDF5 file (generic)
         FILENAME = f'{INPUT_FILE.stem}_{model}_GEOID{INPUT_FILE.suffix}'
@@ -123,8 +128,24 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
         args = (PRD,model,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
         file_format = '{0}_{1}_GEOID_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+
+    # read data from input file
+    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
+        is2tk.io.ATL03.read_main(INPUT_FILE, ATTRIBUTES=True)
 
     # copy variables for outputting to HDF5 file
     IS2_atl03_geoid = {}
@@ -315,7 +336,7 @@ def compute_geoid_ICESat2(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     # print file information
     logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL03_geoid_write(IS2_atl03_geoid, IS2_atl03_geoid_attrs,
-        CLOBBER=True, INPUT=INPUT_FILE.name,
+        CLOBBER=True, INPUT=GRANULE,
         FILL_VALUE=IS2_atl03_fill, DIMENSIONS=IS2_atl03_dims,
         FILENAME=OUTPUT_FILE)
     # change the permissions mode

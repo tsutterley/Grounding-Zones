@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 u"""
 compute_LPT_ICESat_GLA12.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 Calculates radial load pole tide displacements for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
     elevation data following IERS Convention (2010) guidelines
 
 COMMAND LINE OPTIONS:
+    -O X, --output-directory X: input/output data directory
     -c X, --convention X: IERS mean or secular pole convention
         2003
         2010
@@ -40,6 +41,7 @@ REFERENCES:
         doi: 10.1007/s00190-015-0848-7
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
         use defaults from eop module for pole tide and EOP files
         using pathlib to define and operate on paths
@@ -86,15 +88,20 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # compute load pole tide radial displacements at points and times
-def compute_LPT_ICESat(INPUT_FILE, CONVENTION=None, VERBOSE=False, MODE=0o775):
+def compute_LPT_ICESat(INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
+    CONVENTION=None,
+    VERBOSE=False,
+    MODE=0o775):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
+    logger = pyTMD.utilities.build_logger('pytmd', level=loglevel)
 
-    # get directory from INPUT_FILE
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
-    logger.info(f'{str(INPUT_FILE)} -->')
+    # log input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
 
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
@@ -114,7 +121,7 @@ def compute_LPT_ICESat(INPUT_FILE, CONVENTION=None, VERBOSE=False, MODE=0o775):
     # TYPE:  File type
     try:
         PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
-            rx.findall(INPUT_FILE.name).pop()
+            rx.findall(GRANULE).pop()
     except (ValueError, IndexError):
         # output load pole tide HDF5 file (generic)
         FILENAME = f'{INPUT_FILE.stem}_LPT{INPUT_FILE.suffix}'
@@ -123,8 +130,20 @@ def compute_LPT_ICESat(INPUT_FILE, CONVENTION=None, VERBOSE=False, MODE=0o775):
         args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_LPT_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
 
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE, mode='r')
@@ -232,7 +251,7 @@ def compute_LPT_ICESat(INPUT_FILE, CONVENTION=None, VERBOSE=False, MODE=0o775):
     IS_gla12_tide_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     # add attributes for input GLA12 file
-    IS_gla12_tide_attrs['lineage'] = INPUT_FILE.name
+    IS_gla12_tide_attrs['lineage'] = GRANULE
     # update geospatial ranges for ellipsoid
     IS_gla12_tide_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
     IS_gla12_tide_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
@@ -304,7 +323,8 @@ def compute_LPT_ICESat(INPUT_FILE, CONVENTION=None, VERBOSE=False, MODE=0o775):
     logger.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_tide_attrs,
         FILENAME=OUTPUT_FILE,
-        FILL_VALUE=IS_gla12_fill, CLOBBER=True)
+        FILL_VALUE=IS_gla12_fill,
+        CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
@@ -411,6 +431,10 @@ def arguments():
     parser.add_argument('infile',
         type=pathlib.Path, nargs='+',
         help='ICESat GLA12 file to run')
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path, default=pathlib.Path.cwd(),
+        help='Output data directory')
     # Earth orientation parameters
     parser.add_argument('--convention','-c',
         type=str, choices=get_available_conventions(), default='2018',
@@ -435,6 +459,7 @@ def main():
     # run for each input GLAH12 file
     for FILE in args.infile:
         compute_LPT_ICESat(FILE,
+            OUTPUT_DIRECTORY=args.output_directory,
             CONVENTION=args.convention,
             VERBOSE=args.verbose,
             MODE=args.mode)

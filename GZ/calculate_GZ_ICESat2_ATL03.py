@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL03.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -12,6 +12,7 @@ Calculates ice sheet grounding zones with ICESat-2 data following:
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
 
@@ -37,6 +38,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
@@ -342,44 +344,61 @@ def conf_interval(x,f,p):
 # calculate inflexion point using elevation surface slopes
 # use mean elevation to calculate elevation anomalies
 # use anomalies to calculate inward and seaward limits of tidal flexure
-def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
-    # print file information
-    FILE = pathlib.Path(FILE).expanduser().absolute()
-    logging.info(str(FILE))
+def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
+    MODE=0o775):
 
-    # read data from input_file
-    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
-        is2tk.io.ATL03.read_main(FILE, ATTRIBUTES=True)
+    # log input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
+
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_'
         r'(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$',re.VERBOSE)
-    PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = rx.findall(FILE.name).pop()
+    PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = rx.findall(GRANULE).pop()
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRAN)
     # digital elevation model for each region
     DEM_MODEL = dict(N='ArcticDEM', S='REMA')
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+
+    # read data from input ATL03 file
+    IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
+        is2tk.io.ATL03.read_main(INPUT_FILE, ATTRIBUTES=True)
 
     # file format for auxiliary files
     file_format = '{0}_{1}_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
     # grounding zone mask file
     args = (PRD,'GROUNDING_ZONE_MASK',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
     # extract mask values for mask flags to create grounding zone mask
-    f1 = FILE.with_name(file_format.format(*args))
+    f1 = OUTPUT_DIRECTORY.joinpath(file_format.format(*args))
     logging.info(str(f1))
     fid1 = h5py.File(f1, mode='r')
     # input digital elevation model file (ArcticDEM or REMA)
     args = (PRD,DEM_MODEL[HEM],YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
-    f2 = FILE.with_name(file_format.format(*args))
+    f2 = OUTPUT_DIRECTORY.joinpath(file_format.format(*args))
     logging.info(str(f2))
     fid2 = h5py.File(f2, mode='r')
     # # input sea level for mean dynamic topography
     # args = (PRD,'AVISO_SEA_LEVEL',YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
-    # f3 = FILE.with_name(file_format.format(*args))
+    # f3 = OUTPUT_DIRECTORY.joinpath(file_format.format(*args))
     # logging.info(str(f3))
     # fid3 = h5py.File(f3, mode='r')
 
     # grounded ice line string to determine if segment crosses coastline
-    mline_obj, epsg = read_grounded_ice(base_dir, HEM)
+    mline_obj, epsg = read_grounded_ice(base_dir, HEM, VARIABLES=[0])
     # projections for converting lat/lon to polar stereographic
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(epsg)
@@ -415,7 +434,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, MODE=0o775):
     # for each input beam within the file
     for gtx in sorted(IS2_atl03_beams):
         # data and attributes for beam gtx
-        val,attrs = is2tk.io.ATL03.read_beam(FILE, gtx,
+        val,attrs = is2tk.io.ATL03.read_beam(INPUT_FILE, gtx,
             ATTRIBUTES=True, VERBOSE=False)
         # first photon in the segment (convert to 0-based indexing)
         Segment_Index_begin = val['geolocation']['ph_index_beg'] - 1
@@ -539,7 +558,10 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=gz.utilities.get_data_path('data'),
         help='Working data directory')
-    # verbosity settings
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path, default=pathlib.Path.cwd(),
+        help='Output data directory')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -563,7 +585,9 @@ def main():
 
     # run for each input ATL03 file
     for FILE in args.infile:
-        calculate_GZ_ICESat2(args.directory, FILE, MODE=args.mode)
+        calculate_GZ_ICESat2(args.directory, FILE,
+            OUTPUT_DIRECTORY=args.output_directory,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

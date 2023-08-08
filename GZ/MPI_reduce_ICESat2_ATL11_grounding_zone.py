@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL11_grounding_zone.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 
 Create masks for reducing ICESat-2 annual land ice height data to within
     a buffer region near the ice sheet grounding zone
@@ -9,6 +9,7 @@ Used to calculate a more definite grounding zone from the ICESat-2 data
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     -B X, --buffer X: Distance in kilometers to buffer from grounding line
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
@@ -41,6 +42,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: using pathlib to define and operate on paths
         use geoms attribute for shapely 2.0 compliance
     Updated 12/2022: single implicit import of grounding zone tools
@@ -133,6 +135,10 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=gz.utilities.get_data_path('data'),
         help='Working data directory')
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path, default=pathlib.Path.cwd(),
+        help='Output data directory')
     # buffer in kilometers for extracting grounding zone
     parser.add_argument('--buffer','-B',
         type=float, default=20.0,
@@ -211,16 +217,31 @@ def main():
     info(comm.rank, comm.size)
     if (comm.rank == 0):
         logging.info(f'{str(args.file)} -->')
+    # input granule basename
+    GRANULE = args.file.name
 
-    # Open the HDF5 file for reading
-    fileID = h5py.File(args.file, 'r', driver='mpio', comm=comm)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(args.file.name).pop()
+    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(GRANULE).pop()
+    # get output directory from input file
+    if args.output_directory is None:
+        args.output_directory = args.file.parent
+
+    # check if data is an s3 presigned url
+    if str(args.file).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        args.file = session.open(args.file, mode='rb')
+    else:
+        args.file = pathlib.Path(args.file).expanduser().absolute()
+
+    # Open the HDF5 file for reading
+    fileID = h5py.File(args.file, 'r', driver='mpio', comm=comm)
+
     # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRAN)
-
     # read each input beam pair within the file
     IS2_atl11_pairs = []
     for ptx in [k for k in fileID.keys() if bool(re.match(r'pt\d',k))]:
@@ -436,14 +457,16 @@ def main():
         # output HDF5 files with ice shelf masks
         fargs = (PRD,'GROUNDING_ZONE_MASK',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_{1}_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
-        output_file = args.file.with_name(file_format.format(*fargs))
+        output_file = args.output_directory.joinpath(file_format.format(*fargs))
         # print file information
         logging.info(f'\t{output_file}')
         # write to output HDF5 file
         HDF5_ATL11_mask_write(IS2_atl11_mask, IS2_atl11_mask_attrs,
-            CLOBBER=True, INPUT=args.file.name,
-            FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-            FILENAME=output_file)
+            FILENAME=output_file,
+            INPUT=GRANULE,
+            FILL_VALUE=IS2_atl11_fill,
+            DIMENSIONS=IS2_atl11_dims,
+            CLOBBER=True)
         # change the permissions mode
         output_file.chmod(mode=args.mode)
     # close the input file

@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 u"""
 adjust_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 Applies interpolated tidal adjustment scale factors to
     ICESat-2 ATL11 annual land ice height data within
     ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
+    -O X, --output-directory X: input/output data directory
     -f X, --flexure-file X: Ice flexure file to use
     -T X, --tide X: Tide model to use in correction
     -V, --verbose: Verbose output of run
@@ -28,6 +29,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
@@ -67,13 +69,14 @@ except (ImportError, ModuleNotFoundError) as exc:
 warnings.filterwarnings("ignore")
 
 def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
     TIDE_MODEL=None,
     VERBOSE=False,
     MODE=0o775):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
+    logger = pyTMD.utilities.build_logger('pytmd', level=loglevel)
 
     # get tide model parameters
     model = pyTMD.io.model(None, verify=False).elevation(TIDE_MODEL)
@@ -81,13 +84,10 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     tide_source = TIDE_MODEL
     tide_reference = model.reference
 
-    # read data from input file
-    logger.info(f'{str(INPUT_FILE)} -->')
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
-    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
-        is2tk.io.ATL11.read_granule(INPUT_FILE,
-                                    ATTRIBUTES=True,
-                                    CROSSOVERS=True)
+    # log input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
 
     # flexure flag if being applied
     flexure_flag = '_FLEXURE'
@@ -96,7 +96,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
         r'(\d{3})_(\d{2})(.*?).h5$')
     try:
         SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = \
-            rx.findall(INPUT_FILE.name).pop()
+            rx.findall(GRANULE).pop()
     except:
         # output tide HDF5 file (generic)
         args = (INPUT_FILE.stem,model.name,flexure_flag,INPUT_FILE.suffix)
@@ -106,8 +106,26 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
         args = (PRD,model.name,flexure_flag,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_{1}{2}_TIDES_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = is2tk.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = is2tk.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+
+    # read data from input file
+    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
+        is2tk.io.ATL11.read_granule(INPUT_FILE,
+                                    ATTRIBUTES=True,
+                                    CROSSOVERS=True)
 
     # read tide adjustment file
     adjustment = pyTMD.spatial.from_HDF5(adjustment_file,
@@ -216,7 +234,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
 
         # read tide model HDF5 file
         a3 = (PRD,TIDE_MODEL,'',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-        f3 = INPUT_FILE.with_name(file_format.format(*a3))
+        f3 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a3))
         # check that tide file exists
         try:
             mds3,attr3 = is2tk.io.ATL11.read_pair(f3, ptx,
@@ -517,9 +535,11 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     # print file information
     logger.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_tide_attrs,
-        CLOBBER=True, INPUT=INPUT_FILE.name,
-        FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=OUTPUT_FILE)
+        FILENAME=OUTPUT_FILE,
+        INPUT=GRANULE,
+        FILL_VALUE=IS2_atl11_fill,
+        DIMENSIONS=IS2_atl11_dims,
+        CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
@@ -707,6 +727,10 @@ def arguments():
     parser.add_argument('infile',
         type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL11 file to run')
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path, default=pathlib.Path.cwd(),
+        help='Output data directory')
     # set adjustment file to use
     parser.add_argument('--flexure-file','-f',
         type=pathlib.Path,
@@ -737,6 +761,7 @@ def main():
     # run for each input ATL11 file
     for FILE in args.infile:
         adjust_tides_ICESat2_ATL11(args.flexure_file, FILE,
+            OUTPUT_DIRECTORY=args.output_directory,
             TIDE_MODEL=args.tide,
             VERBOSE=args.verbose,
             MODE=args.mode)

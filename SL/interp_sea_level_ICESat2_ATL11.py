@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_sea_level_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 Interpolates sea level anomalies (sla), absolute dynamic topography (adt) and
     mean dynamic topography (mdt) to times and locations of ICESat-2 ATL11 data
     This data will be extrapolated onto land points
@@ -16,6 +16,7 @@ Note that the AVISO sea level data are gzip compressed netCDF4 files
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     -C, --crossovers: Run ATL11 Crossovers
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
@@ -40,6 +41,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -214,15 +216,20 @@ def interpolate_sea_level(base_dir, xi, yi, MJD, HEM):
 
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
 # interpolate AVISO sea level at points and times
-def interp_sea_level_ICESat2(base_dir, INPUT_FILE, CROSSOVERS=False,
-    VERBOSE=False, MODE=0o775):
+def interp_sea_level_ICESat2(base_dir, INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
+    CROSSOVERS=False,
+    VERBOSE=False,
+    MODE=0o775):
 
     # create logger
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
-    # read data from input file
+    # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
     INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
     IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
         is2tk.io.ATL11.read_granule(INPUT_FILE,
@@ -233,7 +240,7 @@ def interp_sea_level_ICESat2(base_dir, INPUT_FILE, CROSSOVERS=False,
         r'(\d{3})_(\d{2})(.*?).h5$')
     try:
         SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = \
-            rx.findall(INPUT_FILE.name).pop()
+            rx.findall(GRANULE).pop()
     except:
         # output sea level HDF5 file (generic)
         FILENAME = f'{INPUT_FILE.stem}_AVISO_SEA_LEVEL{INPUT_FILE.suffix}'
@@ -242,8 +249,11 @@ def interp_sea_level_ICESat2(base_dir, INPUT_FILE, CROSSOVERS=False,
         args = (PRD,'AVISO_SEA_LEVEL',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_{1}_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
     # set the hemisphere flag based on ICESat-2 granule
     GRANULE, = IS2_atl11_mds['ancillary_data']['start_region']
     HEM = set_hemisphere(GRANULE)
@@ -627,9 +637,12 @@ def interp_sea_level_ICESat2(base_dir, INPUT_FILE, CROSSOVERS=False,
     # print file information
     logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_corr_attrs,
-        CLOBBER=True, INPUT=INPUT_FILE.name, CROSSOVERS=CROSSOVERS,
-        FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=OUTPUT_FILE)
+        FILENAME=OUTPUT_FILE,
+        INPUT=GRANULE,
+        CROSSOVERS=CROSSOVERS,
+        FILL_VALUE=IS2_atl11_fill,
+        DIMENSIONS=IS2_atl11_dims,
+        CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
@@ -816,6 +829,10 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
+    # directory with output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path, default=pathlib.Path.cwd(),
+        help='Output data directory')
     # run with ATL11 crossovers
     parser.add_argument('--crossovers','-C',
         default=False, action='store_true',
@@ -841,7 +858,9 @@ def main():
     # run for each input ATL11 file
     for FILE in args.infile:
         interp_sea_level_ICESat2(args.directory, FILE,
-            CROSSOVERS=args.crossovers, VERBOSE=args.verbose,
+            OUTPUT_DIRECTORY=args.output_directory,
+            CROSSOVERS=args.crossovers,
+            VERBOSE=args.verbose,
             MODE=args.mode)
 
 # run main program

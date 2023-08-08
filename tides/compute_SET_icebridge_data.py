@@ -73,7 +73,7 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
+    logger = pyTMD.utilities.build_logger('pytmd', level=loglevel)
 
     # extract file name and subsetter indices lists
     match_object = re.match(r'(.*?)(\[(.*?)\])?$', arg)

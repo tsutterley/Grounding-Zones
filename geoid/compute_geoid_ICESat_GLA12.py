@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_ICESat_GLA12.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 Computes geoid undulations for correcting ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -9,6 +9,7 @@ INPUTS:
     input_file: ICESat GLA12 data file
 
 COMMAND LINE OPTIONS:
+    -O X, --output-directory X: input/output data directory
     -G X, --gravity X: Gravity model file to use (.gfc format)
     -l X, --lmax X: maximum spherical harmonic degree (level of truncation)
     -n X, --love X: Degree 2 load Love number (default EGM2008 value)
@@ -37,6 +38,7 @@ PROGRAM DEPENDENCIES:
     gauss_weights.py: Computes Gaussian weights as a function of degree
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         use reference ellipsoid function from geoid toolkit for parameters
@@ -79,16 +81,21 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # and computes geoid undulation at points
-def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
-    VERBOSE=False, MODE=0o775):
+def compute_geoid_ICESat(model_file, INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
+    LMAX=None,
+    LOVE=None,
+    VERBOSE=False,
+    MODE=0o775):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
-    # get directory from INPUT_FILE
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+    # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
 
     # read gravity model Ylms and change tide to tide free
     model_file = pathlib.Path(model_file).expanduser().absolute()
@@ -117,7 +124,7 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     # GRAN:  Granule version number
     # TYPE:  File type
     try:
-        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(INPUT_FILE.name).pop()
+        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(GRANULE).pop()
     except:
         # output geoid HDF5 file (generic)
         FILENAME = f'{INPUT_FILE.stem}_{model}_GEOID{INPUT_FILE.suffix}'
@@ -126,8 +133,20 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
         args = (PRD,RL,model,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_{2}_GEOID_{3}{4}{5}_{6}_{7}_{8}_{9}_{10}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
 
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE, mode='r')
@@ -195,7 +214,7 @@ def compute_geoid_ICESat(model_file, INPUT_FILE, LMAX=None, LOVE=None,
     IS_gla12_geoid_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     # add attributes for input GLA12 file
-    IS_gla12_geoid_attrs['lineage'] = INPUT_FILE.name
+    IS_gla12_geoid_attrs['lineage'] = GRANULE
     # update geospatial ranges for ellipsoid
     IS_gla12_geoid_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
     IS_gla12_geoid_attrs['geospatial_lat_max'] = np.max(lat_40HZ)

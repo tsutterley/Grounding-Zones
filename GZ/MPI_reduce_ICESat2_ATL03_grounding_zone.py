@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL03_grounding_zone.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 
 Create masks for reducing ICESat-2 geolocated photon height data to within
     a buffer region near the ice sheet grounding zone
@@ -9,6 +9,7 @@ Used to calculate a more definite grounding zone from the ICESat-2 data
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     -B X, --buffer X: Distance in kilometers to buffer from grounding line
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
@@ -41,6 +42,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: using pathlib to define and operate on paths
         use geoms attribute for shapely 2.0 compliance
     Updated 12/2022: single implicit import of grounding zone tools
@@ -141,6 +143,10 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=gz.utilities.get_data_path('data'),
         help='Working data directory')
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path, default=pathlib.Path.cwd(),
+        help='Output data directory')
     # buffer in kilometers for extracting grounding zone
     parser.add_argument('--buffer','-B',
         type=float, default=20.0,
@@ -219,14 +225,29 @@ def main():
     info(comm.rank, comm.size)
     if (comm.rank == 0):
         logging.info(f'{str(args.file)} -->')
+    # input granule basename
+    GRANULE = args.file.name
 
-    # Open the HDF5 file for reading
-    fileID = h5py.File(args.file, 'r', driver='mpio', comm=comm)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX = \
-        rx.findall(args.file.name).pop()
+    SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX = rx.findall(GRANULE).pop()
+    # get output directory from input file
+    if args.output_directory is None:
+        args.output_directory = args.file.parent
+
+    # check if data is an s3 presigned url
+    if str(args.file).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        args.file = session.open(args.file, mode='rb')
+    else:
+        args.file = pathlib.Path(args.file).expanduser().absolute()
+
+    # Open the HDF5 file for reading
+    fileID = h5py.File(args.file, 'r', driver='mpio', comm=comm)
+
     # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRN)
     # read each input beam within the file
@@ -422,14 +443,16 @@ def main():
         # output HDF5 files with output masks
         fargs=(PRD,'GROUNDING_ZONE_MASK',YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX)
         file_format = '{0}_{1}_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
-        output_file = args.file.with_name(file_format.format(*fargs))
+        output_file = args.output_directory.joinpath(file_format.format(*fargs))
         # print file information
         logging.info(f'\t{str(output_file)}')
         # write to output HDF5 file
         HDF5_ATL03_mask_write(IS2_atl03_mask, IS2_atl03_mask_attrs,
-            CLOBBER=True, INPUT=args.file.name,
-            FILL_VALUE=IS2_atl03_fill, DIMENSIONS=IS2_atl03_dims,
-            FILENAME=output_file)
+            FILENAME=output_file,
+            INPUT=GRANULE,
+            FILL_VALUE=IS2_atl03_fill,
+            DIMENSIONS=IS2_atl03_dims,
+            CLOBBER=True)
         # change the permissions mode
         output_file.chmod(mode=args.mode)
     # close the input file

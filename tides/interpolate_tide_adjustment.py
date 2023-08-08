@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 u"""
 interpolate_tide_adjustment.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (08/2023)
 Interpolates tidal adjustment scale factors to output grids
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
+    -O X, --output-directory X: input/output data directory
     -W X, --width: Width of tile grid
     -s X, --subset: Width of interpolation subset
     -S X, --spacing X: Output grid spacing
@@ -80,7 +81,7 @@ def reduce(val, method=np.min, axis=1):
     return method(val, axis=axis)
 
 def interpolate_tide_adjustment(tile_file,
-    DIRECTORY=None,
+    OUTPUT_DIRECTORY=None,
     HEM='S',
     W=80e3,
     SUBSET=10e3,
@@ -109,8 +110,8 @@ def interpolate_tide_adjustment(tile_file,
     R2 = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$', re.VERBOSE)
     # directory with ATL11 data
-    if DIRECTORY is None:
-        DIRECTORY = tile_file.parents[1]
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = tile_file.parents[1]
     # file format for mask and tide fit files
     file_format = '{0}_{1}{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
     # extract tile centers from filename
@@ -165,14 +166,14 @@ def interpolate_tide_adjustment(tile_file,
 
     # allocate for combined variables
     d = {}
-    d['ref_pt'] = np.zeros((npts),dtype=np.int64)
-    d['rgt'] = np.zeros((npts),dtype=np.int8)
-    d['pair'] = np.zeros((npts),dtype=np.int8)
-    d['longitude'] = np.zeros((npts),dtype=np.float64)
-    d['latitude'] = np.zeros((npts),dtype=np.float64)
-    d['tide_adj'] = np.zeros((npts),dtype=np.float64)
-    d['tide_adj_sigma'] = np.zeros((npts),dtype=np.float64)
-    d['mask'] = np.zeros((npts),dtype=bool)
+    d['ref_pt'] = np.zeros((npts), dtype=np.int64)
+    d['rgt'] = np.zeros((npts), dtype=np.int8)
+    d['pair'] = np.zeros((npts), dtype=np.int8)
+    d['longitude'] = np.zeros((npts), dtype=np.float64)
+    d['latitude'] = np.zeros((npts), dtype=np.float64)
+    d['tide_adj'] = np.zeros((npts), dtype=np.float64)
+    d['tide_adj_sigma'] = np.zeros((npts), dtype=np.float64)
+    d['mask'] = np.zeros((npts), dtype=bool)
     Reducer = dict(tide_adj=np.min, tide_adj_sigma=np.max)
     # indices for each pair track
     pair = dict(pt1=1, pt2=2, pt3=3)
@@ -193,13 +194,13 @@ def interpolate_tide_adjustment(tile_file,
         # read each ATL11 file and estimate errors
         for ATL11 in ATL11_files:
             # extract parameters from ATL11 filename
-            PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX=R2.findall(ATL11).pop()
+            PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = R2.findall(ATL11).pop()
             # ATL11 flexure correction HDF5 file
-            FILE2 = DIRECTORY.joinpath(file_format.format(PRD,TIDE_MODEL,
-                '_FIT_TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX))
+            FILE2 = OUTPUT_DIRECTORY.joinpath(file_format.format(
+                PRD,TIDE_MODEL,'_FIT_TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX))
             # ATL11 raster mask HDF5 file
-            FILE3 = DIRECTORY.joinpath(file_format.format(PRD,'MASK','',
-                TRK,GRAN,SCYC,ECYC,RL,VERS,AUX))
+            FILE3 = OUTPUT_DIRECTORY.joinpath(file_format.format(
+                PRD,'MASK','',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX))
             # skip file if not currently accessible
             if not FILE2.exists():
                 continue
@@ -259,20 +260,20 @@ def interpolate_tide_adjustment(tile_file,
     for key,val in d.items():
         d[key] = val[indices]
     # calculate coordinates in polar stereographic
-    d['x'],d['y'] = transformer.transform(d['longitude'],d['latitude'])
+    d['x'], d['y'] = transformer.transform(d['longitude'], d['latitude'])
 
     # allocate for output variables
     output = {}
     # projection variable
-    output['Polar_Stereographic'] = np.empty((),dtype=np.byte)
+    output['Polar_Stereographic'] = np.empty((), dtype=np.byte)
     # coordinates
-    output['x'] = np.arange(xmin+dx/2.0,xmax+dx,dx)
-    output['y'] = np.arange(ymin+dx/2.0,ymax+dy,dy)
+    output['x'] = np.arange(xmin+dx/2.0, xmax+dx, dx)
+    output['y'] = np.arange(ymin+dx/2.0, ymax+dy, dy)
     output['tide_adj_scale'] = np.zeros((ny,nx))
     output['weight'] = np.zeros((ny,nx))
     logging.info(f'Grid Dimensions {ny:d} {nx:d}')
     # attributes for each output item
-    attributes = dict(x={},y={},tide_adj_scale={},weight={})
+    attributes = dict(x={}, y={}, tide_adj_scale={}, weight={})
     fill_value = {}
     # projection attributes
     attributes['Polar_Stereographic'] = {}
@@ -289,7 +290,7 @@ def interpolate_tide_adjustment(tile_file,
     # x and y
     attributes['x'],attributes['y'] = ({},{})
     fill_value['x'],fill_value['y'] = (None,None)
-    for att_name in ['long_name','standard_name','units']:
+    for att_name in ['long_name', 'standard_name', 'units']:
         attributes['x'][att_name] = cs_to_cf[0][att_name]
         attributes['y'][att_name] = cs_to_cf[1][att_name]
     # tide_adj_scale
@@ -311,8 +312,8 @@ def interpolate_tide_adjustment(tile_file,
     mosaic = np.zeros((ny,nx))
     weight = np.zeros((ny,nx))
     # for each subset coordinate
-    for xi in np.arange(xmin,xmin+W,SUBSET):
-        for yi in np.arange(ymin,ymin+W,SUBSET):
+    for xi in np.arange(xmin, xmin + W, SUBSET):
+        for yi in np.arange(ymin, ymin + W, SUBSET):
             # iterate over centers, edges and corners
             for ii,jj in zip(d_i.ravel(), d_j.ravel()):
                 # minimum x and y for iteration
@@ -332,14 +333,14 @@ def interpolate_tide_adjustment(tile_file,
                 masked = np.nonzero(np.logical_not(u['mask']))
                 u['tide_adj'][masked] = np.nan
                 # output coordinates for grid subset
-                X = np.arange(xm,xm+SUBSET+dx,dx)
-                Y = np.arange(ym,ym+SUBSET+dy,dy)
+                X = np.arange(xm, xm+SUBSET + dx, dx)
+                Y = np.arange(ym, ym+SUBSET + dy, dy)
                 # reduce to points within complete tile
                 X = X[(X >= xmin) & ((X <= xmin+W))]
                 Y = Y[(Y >= ymin) & ((Y <= ymin+W))]
                 # grid indices
-                iy = np.array((Y[:,None]-ymin)//dy,dtype='i')
-                ix = np.array((X[None,:]-xmin)//dx,dtype='i')
+                iy = np.array((Y[:,None]-ymin)//dy, dtype='i')
+                ix = np.array((X[None,:]-xmin)//dx, dtype='i')
                 # normalize x and y coordinates
                 xnorm = (u['x'] - (xm - 0.1*SUBSET))/(1.2*SUBSET)
                 ynorm = (u['y'] - (ym - 0.1*SUBSET))/(1.2*SUBSET)
@@ -352,8 +353,8 @@ def interpolate_tide_adjustment(tile_file,
                 count = np.ones((len(Y),len(X)))
                 # pad the interpolated matrix to remove edges
                 if (PAD > 0):
-                    xpad = np.array([xm+PAD,xm+SUBSET-PAD])
-                    ypad = np.array([ym+PAD,ym+SUBSET-PAD])
+                    xpad = np.array([xm + PAD, xm + SUBSET - PAD])
+                    ypad = np.array([ym + PAD, ym + SUBSET - PAD])
                     indy,indx = np.nonzero((gridx < xpad[0]) |
                         (gridx > xpad[1]) |
                         (gridy < ypad[0]) |
@@ -457,10 +458,10 @@ def arguments():
     parser.add_argument('infile',
         type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL11 tile file to run')
-    # input ICESat-2 annual land ice height file directory
-    parser.add_argument('--directory','-D',
-        type=pathlib.Path,
-        help='ICESat-2 ATL11 directory')
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path, default=pathlib.Path.cwd(),
+        help='Output data directory')
     # region of interest to run
     parser.add_argument('--hemisphere','-H',
         type=str, default='S', choices=('N','S'),
@@ -525,7 +526,7 @@ def main():
     # run program for each file
     for FILE in args.infile:
         interpolate_tide_adjustment(FILE,
-            DIRECTORY=args.directory,
+            OUTPUT_DIRECTORY=args.output_directory,
             HEM=args.hemisphere,
             W=args.width,
             SUBSET=args.subset,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 check_DEM_ICESat2_ATL06.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 Determines which digital elevation model tiles to read for a given ATL06 file
 
 ArcticDEM 2m digital elevation model tiles
@@ -18,6 +18,7 @@ GIMP 30m digital elevation model tiles computed with nsidc_convert_GIMP_DEM.py
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     --model X: Set the digital elevation model (REMA, ArcticDEM, GIMP) to run
+    -V, --verbose: Output information about each input file
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
@@ -43,6 +44,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: using pathlib to define and operate on paths
         use geoms attribute for shapely 2.0 compliance
     Updated 12/2022: single implicit import of grounding zone tools
@@ -58,6 +60,7 @@ from __future__ import print_function
 
 import re
 import pyproj
+import logging
 import pathlib
 import argparse
 import warnings
@@ -206,16 +209,30 @@ def read_DEM_index(index_file, DEM_MODEL):
     return (poly_dict,attrs_dict,epsg)
 
 # PURPOSE: read ICESat-2 data from NSIDC and determine which DEM tiles to read
-def check_DEM_ICESat2_ATL06(FILE, DIRECTORY=None, DEM_MODEL=None):
-    # read data from FILE
-    FILE = pathlib.Path(FILE).expanduser().absolute()
-    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = \
-        is2tk.io.ATL06.read_granule(FILE, VERBOSE=True, ATTRIBUTES=True)
+def check_DEM_ICESat2_ATL06(INPUT_FILE,
+    DIRECTORY=None,
+    DEM_MODEL=None):
+
+    # log input file
+    GRANULE = INPUT_FILE.name
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
     SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = \
-        rx.findall(FILE.name).pop()
+        rx.findall(GRANULE).pop()
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = is2tk.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = is2tk.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+
+    # read data from input ATL06 file
+    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = \
+        is2tk.io.ATL06.read_granule(INPUT_FILE, ATTRIBUTES=True)
 
     # set the  digital elevation model based on ICESat-2 granule
     DEM_MODEL = set_DEM_model(GRAN) if (DEM_MODEL is None) else DEM_MODEL
@@ -371,6 +388,10 @@ def arguments():
     parser.add_argument('--model','-m',
         metavar='DEM', type=str, choices=('REMA', 'ArcticDEM', 'GIMP'),
         help='Digital Elevation Model to run')
+    # verbose will output information about each output file
+    parser.add_argument('--verbose','-V',
+        default=False, action='store_true',
+        help='Output information about each created file')
     # return the parser
     return parser
 
@@ -380,9 +401,14 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
+    # create logger
+    loglevel = logging.INFO if args.verbose else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
+
     # run program with parameters for each file
     for FILE in args.file:
-        check_DEM_ICESat2_ATL06(FILE, DIRECTORY=args.directory,
+        check_DEM_ICESat2_ATL06(FILE,
+            DIRECTORY=args.directory,
             DEM_MODEL=args.model)
 
 # run main program
