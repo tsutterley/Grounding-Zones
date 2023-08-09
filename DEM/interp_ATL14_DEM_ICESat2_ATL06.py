@@ -528,7 +528,7 @@ def arguments():
         help='ICESat-2 ATL06 file to run')
     # directory with output data
     parser.add_argument('--output-directory','-O',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path,
         help='Output data directory')
     # full path to ATL14 digital elevation file
     parser.add_argument('--dem-model','-m',

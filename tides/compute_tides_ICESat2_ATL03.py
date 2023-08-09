@@ -606,7 +606,7 @@ def arguments():
         help='Working data directory')
     # directory with output data
     parser.add_argument('--output-directory','-O',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path,
         help='Output data directory')
     # tide model to use
     group.add_argument('--tide','-T',
