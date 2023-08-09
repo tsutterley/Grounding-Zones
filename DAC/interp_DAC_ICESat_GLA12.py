@@ -428,7 +428,10 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
-    # verbosity settings
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path, default=pathlib.Path.cwd(),
+        help='Output data directory')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -449,7 +452,9 @@ def main():
     # run for each input GLAH12 file
     for FILE in args.infile:
         interp_DAC_ICESat_GLA12(args.directory, FILE,
-            VERBOSE=args.verbose, MODE=args.mode)
+            OUTPUT_DIRECTORY=args.output_directory,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

@@ -1015,6 +1015,11 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path, default=pathlib.Path.cwd(),
+        help='Output data directory')
+    # reanalysis model
     choices = ['ERA-Interim','ERA5','MERRA-2']
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,
@@ -1033,7 +1038,6 @@ def arguments():
     parser.add_argument('--crossovers','-C',
         default=False, action='store_true',
         help='Run ATL11 Crossovers')
-    # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -1054,8 +1058,12 @@ def main():
     # run for each input ATL11 file
     for FILE in args.infile:
         interp_IB_response_ICESat2(args.directory, FILE, args.reanalysis,
-            RANGE=args.mean, DENSITY=args.density, CROSSOVERS=args.crossovers,
-            VERBOSE=args.verbose, MODE=args.mode)
+            OUTPUT_DIRECTORY=args.output_directory,
+            RANGE=args.mean,
+            DENSITY=args.density,
+            CROSSOVERS=args.crossovers,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':
