@@ -149,7 +149,7 @@ def arguments():
         help='Working data directory')
     # directory with input/output data
     parser.add_argument('--output-directory','-O',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path,
         help='Output data directory')
     # buffer in kilometers for extracting grounding zone
     parser.add_argument('--buffer','-B',

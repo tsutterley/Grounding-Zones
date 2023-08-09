@@ -386,7 +386,7 @@ def arguments():
         help='ICESat GLA12 file to run')
     # directory with input/output data
     parser.add_argument('--output-directory','-O',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path,
         help='Output data directory')
     # filter flag criteria
     parser.add_argument('--IceSVar',

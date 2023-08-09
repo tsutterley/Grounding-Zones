@@ -733,7 +733,7 @@ def arguments():
         help='ICESat-2 ATL11 file to run')
     # directory with input/output data
     parser.add_argument('--output-directory','-O',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path,
         help='Output data directory')
     # set adjustment file to use
     parser.add_argument('--flexure-file','-f',

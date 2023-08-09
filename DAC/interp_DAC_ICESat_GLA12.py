@@ -430,7 +430,7 @@ def arguments():
         help='Working data directory')
     # directory with input/output data
     parser.add_argument('--output-directory','-O',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path,
         help='Output data directory')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',

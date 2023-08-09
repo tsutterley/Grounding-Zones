@@ -464,7 +464,7 @@ def arguments():
         help='ICESat-2 ATL11 tile file to run')
     # directory with input/output data
     parser.add_argument('--output-directory','-O',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path,
         help='Output data directory')
     # region of interest to run
     parser.add_argument('--hemisphere','-H',
