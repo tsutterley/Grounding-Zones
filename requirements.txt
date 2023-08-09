@@ -1,15 +1,7 @@
-cdsapi
-earthengine-api
-fiona
-h5py --no-binary=h5py
 lxml
 matplotlib
-mpi4py
-netCDF4
 numpy
 pyproj
 python-dateutil
 pyyaml
-scikit-learn
 scipy>=1.10.1
-shapely
