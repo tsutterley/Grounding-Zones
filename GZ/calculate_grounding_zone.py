@@ -68,7 +68,6 @@ from __future__ import print_function
 import sys
 import os
 import re
-import pyproj
 import pathlib
 import argparse
 import operator
@@ -90,6 +89,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
 try:
     import shapely.geometry
 except (ImportError, ModuleNotFoundError) as exc:

@@ -42,7 +42,6 @@ import sys
 import re
 import copy
 import time
-import pyproj
 import logging
 import pathlib
 import argparse
@@ -57,6 +56,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
 try:
     import pyTMD
 except (ImportError, ModuleNotFoundError) as exc:

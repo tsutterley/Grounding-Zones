@@ -57,7 +57,6 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import re
-import pyproj
 import logging
 import pathlib
 import argparse
@@ -85,6 +84,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
 try:
     import shapely.geometry
 except (ImportError, ModuleNotFoundError) as exc:

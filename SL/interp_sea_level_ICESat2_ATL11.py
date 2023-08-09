@@ -57,7 +57,6 @@ from __future__ import print_function
 
 import re
 import gzip
-import pyproj
 import logging
 import pathlib
 import argparse
@@ -83,6 +82,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
 try:
     import pyTMD.time
 except (ImportError, ModuleNotFoundError) as exc:
