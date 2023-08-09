@@ -530,6 +530,10 @@ def arguments():
     parser.add_argument('file',
         type=pathlib.Path,
         help='ICESat-2 ATL11 file to run')
+    # directory with output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
     # full path to ATL14 digital elevation file
     parser.add_argument('--dem-model','-m',
         type=pathlib.Path, default=pathlib.Path.cwd(),
@@ -558,6 +562,7 @@ def main():
 
     # run program with parameters
     interp_ATL14_DEM_ICESat2(args.file,
+        OUTPUT_DIRECTORY=args.output_directory,
         DEM_MODEL=args.dem_model,
         MODE=args.mode)
 
