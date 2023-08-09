@@ -686,11 +686,16 @@ def main():
     # run for each input ATL07 file
     for FILE in args.infile:
         compute_tides_ICESat2(args.directory, FILE,
-            OUTPUT_DIRECTORY=args.output_directory, TIDE_MODEL=args.tide,
-            ATLAS_FORMAT=args.atlas_format, GZIP=args.gzip,
-            DEFINITION_FILE=args.definition_file, METHOD=args.interpolate,
-            EXTRAPOLATE=args.extrapolate, CUTOFF=args.cutoff,
-            VERBOSE=args.verbose, MODE=args.mode)
+            OUTPUT_DIRECTORY=args.output_directory,
+            TIDE_MODEL=args.tide,
+            ATLAS_FORMAT=args.atlas_format,
+            GZIP=args.gzip,
+            DEFINITION_FILE=args.definition_file,
+            METHOD=args.interpolate,
+            EXTRAPOLATE=args.extrapolate,
+            CUTOFF=args.cutoff,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

@@ -405,6 +405,10 @@ def arguments():
     parser.add_argument('infile',
         type=pathlib.Path, nargs='+',
         help='ICESat GLA12 file to run')
+    # directory with output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
     # set gravity model file to use
     parser.add_argument('--gravity','-G',
         type=pathlib.Path,
@@ -436,8 +440,12 @@ def main():
 
     # run for each input GLAH12 file
     for FILE in args.infile:
-        compute_geoid_ICESat(args.gravity, FILE, LMAX=args.lmax,
-            LOVE=args.love, VERBOSE=args.verbose, MODE=args.mode)
+        compute_geoid_ICESat(args.gravity, FILE,
+            OUTPUT_DIRECTORY=args.output_directory,
+            LMAX=args.lmax,
+            LOVE=args.love,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':
