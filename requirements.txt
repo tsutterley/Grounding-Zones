@@ -1,23 +1,7 @@
-ATM1b-QFIT
-cartopy --no-binary=cartopy
-cdsapi
-earthengine-api
-fiona
-geoid-toolkit
-gdal
-h5py --no-binary=h5py
-icesat2-toolkit
 lxml
 matplotlib
-mpi4py
-netCDF4
 numpy
 pyproj
 python-dateutil
 pyyaml
-pyYAPC
-pyTMD
-scikit-learn
 scipy>=1.10.1
-shapely
-spatial-interpolators

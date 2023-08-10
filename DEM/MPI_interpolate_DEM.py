@@ -104,7 +104,6 @@ import sys
 import os
 import re
 import uuid
-import pyproj
 import pathlib
 import tarfile
 import logging
@@ -129,6 +128,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("GDAL not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
 try:
     import pyTMD.spatial
 except (ImportError, ModuleNotFoundError) as exc:

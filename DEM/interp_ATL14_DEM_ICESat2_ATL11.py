@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 u"""
 interp_ATL14_DEM_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 Interpolates ATL14 elevations to ICESat-2 ATL11 segment locations
 
 COMMAND LINE OPTIONS:
+    -O X, --output-directory X: input/output data directory
     -m X, --model X: path to ATL14 model file
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
@@ -29,6 +30,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
@@ -38,7 +40,6 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import re
-import pyproj
 import logging
 import pathlib
 import argparse
@@ -65,24 +66,54 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11)
 # interpolate DEM data to x and y coordinates
-def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
+def interp_ATL14_DEM_ICESat2(INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
+    DEM_MODEL=None,
+    MODE=None):
 
-    # read data from FILE
-    FILE = pathlib.Path(FILE).expanduser().absolute()
-    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
-        is2tk.io.ATL11.read_granule(FILE, ATTRIBUTES=True)
+    # log input file
+    GRANULE = INPUT_FILE.name
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(FILE.name).pop()
+    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(GRANULE).pop()
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = is2tk.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = is2tk.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+
+    # read data from input ATL11 file
+    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
+        is2tk.io.ATL11.read_granule(INPUT_FILE, ATTRIBUTES=True)
+
+    # check if DEM is an s3 presigned url
+    if str(DEM_MODEL).startswith('s3:'):
+        client = is2tk.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = is2tk.utilities.s3_filesystem()
+        DEM_MODEL = session.open(DEM_MODEL, mode='rb')
+    else:
+        DEM_MODEL = pathlib.Path(DEM_MODEL).expanduser().absolute()
 
     # open ATL14 DEM file for reading
-    DEM_MODEL = pathlib.Path(DEM_MODEL).expanduser().absolute()
     fileID = netCDF4.Dataset(DEM_MODEL, mode='r')
     # get coordinate reference system attributes
     crs = {}
@@ -317,16 +348,18 @@ def interp_ATL14_DEM_ICESat2(FILE, DEM_MODEL=None, MODE=None):
         # output HDF5 files with output masks
         fargs = ('ATL14',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_{1}{2}_{3}{4}_{5}_{6}{7}.h5'
-        output_file = FILE.with_name(file_format.format(*fargs))
+        OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(file_format.format(*fargs))
         # print file information
-        logging.info(f'\t{output_file}')
+        logging.info(f'\t{OUTPUT_FILE}')
         # write to output HDF5 file
         HDF5_ATL11_dem_write(IS2_atl11_dem, IS2_atl11_dem_attrs,
-            CLOBBER=True, INPUT=FILE.name,
-            FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-            FILENAME=output_file)
+            FILENAME=OUTPUT_FILE,
+            INPUT=GRANULE,
+            FILL_VALUE=IS2_atl11_fill,
+            DIMENSIONS=IS2_atl11_dims,
+            CLOBBER=True)
         # change the permissions mode
-        output_file.chmod(mode=MODE)
+        OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the interpolated DEM data for ICESat-2 data to HDF5
 def HDF5_ATL11_dem_write(IS2_atl11_dem, IS2_atl11_attrs, INPUT=None,
@@ -497,6 +530,10 @@ def arguments():
     parser.add_argument('file',
         type=pathlib.Path,
         help='ICESat-2 ATL11 file to run')
+    # directory with output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
     # full path to ATL14 digital elevation file
     parser.add_argument('--dem-model','-m',
         type=pathlib.Path, default=pathlib.Path.cwd(),
@@ -525,6 +562,7 @@ def main():
 
     # run program with parameters
     interp_ATL14_DEM_ICESat2(args.file,
+        OUTPUT_DIRECTORY=args.output_directory,
         DEM_MODEL=args.dem_model,
         MODE=args.mode)
 

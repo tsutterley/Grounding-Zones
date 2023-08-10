@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_ICESat2_ATL07.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 Calculates long-period equilibrium tidal elevations for correcting ICESat-2
     sea ice height data
 Will calculate the long-period tides for all ATL07 segments and not just ocean
     segments defined by the ocean tide mask
 
 COMMAND LINE OPTIONS:
+    -O X, --output-directory X: input/output data directory
     -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
 
@@ -29,6 +30,7 @@ PROGRAM DEPENDENCIES:
     predict.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -76,24 +78,26 @@ warnings.filterwarnings("ignore")
 
 # PURPOSE: read ICESat-2 sea ice height (ATL07) from NSIDC
 # compute long-period equilibrium tides at points and times
-def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
+def compute_LPET_ICESat2(INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
+    VERBOSE=False,
+    MODE=0o775):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
+    logger = pyTMD.utilities.build_logger('pytmd', level=loglevel)
 
-    # read data from input file
-    logger.info(f'{str(INPUT_FILE)} -->')
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
-    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
-        is2tk.io.ATL07.read_granule(INPUT_FILE, ATTRIBUTES=True)
+    # log input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
 
     # extract parameters from ICESat-2 ATLAS HDF5 sea ice file name
     rx = re.compile(r'(processed_)?(ATL\d{2})-(\d{2})_(\d{4})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
     try:
         SUB,PRD,HEM,YY,MM,DD,HH,MN,SS,TRK,CYCL,SN,RL,VERS,AUX = \
-            rx.findall(INPUT_FILE.name).pop()
+            rx.findall(GRANULE).pop()
     except:
         # output long-period equilibrium tide HDF5 file (generic)
         FILENAME = f'{INPUT_FILE.stem}_LPET{INPUT_FILE.suffix}'
@@ -102,8 +106,23 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
         args = (PRD,HEM,YY,MM,DD,HH,MN,SS,TRK,CYCL,SN,RL,VERS,AUX)
         file_format = '{0}-{1}_LPET_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = is2tk.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = is2tk.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+    # read data from input ATL07 file
+    IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
+        is2tk.io.ATL07.read_granule(INPUT_FILE, ATTRIBUTES=True)
 
     # copy variables for outputting to HDF5 file
     IS2_atl07_tide = {}
@@ -285,9 +304,11 @@ def compute_LPET_ICESat2(INPUT_FILE, VERBOSE=False, MODE=0o775):
     # print file information
     logger.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL07_tide_write(IS2_atl07_tide, IS2_atl07_tide_attrs,
-        CLOBBER=True, INPUT=INPUT_FILE.name,
-        FILL_VALUE=IS2_atl07_fill, DIMENSIONS=IS2_atl07_dims,
-        FILENAME=OUTPUT_FILE)
+        FILENAME=OUTPUT_FILE,
+        INPUT=GRANULE,
+        FILL_VALUE=IS2_atl07_fill,
+        DIMENSIONS=IS2_atl07_dims,
+        CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
@@ -467,7 +488,10 @@ def arguments():
     parser.add_argument('infile',
         type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL07 file to run')
-    # verbosity settings
+    # directory with output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -487,7 +511,10 @@ def main():
 
     # run for each input ATL07 file
     for FILE in args.infile:
-        compute_LPET_ICESat2(FILE, VERBOSE=args.verbose, MODE=args.mode)
+        compute_LPET_ICESat2(FILE,
+            OUTPUT_DIRECTORY=args.output_directory,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 filter_ICESat_GLA12.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 Calculates quality summary flags for ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -10,6 +10,7 @@ INPUTS:
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
+    -O X, --output-directory X: input/output data directory
     --IceSVar: criteria for standard deviation of gaussian fit
     --gval_rcv: riteria for unscaled gain value
     --reflctUC: criteria for reflectivity
@@ -48,6 +49,7 @@ L. S. Sorensen, S. B. Simonsen, K. Nielsen, P. Lucas-Picher,
     https://doi.org/10.5194/tc-5-173-2011
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 05/2022: use argparse descriptions within documentation
@@ -76,6 +78,7 @@ warnings.filterwarnings("ignore")
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # Calculates quality summary flags for ice sheet elevation data
 def filter_ICESat_GLA12(INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
     IceSVar=0.03,
     gval_rcv=200,
     reflctUC=0.1,
@@ -87,9 +90,10 @@ def filter_ICESat_GLA12(INPUT_FILE,
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
-    # get directory from INPUT_FILE
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+    # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
 
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
@@ -109,7 +113,7 @@ def filter_ICESat_GLA12(INPUT_FILE,
     # TYPE:  File type
     try:
         PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
-            rx.findall(INPUT_FILE.name).pop()
+            rx.findall(GRANULE).pop()
     except (ValueError, IndexError):
         # output quality summary HDF5 file (generic)
         FILENAME = f'{INPUT_FILE.stem}_MASK{INPUT_FILE.suffix}'
@@ -118,8 +122,20 @@ def filter_ICESat_GLA12(INPUT_FILE,
         args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_MASK_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
 
     # read GLAH12 HDF5 file
     f = h5py.File(INPUT_FILE, mode='r')
@@ -265,7 +281,7 @@ def filter_ICESat_GLA12(INPUT_FILE,
     IS_gla12_attrs['Data_40HZ']['Quality']['quality_summary']['flag_values'] = [0,1]
 
     # add global attributes for input GLA12 file
-    IS_gla12_attrs['lineage'] = INPUT_FILE.name
+    IS_gla12_attrs['lineage'] = GRANULE
     # update geospatial ranges for ellipsoid
     IS_gla12_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
     IS_gla12_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
@@ -368,6 +384,10 @@ def arguments():
     parser.add_argument('infile',
         type=pathlib.Path, nargs='+',
         help='ICESat GLA12 file to run')
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
     # filter flag criteria
     parser.add_argument('--IceSVar',
         type=float, default=0.03,
@@ -381,7 +401,6 @@ def arguments():
     parser.add_argument('--numPk',
         type=int, default=1,
         help='Criteria for number of peaks in waveform')
-    # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -401,9 +420,14 @@ def main():
 
     # run for each input GLAH12 file
     for FILE in args.infile:
-        filter_ICESat_GLA12(FILE, IceSVar=args.IceSVar,
-            gval_rcv=args.gval_rcv, reflctUC=args.reflctUC,
-            numPk=args.numPk, VERBOSE=args.verbose, MODE=args.mode)
+        filter_ICESat_GLA12(FILE,
+            OUTPUT_DIRECTORY=args.output_directory,
+            IceSVar=args.IceSVar,
+            gval_rcv=args.gval_rcv,
+            reflctUC=args.reflctUC,
+            numPk=args.numPk,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

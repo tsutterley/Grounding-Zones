@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_grounding_zone.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 Calculates ice sheet grounding zones following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2023: read vector file as a multiline object
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 11/2022: verify coordinate reference system attribute from shapefile
     Updated 07/2022: place some imports within try/except statements
@@ -67,7 +68,6 @@ from __future__ import print_function
 import sys
 import os
 import re
-import pyproj
 import pathlib
 import argparse
 import operator
@@ -89,6 +89,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
 try:
     import shapely.geometry
 except (ImportError, ModuleNotFoundError) as exc:
@@ -129,23 +134,20 @@ def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     else:
         epsg = pyproj.CRS(shape.crs).to_epsg()
     # reduce to variables of interest if specified
-    shape_entities = [f for f in shape.values() if np.int64(f['id']) in VARIABLES]
+    shape_entities = [f for f in shape.values() if int(f['id']) in VARIABLES]
     # create list of polygons
-    polygons = []
+    lines = []
     # extract the entities and assign by tile name
     for i,ent in enumerate(shape_entities):
         # extract coordinates for entity
-        poly_obj = shapely.geometry.Polygon(ent['geometry']['coordinates'])
-        # Valid Polygon cannot have overlapping exterior or interior rings
-        if (not poly_obj.is_valid):
-            poly_obj = poly_obj.buffer(0)
-        polygons.append(poly_obj)
-    # create shapely multipolygon object
-    mpoly_obj = shapely.geometry.MultiPolygon(polygons)
+        line_obj = shapely.geometry.LineString(ent['geometry']['coordinates'])
+        lines.append(line_obj)
+    # create shapely multilinestring object
+    mline_obj = shapely.geometry.MultiLineString(lines)
     # close the shapefile
     shape.close()
-    # return the polygon object for the ice sheet
-    return (mpoly_obj,grounded_shapefile[HEM],epsg)
+    # return the line string object for the ice sheet
+    return (mline_obj, epsg)
 
 # PURPOSE: compress complete list of valid indices into a set of ranges
 def compress_list(i,n):
@@ -390,7 +392,7 @@ def calculate_grounding_zone(base_dir, input_file, output_file,
             verbose=VERBOSE)
 
     # grounded ice line string to determine if segment crosses coastline
-    mpoly_obj,input_file,epsg = read_grounded_ice(base_dir, HEM, VARIABLES=[0])
+    mline_obj, epsg = read_grounded_ice(base_dir, HEM, VARIABLES=[0])
 
     # converting x,y from projection to polar stereographic
     # could try to extract projection attributes from netCDF4 and HDF5 files
@@ -419,7 +421,7 @@ def calculate_grounding_zone(base_dir, input_file, output_file,
         # shapely LineString object for segment
         segment_line = shapely.geometry.LineString(np.c_[X[i],Y[i]])
         # determine if line segment intersects previously known GZ
-        if segment_line.intersects(mpoly_obj[0]):
+        if segment_line.intersects(mline_obj):
             # horizontal eulerian distance from start of segment
             dist = np.sqrt((X-X[0])**2 + (Y-Y[0])**2)
             # land ice height for grounding zone

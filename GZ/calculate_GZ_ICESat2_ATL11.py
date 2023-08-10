@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
@@ -15,6 +15,7 @@ Outputs an HDF5 file of flexure scaled to match the downstream tide model
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     --mean-file X: Mean elevation file to remove from the height data
     -T X, --tide X: Tide model to use in correction
         CATS0201
@@ -68,6 +69,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
@@ -93,7 +95,6 @@ from __future__ import print_function
 
 import sys
 import re
-import pyproj
 import logging
 import pathlib
 import datetime
@@ -129,6 +130,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("matplotlib not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
 try:
     import shapely.geometry
 except (ImportError, ModuleNotFoundError) as exc:
@@ -398,25 +404,48 @@ def conf_interval(x,f,p):
 # calculate inflexion point using elevation surface slopes
 # use mean elevation to calculate elevation anomalies
 # use anomalies to calculate inward and seaward limits of tidal flexure
-def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
-    TIDE_MODEL=None, REANALYSIS=None, SEA_LEVEL=False, PLOT=False, MODE=0o775):
-    # print file information
-    FILE = pathlib.Path(FILE).expanduser().absolute()
-    logging.info(str(FILE))
+def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
+    CROSSOVERS=False,
+    MEAN_FILE=None,
+    TIDE_MODEL=None,
+    REANALYSIS=None,
+    SEA_LEVEL=False,
+    PLOT=False,
+    MODE=0o775):
 
-    # read data from FILE
-    mds1,attr1,pairs1 = is2tk.io.ATL11.read_granule(FILE, REFERENCE=True,
-        CROSSOVERS=CROSSOVERS, ATTRIBUTES=True)
+    # log input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
+
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(FILE.name).pop()
+    SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(GRANULE).pop()
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # file format for associated auxiliary files
     file_format = '{0}_{1}_{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
     # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRAN)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+
+    # read data from input ATL11 file
+    mds1,attr1,pairs1 = is2tk.io.ATL11.read_granule(INPUT_FILE,
+        REFERENCE=True, CROSSOVERS=CROSSOVERS, ATTRIBUTES=True)
+
     # grounded ice line string to determine if segment crosses coastline
-    mline_obj, epsg = read_grounded_ice(base_dir, HEM)
+    mline_obj, epsg = read_grounded_ice(base_dir, HEM, VARIABLES=[0])
 
     # height threshold (filter points below 0m elevation)
     THRESHOLD = 0.0
@@ -537,7 +566,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
 
         # read buffered grounding zone mask
         a2 = (PRD,'GROUNDING_ZONE','MASK',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-        f3 = FILE.with_name(file_format.format(*a2))
+        f3 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a2))
         # create data mask for grounding zone
         mds1[ptx]['subsetting'] = {}
         mds1[ptx]['subsetting'].setdefault('ice_gz',
@@ -579,7 +608,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
         if TIDE_MODEL:
             # read tide model HDF5 file
             a3 = (PRD,TIDE_MODEL,'TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-            f3 = FILE.with_name(file_format.format(*a3))
+            f3 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a3))
             # check that tide model file exists
             try:
                 mds3,attr3 = is2tk.io.ATL11.read_pair(f3, ptx,
@@ -608,7 +637,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
         if REANALYSIS:
             # read inverse barometer HDF5 file
             a4 = (PRD,REANALYSIS,'IB',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-            f4 = FILE.with_name(file_format.format(*a4))
+            f4 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a4))
             # check that inverse barometer file exists
             try:
                 mds4,attr4 = is2tk.io.ATL11.read_pair(f4,ptx,
@@ -632,7 +661,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
         # mean dynamic topography
         if SEA_LEVEL:
             a5 = (PRD,'AVISO','SEA_LEVEL',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-            f5 = FILE.with_name(file_format.format(*a5))
+            f5 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a5))
             # check that mean dynamic topography file exists
             try:
                 mds5,attr5 = is2tk.io.ATL11.read_pair(f5, ptx,
@@ -884,7 +913,7 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
             # create plot file of flexural zone
             args = (PRD,ptx,TIDE_MODEL,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
             plot_format = '{0}_{1}_{2}_GZ_TIDES_{3}{4}_{5}{6}_{7}_{8}{9}.png'
-            output_plot_file = FILE.with_name(plot_format.format(*args))
+            output_plot_file = OUTPUT_DIRECTORY.joinpath(plot_format.format(*args))
             # log output plot file
             logging.info(str(output_plot_file))
             f1.savefig(output_plot_file, dpi=240, format='png',
@@ -1281,16 +1310,19 @@ def calculate_GZ_ICESat2(base_dir, FILE, CROSSOVERS=False, MEAN_FILE=None,
     # output flexure correction HDF5 file
     args = (PRD,TIDE_MODEL,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
     file_format = '{0}_{1}_GZ_TIDES_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
-    output_file = FILE.with_name(file_format.format(*args))
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(file_format.format(*args))
     # print file information
     logging.info('\t{0}'.format(file_format.format(*args)))
     HDF5_ATL11_corr_write(IS2_atl11_gz, IS2_atl11_gz_attrs,
-        CLOBBER=True, INPUT=FILE.name,
-        GROUNDING_ZONE=GROUNDING_ZONE, CROSSOVERS=CROSSOVERS,
-        FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=output_file)
+        FILENAME=OUTPUT_FILE,
+        INPUT=GRANULE,
+        GROUNDING_ZONE=GROUNDING_ZONE,
+        CROSSOVERS=CROSSOVERS,
+        FILL_VALUE=IS2_atl11_fill,
+        DIMENSIONS=IS2_atl11_dims,
+        CLOBBER=True)
     # change the permissions mode
-    output_file.chmod(mode=MODE)
+    OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the correction values for ICESat-2 data to HDF5
 def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
@@ -1487,6 +1519,10 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=gz.utilities.get_data_path('data'),
         help='Working data directory')
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
     # mean file to remove
     parser.add_argument('--mean-file',
         type=pathlib.Path,
@@ -1536,9 +1572,14 @@ def main():
     # run for each input ATL11 file
     for FILE in args.infile:
         calculate_GZ_ICESat2(args.directory, FILE,
-            MEAN_FILE=args.mean_file, TIDE_MODEL=args.tide,
-            REANALYSIS=args.reanalysis, SEA_LEVEL=args.sea_level,
-            CROSSOVERS=args.crossovers, PLOT=args.plot, MODE=args.mode)
+            OUTPUT_DIRECTORY=args.output_directory,
+            MEAN_FILE=args.mean_file,
+            TIDE_MODEL=args.tide,
+            REANALYSIS=args.reanalysis,
+            SEA_LEVEL=args.sea_level,
+            CROSSOVERS=args.crossovers,
+            PLOT=args.plot,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

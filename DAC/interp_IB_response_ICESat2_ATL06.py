@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_IB_ICESat2_ATL06.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 Calculates and interpolates inverse-barometer responses to times and
     locations of ICESat-2 ATL06 land ice elevation data
     This data will be interpolated for all valid points
@@ -9,6 +9,7 @@ Calculates and interpolates inverse-barometer responses to times and
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     -R X, --reanalysis X: Reanalysis model to run
         ERA-Interim: http://apps.ecmwf.int/datasets/data/interim-full-moda
         ERA5: http://apps.ecmwf.int/data-catalogues/era5/?class=ea
@@ -44,6 +45,7 @@ REFERENCES:
         Rev. A, 84 pp., (1994)
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -62,7 +64,6 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import re
-import pyproj
 import logging
 import pathlib
 import argparse
@@ -88,6 +89,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
 try:
     import pyTMD
 except (ImportError, ModuleNotFoundError) as exc:
@@ -221,12 +227,21 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
 
 # PURPOSE: read ICESat-2 land ice data (ATL06) from NSIDC
 # calculate and interpolate the instantaneous inverse barometer response
-def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL, RANGE=None,
-    DENSITY=None, VERBOSE=False, MODE=0o775):
+def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
+    OUTPUT_DIRECTORY=None,
+    RANGE=None,
+    DENSITY=None,
+    VERBOSE=False,
+    MODE=0o775):
 
     # create logger
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
+
+    # log input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
 
     # directory setup for reanalysis model
     base_dir = pathlib.Path(base_dir).expanduser().absolute()
@@ -277,17 +292,12 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL, RANGE=None,
         # projection string
         proj4_params = 'epsg:4326'
 
-    # full path to input file
-    logging.info(f'{str(INPUT_FILE)} -->')
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
-    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = \
-        is2tk.io.ATL06.read_granule(INPUT_FILE, ATTRIBUTES=True)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
     try:
         SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX = \
-            rx.findall(INPUT_FILE).pop()
+            rx.findall(GRANULE).pop()
     except:
         # output inverse barometer response HDF5 file (generic)
         FILENAME = f'{INPUT_FILE.stem}_{MODEL}_IB{INPUT_FILE.suffix}'
@@ -296,8 +306,24 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL, RANGE=None,
         args = (PRD,MODEL,YY,MM,DD,HH,MN,SS,TRK,CYCL,GRAN,RL,VERS,AUX)
         file_format = '{0}{1}_IB_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+
+    # read data from input file
+    IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = \
+        is2tk.io.ATL06.read_granule(INPUT_FILE, ATTRIBUTES=True)
 
     # read mean pressure field
     mean_file = ddir.joinpath(input_mean_file.format(RANGE[0], RANGE[1]))
@@ -533,9 +559,11 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL, RANGE=None,
     # print file information
     logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_corr_attrs,
-        CLOBBER=True, INPUT=INPUT_FILE.name,
-        FILL_VALUE=IS2_atl06_fill, DIMENSIONS=IS2_atl06_dims,
-        FILENAME=OUTPUT_FILE)
+        FILENAME=OUTPUT_FILE,
+        INPUT=GRANULE,
+        FILL_VALUE=IS2_atl06_fill,
+        DIMENSIONS=IS2_atl06_dims,
+        CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
@@ -717,6 +745,11 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
+    # reanalysis model
     choices = ['ERA-Interim','ERA5','MERRA-2']
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,
@@ -731,7 +764,6 @@ def arguments():
     parser.add_argument('--density','-d',
         metavar='RHO', type=float, default=1030.0,
         help='Density of seawater in kg/m^3')
-    # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -752,7 +784,10 @@ def main():
     # run for each input ATL06 file
     for FILE in args.infile:
         interp_IB_response_ICESat2(args.directory, FILE, args.reanalysis,
-            RANGE=args.mean, DENSITY=args.density, VERBOSE=args.verbose,
+            OUTPUT_DIRECTORY=args.output_directory,
+            RANGE=args.mean,
+            DENSITY=args.density,
+            VERBOSE=args.verbose,
             MODE=args.mode)
 
 # run main program

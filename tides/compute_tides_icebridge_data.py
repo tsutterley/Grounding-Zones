@@ -149,7 +149,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
+    logger = pyTMD.utilities.build_logger('pytmd', level=loglevel)
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:

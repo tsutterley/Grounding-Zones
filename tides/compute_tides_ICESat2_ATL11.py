@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 Calculates tidal elevations for correcting ICESat-2 annual land ice height data
 
 Uses OTIS format tidal solutions provided by Ohio State University and ESR
@@ -13,6 +13,7 @@ or Finite Element Solution (FES) models provided by AVISO
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     -T X, --tide X: Tide model to use in correction
     -I X, --interpolate X: Interpolation method
         spline
@@ -55,6 +56,7 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -117,6 +119,7 @@ warnings.filterwarnings("ignore")
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
 # compute tides at points and times using tidal model driver algorithms
 def compute_tides_ICESat2(tide_dir, INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
     TIDE_MODEL=None,
     ATLAS_FORMAT=None,
     GZIP=True,
@@ -130,7 +133,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
+    logger = pyTMD.utilities.build_logger('pytmd', level=loglevel)
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
@@ -139,13 +142,10 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         model = pyTMD.io.model(tide_dir, format=ATLAS_FORMAT,
             compressed=GZIP).elevation(TIDE_MODEL)
 
-    # read data from input file
-    logger.info(f'{str(INPUT_FILE)} -->')
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
-    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
-        is2tk.io.ATL11.read_granule(INPUT_FILE,
-                                    ATTRIBUTES=True,
-                                    CROSSOVERS=True)
+    # log input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
 
     # flexure flag if being applied
     flexure_flag = '_FLEXURE' if APPLY_FLEXURE and model.flexure else ''
@@ -154,7 +154,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         r'(\d{3})_(\d{2})(.*?).h5$')
     try:
         SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = \
-            rx.findall(INPUT_FILE.name).pop()
+            rx.findall(GRANULE).pop()
     except:
         # output tide HDF5 file (generic)
         args = (INPUT_FILE.stem,model.name,flexure_flag,INPUT_FILE.suffix)
@@ -164,8 +164,25 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         args = (PRD,model.name,flexure_flag,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_{1}{2}_TIDES_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = is2tk.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = is2tk.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+    # read data from input file
+    IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
+        is2tk.io.ATL11.read_granule(INPUT_FILE,
+                                    ATTRIBUTES=True,
+                                    CROSSOVERS=True)
 
     # read tidal constants
     if model.format in ('OTIS','ATLAS','ESR'):
@@ -556,9 +573,11 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
     # print file information
     logger.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_tide_attrs,
-        CLOBBER=True, INPUT=INPUT_FILE.name,
-        FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=OUTPUT_FILE)
+        FILENAME=OUTPUT_FILE,
+        INPUT=GRANULE,
+        FILL_VALUE=IS2_atl11_fill,
+        DIMENSIONS=IS2_atl11_dims,
+        CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
@@ -750,6 +769,10 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
+    # directory with output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
     # tide model to use
     group.add_argument('--tide','-T',
         metavar='TIDE', type=str,
@@ -804,6 +827,7 @@ def main():
     # run for each input ATL11 file
     for FILE in args.infile:
         compute_tides_ICESat2(args.directory, FILE,
+            OUTPUT_DIRECTORY=args.output_directory,
             TIDE_MODEL=args.tide,
             ATLAS_FORMAT=args.atlas_format,
             GZIP=args.gzip,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat_GLA12.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 Calculates tidal elevations for correcting ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -14,6 +14,7 @@ or Finite Element Solution (FES) models provided by AVISO
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     -T X, --tide X: Tide model to use in correction
     --atlas-format X: ATLAS tide model format (OTIS, netcdf)
     --gzip, -G: Tide model files are gzip compressed
@@ -59,6 +60,7 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -128,6 +130,7 @@ warnings.filterwarnings("ignore")
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # compute tides at points and times using tidal model driver algorithms
 def compute_tides_ICESat(tide_dir, INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
     TIDE_MODEL=None,
     ATLAS_FORMAT=None,
     GZIP=True,
@@ -141,7 +144,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logger = pyTMD.utilities.build_logger('pytmd',level=loglevel)
+    logger = pyTMD.utilities.build_logger('pytmd', level=loglevel)
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
@@ -150,9 +153,10 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
         model = pyTMD.io.model(tide_dir, format=ATLAS_FORMAT,
             compressed=GZIP).elevation(TIDE_MODEL)
 
-    # get directory from INPUT_FILE
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
-    logger.info(f'{str(INPUT_FILE)} -->')
+    # log input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
 
     # flexure flag if being applied
     flexure_flag = '_FLEXURE' if APPLY_FLEXURE and model.flexure else ''
@@ -174,7 +178,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     # TYPE:  File type
     try:
         PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
-            rx.findall(INPUT_FILE.name).pop()
+            rx.findall(GRANULE).pop()
     except (ValueError, IndexError):
         # output tide HDF5 file (generic)
         args = (INPUT_FILE.stem,model.name,flexure_flag,INPUT_FILE.suffix)
@@ -184,8 +188,20 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
         args = (PRD,RL,model.name,flexure_flag,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_{2}{3}_TIDES_{4}{5}{6}_{7}_{8}_{9}_{10}_{11}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
 
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE, mode='r')
@@ -293,7 +309,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     IS_gla12_tide_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     # add attributes for input GLA12 file
-    IS_gla12_tide_attrs['lineage'] = INPUT_FILE.name
+    IS_gla12_tide_attrs['lineage'] = GRANULE
     # update geospatial ranges for ellipsoid
     IS_gla12_tide_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
     IS_gla12_tide_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
@@ -369,7 +385,8 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     logger.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_GLA12_tide_write(IS_gla12_tide, IS_gla12_tide_attrs,
         FILENAME=OUTPUT_FILE,
-        FILL_VALUE=IS_gla12_fill, CLOBBER=True)
+        FILL_VALUE=IS_gla12_fill,
+        CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
@@ -481,6 +498,10 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
+    # directory with output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
     # tide model to use
     group.add_argument('--tide','-T',
         metavar='TIDE', type=str,
@@ -535,6 +556,7 @@ def main():
     # run for each input GLAH12 file
     for FILE in args.infile:
         compute_tides_ICESat(args.directory, FILE,
+            OUTPUT_DIRECTORY=args.output_directory,
             TIDE_MODEL=args.tide,
             ATLAS_FORMAT=args.atlas_format,
             GZIP=args.gzip,

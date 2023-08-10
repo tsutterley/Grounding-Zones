@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_IB_ICESat_GLA12.py
-Written by Tyler Sutterley (12/2022)
+Written by Tyler Sutterley (08/2023)
 Calculates and interpolates inverse-barometer responses for ICESat/GLAS
     L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
 
@@ -10,6 +10,7 @@ Data will be interpolated for all valid points
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     -R X, --reanalysis X: Reanalysis model to run
         ERA-Interim: http://apps.ecmwf.int/datasets/data/interim-full-moda
         ERA5: http://apps.ecmwf.int/data-catalogues/era5/?class=ea
@@ -45,6 +46,7 @@ REFERENCES:
         Rev. A, 84 pp., (1994)
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
     Updated 11/2022: use f-strings for formatting verbose or ascii output
@@ -60,7 +62,6 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import re
-import pyproj
 import logging
 import pathlib
 import argparse
@@ -85,6 +86,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
 try:
     import pyTMD
 except (ImportError, ModuleNotFoundError) as exc:
@@ -220,12 +226,21 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # calculate and interpolate the instantaneous inverse barometer response
-def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
-    DENSITY=None, VERBOSE=False, MODE=0o775):
+def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL,
+    OUTPUT_DIRECTORY=None,
+    RANGE=None,
+    DENSITY=None,
+    VERBOSE=False,
+    MODE=0o775):
 
     # create logger
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
+
+    # log input file
+    logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
 
     # directory setup for reanalysis model
     base_dir = pathlib.Path(base_dir).expanduser().absolute()
@@ -276,10 +291,6 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
         # projection string
         proj4_params = 'epsg:4326'
 
-    # full path to input file
-    logging.info(f'{str(INPUT_FILE)} -->')
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
-
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
         r'(\d{4})_(\d{1})_(\d{2})_(\d{4})\.H5'), re.VERBOSE)
@@ -297,18 +308,29 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     # GRAN:  Granule version number
     # TYPE:  File type
     try:
-        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
-            rx.findall(INPUT_FILE.name).pop()
+        PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(GRANULE).pop()
     except:
-        # output inverse-barometer response  HDF5 file (generic)
+        # output inverse-barometer response HDF5 file (generic)
         FILENAME = f'{INPUT_FILE.stem}_{MODEL}_IB{INPUT_FILE.suffix}'
     else:
         # output inverse-barometer response HDF5 file for NSIDC granules
         args = (PRD,RL,MODEL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_{2}_IB_{3}{4}{5}_{6}_{7}_{8}_{9}_{10}.h5'
         FILENAME = file_format.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
 
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE, mode='r')
@@ -434,7 +456,7 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     IS_gla12_corr_attrs['Campaign'] = fileID['ANCILLARY_DATA'].attrs['Campaign']
 
     # add attributes for input GLA12 file
-    IS_gla12_corr_attrs['lineage'] = INPUT_FILE.name
+    IS_gla12_corr_attrs['lineage'] = GRANULE
     # update geospatial ranges for ellipsoid
     IS_gla12_corr_attrs['geospatial_lat_min'] = np.min(lat_40HZ)
     IS_gla12_corr_attrs['geospatial_lat_max'] = np.max(lat_40HZ)
@@ -521,7 +543,8 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL, RANGE=None,
     logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_GLA12_corr_write(IS_gla12_corr, IS_gla12_corr_attrs,
         FILENAME=OUTPUT_FILE,
-        FILL_VALUE=IS_gla12_fill, CLOBBER=True)
+        FILL_VALUE=IS_gla12_fill,
+        CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
@@ -623,6 +646,11 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
+    # reanalysis model
     choices = ['ERA-Interim','ERA5','MERRA-2']
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,
@@ -637,7 +665,6 @@ def arguments():
     parser.add_argument('--density','-d',
         metavar='RHO', type=float, default=1030.0,
         help='Density of seawater in kg/m^3')
-    # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -658,7 +685,10 @@ def main():
     # run for each input GLAH12 file
     for FILE in args.infile:
         interp_IB_response_ICESat(args.directory, FILE, args.reanalysis,
-            RANGE=args.mean, DENSITY=args.density, VERBOSE=args.verbose,
+            OUTPUT_DIRECTORY=args.output_directory,
+            RANGE=args.mean,
+            DENSITY=args.density,
+            VERBOSE=args.verbose,
             MODE=args.mode)
 
 # run main program

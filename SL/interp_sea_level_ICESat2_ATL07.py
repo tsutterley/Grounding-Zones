@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_sea_level_ICESat2_ATL07.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 Interpolates sea level anomalies (sla), absolute dynamic topography (adt) and
     mean dynamic topography (mdt) to times and locations of ICESat-2 ATL07 data
 
@@ -14,6 +14,7 @@ Note that the AVISO sea level data are gzip compressed netCDF4 files
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
 
@@ -37,6 +38,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -52,7 +54,6 @@ from __future__ import print_function
 
 import re
 import gzip
-import pyproj
 import logging
 import pathlib
 import argparse
@@ -77,6 +78,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("netCDF4 not available", ImportWarning)
+try:
+    import pyproj
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("pyproj not available", ImportWarning)
 try:
     import pyTMD.time
 except (ImportError, ModuleNotFoundError) as exc:
@@ -211,14 +217,19 @@ def interpolate_sea_level(base_dir, xi, yi, MJD, HEM):
 
 # PURPOSE: read ICESat-2 sea ice height (ATL07) from NSIDC
 # interpolate AVISO sea level at points and times
-def interp_sea_level_ICESat2(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
+def interp_sea_level_ICESat2(base_dir, INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
+    VERBOSE=False,
+    MODE=0o775):
 
     # create logger
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
     logging.basicConfig(level=loglevel)
 
-    # read data from input file
+    # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
+    # input granule basename
+    GRANULE = INPUT_FILE.name
     INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
     IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
         is2tk.io.ATL07.read_granule(INPUT_FILE, ATTRIBUTES=True)
@@ -228,7 +239,7 @@ def interp_sea_level_ICESat2(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
         r'(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
     try:
         SUB,PRD,HEM,YY,MM,DD,HH,MN,SS,TRK,CYCL,SN,RL,VERS,AUX = \
-            rx.findall(INPUT_FILE.name).pop()
+            rx.findall(GRANULE).pop()
     except:
         # output sea level HDF5 file (generic)
         FILENAME = f'{INPUT_FILE.stem}_AVISO_SEA_LEVEL{INPUT_FILE.suffix}'
@@ -237,8 +248,11 @@ def interp_sea_level_ICESat2(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
         args = (PRD,HEM,'AVISO_SEA_LEVEL',YY,MM,DD,HH,MN,SS,TRK,CYCL,SN,RL,VERS,AUX)
         ff = '{0}-{1}_{2}_{3}{4}{5}{6}{7}{8}_{9}{10}{11}_{12}_{13}{14}.h5'
         FILENAME = ff.format(*args)
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
     # full path to output file
-    OUTPUT_FILE = INPUT_FILE.with_name(FILENAME)
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
     # set the hemisphere flag based on ATL07 hemisphere code
     HMN, = IS2_atl07_mds['ancillary_data']['start_region']
     HEM = set_hemisphere(HMN)
@@ -461,9 +475,11 @@ def interp_sea_level_ICESat2(base_dir, INPUT_FILE, VERBOSE=False, MODE=0o775):
     # print file information
     logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_corr_attrs,
-        CLOBBER=True, INPUT=INPUT_FILE.name,
-        FILL_VALUE=IS2_atl07_fill, DIMENSIONS=IS2_atl07_dims,
-        FILENAME=OUTPUT_FILE)
+        FILENAME=OUTPUT_FILE,
+        INPUT=GRANULE,
+        FILL_VALUE=IS2_atl07_fill,
+        DIMENSIONS=IS2_atl07_dims,
+        CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
@@ -648,7 +664,10 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
-    # verbosity settings
+    # directory with output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -669,7 +688,9 @@ def main():
     # run for each input ATL07 file
     for FILE in args.infile:
         interp_sea_level_ICESat2(args.directory, FILE,
-            VERBOSE=args.verbose, MODE=args.mode)
+            OUTPUT_DIRECTORY=args.output_directory,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':

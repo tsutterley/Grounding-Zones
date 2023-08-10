@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
+    -O X, --output-directory X: input/output data directory
     -T X, --tide X: Tide model to use in correction
         CATS0201
         CATS2008
@@ -50,6 +51,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: verify crossover timescales are at least 1d
         initially set tide adjustment data and error masks to True
     Updated 05/2023: use timescale class for time conversion operations
@@ -108,6 +110,7 @@ def common_reference_points(XT, AT):
 # use mean elevation to calculate elevation anomalies
 # use anomalies to calculate inward and seaward limits of tidal flexure
 def fit_tides_ICESat2(tide_dir, INPUT_FILE,
+    OUTPUT_DIRECTORY=None,
     TIDE_MODEL=None,
     REANALYSIS=None,
     VERBOSE=False,
@@ -120,18 +123,33 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
     # get tide model parameters
     model = pyTMD.io.model(tide_dir, verify=False).elevation(TIDE_MODEL)
 
-    # print file information
+    # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
-    INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
-    # read data from FILE
-    mds1,attr1,pairs1 = is2tk.io.ATL11.read_granule(INPUT_FILE,
-        REFERENCE=True, CROSSOVERS=True, ATTRIBUTES=True)
+    # input granule basename
+    GRANULE = INPUT_FILE.name
 
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_'
         r'(\d{3})_(\d{2})(.*?).h5$')
     SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = \
-        rx.findall(INPUT_FILE.name).pop()
+        rx.findall(GRANULE).pop()
+    # get output directory from input file
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = INPUT_FILE.parent
+
+    # check if data is an s3 presigned url
+    if str(INPUT_FILE).startswith('s3:'):
+        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
+            authorization_header=True)
+        session = gz.utilities.s3_filesystem()
+        INPUT_FILE = session.open(INPUT_FILE, mode='rb')
+    else:
+        INPUT_FILE = pathlib.Path(INPUT_FILE).expanduser().absolute()
+
+    # read data from FILE
+    mds1,attr1,pairs1 = is2tk.io.ATL11.read_granule(INPUT_FILE,
+        REFERENCE=True, CROSSOVERS=True, ATTRIBUTES=True)
+
     # file format for associated auxiliary files
     file_format = '{0}_{1}_{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
 
@@ -267,7 +285,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
 
         # read buffered grounding zone mask
         a2 = (PRD,'GROUNDING_ZONE','MASK',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-        f3 = INPUT_FILE.with_name(file_format.format(*a2))
+        f3 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a2))
         # create data mask for grounding zone
         mds1[ptx]['subsetting'] = {}
         mds1[ptx]['subsetting'].setdefault('ice_gz',
@@ -287,7 +305,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         if TIDE_MODEL:
             # read tide model HDF5 file
             a3 = (PRD,TIDE_MODEL,'TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-            f3 = INPUT_FILE.with_name(file_format.format(*a3))
+            f3 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a3))
             # check that tide model file exists
             try:
                 mds3,attr3 = is2tk.io.ATL11.read_pair(f3,ptx,
@@ -316,7 +334,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         if REANALYSIS:
             # read inverse barometer HDF5 file
             a4 = (PRD,REANALYSIS,'IB',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
-            f4 = INPUT_FILE.with_name(file_format.format(*a4))
+            f4 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a4))
             # check that inverse barometer file exists
             try:
                 mds4,attr4 = is2tk.io.ATL11.read_pair(f4,ptx,
@@ -755,13 +773,16 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
     # output flexure correction HDF5 file
     args = (PRD,TIDE_MODEL,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
     file_format = '{0}_{1}_FIT_TIDES_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
-    OUTPUT_FILE = INPUT_FILE.with_name(file_format.format(*args))
+    OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(file_format.format(*args))
     # print file information
     logging.info(f'\t{str(OUTPUT_FILE)}')
     HDF5_ATL11_corr_write(IS2_atl11_tide, IS2_atl11_tide_attrs,
-        CLOBBER=True, INPUT=INPUT_FILE.name,
-        CROSSOVERS=True, FILL_VALUE=IS2_atl11_fill, DIMENSIONS=IS2_atl11_dims,
-        FILENAME=OUTPUT_FILE)
+        FILENAME=OUTPUT_FILE,
+        INPUT=GRANULE,
+        CROSSOVERS=True,
+        FILL_VALUE=IS2_atl11_fill,
+        DIMENSIONS=IS2_atl11_dims,
+        CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
@@ -958,6 +979,10 @@ def arguments():
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=pathlib.Path.cwd(),
         help='Working data directory')
+    # directory with input/output data
+    parser.add_argument('--output-directory','-O',
+        type=pathlib.Path,
+        help='Output data directory')
     # tide model to use
     parser.add_argument('--tide','-T',
         metavar='TIDE', type=str,
@@ -987,6 +1012,7 @@ def main():
     # run for each input ATL11 file
     for FILE in args.infile:
         fit_tides_ICESat2(args.directory, FILE,
+            OUTPUT_DIRECTORY=args.output_directory,
             TIDE_MODEL=args.tide,
             REANALYSIS=args.reanalysis,
             VERBOSE=args.verbose,
