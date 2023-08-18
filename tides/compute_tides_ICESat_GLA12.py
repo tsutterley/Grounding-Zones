@@ -61,6 +61,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 08/2023: create s3 filesystem when using s3 urls as input
+        changed ESR netCDF4 format to TMD3 format
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -230,7 +231,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
         epoch=pyTMD.time._j2000_epoch, standard='UTC')
 
     # read tidal constants and interpolate to grid points
-    if model.format in ('OTIS','ATLAS','ESR'):
+    if model.format in ('OTIS','ATLAS','TMD3'):
         amp,ph,D,c = pyTMD.io.OTIS.extract_constants(lon_40HZ, lat_40HZ,
             model.grid_file, model.model_file, model.projection,
             type=model.type, method=METHOD, extrapolate=EXTRAPOLATE,

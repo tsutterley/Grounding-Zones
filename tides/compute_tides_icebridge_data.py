@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_icebridge_data.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 Calculates tidal elevations for correcting Operation IceBridge elevation data
 
 Uses OTIS format tidal solutions provided by Ohio State University and ESR
@@ -63,6 +63,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 08/2023: changed ESR netCDF4 format to TMD3 format
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
@@ -251,7 +252,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         epoch=pyTMD.time._j2000_epoch, standard='UTC')
 
     # read tidal constants and interpolate to grid points
-    if model.format in ('OTIS','ATLAS','ESR'):
+    if model.format in ('OTIS','ATLAS','TMD3'):
         amp,ph,D,c = pyTMD.io.OTIS.extract_constants(dinput['lon'], dinput['lat'],
             model.grid_file, model.model_file, model.projection,
             type=model.type, method=METHOD, extrapolate=EXTRAPOLATE,
