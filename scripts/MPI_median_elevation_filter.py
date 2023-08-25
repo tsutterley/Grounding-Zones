@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_median_elevation_filter.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 
 Filters elevation change rates from triangulated Operation IceBridge data
     using an interquartile range algorithm described by Pritchard (2009)
@@ -50,6 +50,7 @@ REFERENCE:
     pp. 451-467 (2017).  https://doi.org/10.5194/tc-11-451-2017
 
 UPDATE HISTORY:
+    Updated 08/2023: use time functions from timescale.time
     Updated 05/2023: using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
     Updated 12/2022: single implicit import of grounding zone tools
@@ -113,11 +114,6 @@ except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
-    import icesat2_toolkit as is2tk
-except (ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
     from mpi4py import MPI
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
@@ -127,6 +123,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyproj not available", ImportWarning)
+try:
+    import timescale
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("timescale not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -198,38 +199,7 @@ def read_HDF5_triangle_data(input_file, input_subsetter):
     # close the HDF5 file
     fileID.close()
     # return data and attributes
-    return HDF5_data,HDF5_attributes
-
-# PURPOSE: convert time from delta seconds into Julian and year-decimal
-def convert_delta_time(delta_time, epoch=(2000,1,1,12,0,0)):
-    """
-    converts delta times into into Julian and year-decimal
-
-    Arguments
-    ---------
-    delta_time: seconds since epoch
-
-    Keyword arguments
-    -----------------
-    epoch: epoch for delta times (default 2000-01-01T12:00:00)
-
-    Returns
-    -------
-    julian: time in Julian days
-    decimal: time in year-decimal
-    """
-    # convert to array if single value
-    delta_time = np.atleast_1d(delta_time)
-    # calculate Julian time (UTC) by converting to MJD and then adding offset
-    time_julian = 2400000.5 + is2tk.time.convert_delta_time(delta_time,
-        epoch1=epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
-    # convert to calendar date
-    Y,M,D,h,m,s = is2tk.time.convert_julian(time_julian,FORMAT='tuple')
-    # calculate year-decimal time (UTC)
-    time_decimal = is2tk.time.convert_calendar_decimal(Y,M,day=D,
-        hour=h,minute=m,second=s)
-    # return both the Julian and year-decimal formatted dates
-    return dict(julian=np.squeeze(time_julian),decimal=np.squeeze(time_decimal))
+    return HDF5_data, HDF5_attributes
 
 # PURPOSE: check if dh/dt is valid by checking the interquartile range from
 # Pritchard (2009) and the robust dispersion estimator (RDE) from Smith (2017)
@@ -439,11 +409,12 @@ def main():
         # mask for points not equal to fill value
         mask = (dh1 != att1['data']['_FillValue'])
         # convert from J2000 into decimal years for dh/dt
-        # this should prevent prevent underflow errors
-        dt1 = convert_delta_time(J1)['decimal']
-        dt2 = convert_delta_time(J2)['decimal']
+        ts1 = timescale.time.Timescale().from_deltatime(J1,
+            epoch=timescale.time._j2000_epoch, standard='UTC')
+        ts2 = timescale.time.Timescale().from_deltatime(J2,
+            epoch=timescale.time._j2000_epoch, standard='UTC')
         # calculate dhdt from input triangulated file(s) and original file(s)
-        dhdt = (dh2 - dh1)/(dt2 - dt1)
+        dhdt = (dh2 - dh1)/(ts2.year - ts1.year)
     else:
         # create X, Y and dhdt arrays (combined for all input HDF5 files)
         X = np.empty((n_1 + n_2))
@@ -470,10 +441,14 @@ def main():
         # indice for iteration (maps from valid points to original file)
         i = indices[iteration]
         # list of complementary indices.  includes indices from all files
-        ii = list(set(indices)-set([i]))
+        ii = list(set(indices) - set([i]))
         # check if dh/dt point is valid using X, Y and dhdt for point i
-        distributed_IQR[i],distributed_RDE[i] = filter_dhdt(X[i], Y[i], dhdt[i],
-            X[ii], Y[ii], dhdt[ii], COUNT=args.count, DISTANCE=args.distance)
+        distributed_IQR[i], distributed_RDE[i] = filter_dhdt(
+            X[i], Y[i], dhdt[i],
+            X[ii], Y[ii], dhdt[ii],
+            COUNT=args.count,
+            DISTANCE=args.distance
+        )
 
     # create matrices for valid reduced data output
     associated_IQR = np.zeros((n_1),dtype=bool)

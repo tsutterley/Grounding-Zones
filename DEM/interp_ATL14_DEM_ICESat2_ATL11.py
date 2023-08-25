@@ -31,6 +31,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 08/2023: create s3 filesystem when using s3 urls as input
+        mosaic version 3 ATL14 data for Antarctica
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
@@ -71,8 +72,21 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyproj not available", ImportWarning)
+try:
+    import timescale
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("timescale not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
+
+# PURPOSE: set the hemisphere of interest based on the granule
+def set_hemisphere(GRANULE):
+    if GRANULE in ('10','11','12'):
+        projection_flag = 'S'
+    elif GRANULE in ('03','04','05'):
+        projection_flag = 'N'
+    return projection_flag
 
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11)
 # interpolate DEM data to x and y coordinates
@@ -103,35 +117,104 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
     # read data from input ATL11 file
     IS2_atl11_mds,IS2_atl11_attrs,IS2_atl11_pairs = \
         is2tk.io.ATL11.read_granule(INPUT_FILE, ATTRIBUTES=True)
-
-    # check if DEM is an s3 presigned url
-    if str(DEM_MODEL).startswith('s3:'):
-        client = is2tk.utilities.attempt_login('urs.earthdata.nasa.gov',
-            authorization_header=True)
-        session = is2tk.utilities.s3_filesystem()
-        DEM_MODEL = session.open(DEM_MODEL, mode='rb')
-    else:
-        DEM_MODEL = pathlib.Path(DEM_MODEL).expanduser().absolute()
-
-    # open ATL14 DEM file for reading
-    fileID = netCDF4.Dataset(DEM_MODEL, mode='r')
-    # get coordinate reference system attributes
-    crs = {}
-    grid_mapping = fileID.variables['h'].getncattr('grid_mapping')
-    for att_name in fileID[grid_mapping].ncattrs():
-        crs[att_name] = fileID.variables[grid_mapping].getncattr(att_name)
-    # get original grid coordinates
-    x = fileID.variables['x'][:].copy()
-    y = fileID.variables['y'][:].copy()
-    # get grid spacing
-    dx = np.abs(x[1] - x[0])
-    dy = np.abs(y[1] - y[0])
-
+    # get projection from ICESat-2 data file
+    HEM = set_hemisphere(GRAN)
+    EPSG = dict(N=3413, S=3031)
     # pyproj transformer for converting from latitude/longitude
-    # into DEM file coordinates
     crs1 = pyproj.CRS.from_epsg(4326)
-    crs2 = pyproj.CRS.from_wkt(crs['crs_wkt'])
+    crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+
+    # read orbit info for bounding polygons
+    bounding_lon = IS2_atl11_mds['orbit_info']['bounding_polygon_lon1']
+    bounding_lat = IS2_atl11_mds['orbit_info']['bounding_polygon_lat1']
+    # convert bounding polygon coordinates to projection
+    BX, BY = transformer.transform(bounding_lon, bounding_lat)
+
+    # verify ATL14 DEM file is iterable
+    if isinstance(DEM_MODEL, str):
+        DEM_MODEL = [DEM_MODEL]
+
+    # subset ATL14 elevation field to bounds
+    DEM = gz.mosaic()
+    # iterate over each ATL14 DEM file
+    for MODEL in DEM_MODEL:
+        # check if DEM is an s3 presigned url
+        if str(MODEL).startswith('s3:'):
+            is2tk.utilities.attempt_login('urs.earthdata.nasa.gov',
+                authorization_header=True)
+            session = is2tk.utilities.s3_filesystem()
+            MODEL = session.open(MODEL, mode='rb')
+        else:
+            MODEL = pathlib.Path(MODEL).expanduser().absolute()
+
+        # open ATL14 DEM file for reading
+        with netCDF4.Dataset(MODEL, mode='r') as fileID:
+            # get original grid coordinates
+            x = fileID.variables['x'][:].copy()
+            y = fileID.variables['y'][:].copy()
+            # fill_value for invalid heights
+            fv = fileID['h'].getncattr('_FillValue')
+        # update the mosaic grid spacing
+        DEM.update_spacing(x, y)
+        # get size of DEM
+        ny, nx = len(y), len(x)
+
+        # determine buffered bounds of data in image coordinates
+        # (affine transform)
+        IMxmin = int((BX.min() - x[0])//DEM.spacing[0]) - 10
+        IMxmax = int((BX.max() - x[0])//DEM.spacing[0]) + 10
+        IMymin = int((BY.min() - y[0])//DEM.spacing[1]) - 10
+        IMymax = int((BY.max() - y[0])//DEM.spacing[1]) + 10
+        # get buffered bounds of data
+        # and convert invalid values to 0
+        indx = slice(np.maximum(IMxmin,0), np.minimum(IMxmax,nx), 1)
+        indy = slice(np.maximum(IMymin,0), np.minimum(IMymax,ny), 1)
+        DEM.update_bounds(x[indx], y[indy])
+
+    # fill ATL14 to mosaic
+    DEM.h = np.ma.zeros(DEM.shape, fill_value=fv)
+    DEM.h_sigma2 = np.ma.zeros(DEM.shape, fill_value=fv)
+    DEM.ice_area = np.ma.zeros(DEM.shape, fill_value=fv)
+    # iterate over each ATL14 DEM file
+    for MODEL in DEM_MODEL:
+        # check if DEM is an s3 presigned url
+        if str(MODEL).startswith('s3:'):
+            is2tk.utilities.attempt_login('urs.earthdata.nasa.gov',
+                authorization_header=True)
+            session = is2tk.utilities.s3_filesystem()
+            MODEL = session.open(MODEL, mode='rb')
+        else:
+            MODEL = pathlib.Path(MODEL).expanduser().absolute()
+
+        # open ATL14 DEM file for reading
+        fileID = netCDF4.Dataset(MODEL, mode='r')
+        # get original grid coordinates
+        x = fileID.variables['x'][:].copy()
+        y = fileID.variables['y'][:].copy()
+        # get size of DEM
+        ny, nx = len(y), len(x)
+
+        # determine buffered bounds of data in image coordinates
+        # (affine transform)
+        IMxmin = int((BX.min() - x[0])//DEM.spacing[0]) - 10
+        IMxmax = int((BX.max() - x[0])//DEM.spacing[0]) + 10
+        IMymin = int((BY.min() - y[0])//DEM.spacing[1]) - 10
+        IMymax = int((BY.max() - y[0])//DEM.spacing[1]) + 10
+
+        # get buffered bounds of data
+        # and convert invalid values to 0
+        indx = slice(np.maximum(IMxmin,0), np.minimum(IMxmax,nx), 1)
+        indy = slice(np.maximum(IMymin,0), np.minimum(IMymax,ny), 1)
+        # get the image coordinates of the input file
+        iy, ix = DEM.image_coordinates(x[indx], y[indy])
+        # create mosaic of DEM variables
+        if np.any(iy) and np.any(ix):
+            DEM.h[iy, ix] = fileID['h'][indy, indx]
+            DEM.h_sigma2[iy, ix] = fileID['h_sigma'][indy, indx]**2
+            DEM.ice_area[iy, ix] = fileID['ice_area'][indy, indx]
+        # close the ATL14 file
+        fileID.close()
 
     # copy variables for outputting to HDF5 file
     IS2_atl11_dem = {}
@@ -166,7 +249,8 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         X,Y = transformer.transform(longitude, latitude)
 
         # check that beam pair coordinates intersect ATL14
-        valid = (X >= x.min()) & (X <= x.max()) & (Y >= y.min()) & (Y <= y.max())
+        valid = (X >= DEM.extent[0]) & (X <= DEM.extent[1]) & \
+            (Y >= DEM.extent[2]) & (Y <= DEM.extent[3])
         if not np.any(valid):
             continue
 
@@ -187,18 +271,6 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         dem_h.mask = np.ones((n_points),dtype=bool)
         dem_h_sigma = np.ma.zeros((n_points),fill_value=fv,dtype=np.float32)
         dem_h_sigma.mask = np.ones((n_points),dtype=bool)
-
-        # bounding box of ATL14 file to read for beam pair
-        bounds = [[X.min()-5*dx,X.max()+5*dx],[Y.min()-5*dy,Y.max()+5*dy]]
-        # indices to read
-        xind, = np.nonzero((x >= bounds[0][0]) & (x <= bounds[0][1]))
-        cols = slice(xind[0],xind[-1],1)
-        yind, = np.nonzero((y >= bounds[1][0]) & (y <= bounds[1][1]))
-        rows = slice(yind[0],yind[-1],1)
-        # subset ATL14 elevation field to bounds
-        h = fileID.variables['h'][rows,cols]
-        h_sigma2 = fileID.variables['h_sigma'][rows,cols]**2
-        ice_area = fileID.variables['ice_area'][rows,cols]
 
         # group attributes for beam
         IS2_atl11_dem_attrs[ptx]['description'] = ('Contains the primary science parameters '
@@ -298,9 +370,9 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
             "are stored at the average segment rate.")
 
         # use spline interpolation to calculate DEM values at coordinates
-        f1 = scipy.interpolate.RectBivariateSpline(x[cols],y[rows],h.T,kx=1,ky=1)
-        f2 = scipy.interpolate.RectBivariateSpline(x[cols],y[rows],h_sigma2.T,kx=1,ky=1)
-        f3 = scipy.interpolate.RectBivariateSpline(x[cols],y[rows],ice_area.T,kx=1,ky=1)
+        f1 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.h.T,kx=1,ky=1)
+        f2 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.h_sigma2.T,kx=1,ky=1)
+        f3 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.ice_area.T,kx=1,ky=1)
         dem_h.data[:] = f1.ev(X,Y)
         dem_h_sigma.data[:] = np.sqrt(f2.ev(X,Y))
         dem_ice_area = f3.ev(X,Y)
@@ -498,18 +570,13 @@ def HDF5_ATL11_dem_write(IS2_atl11_dem, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['geospatial_ellipsoid'] = "WGS84"
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
-    # convert start and end time from ATLAS SDP seconds into UTC time
-    time_utc = is2tk.convert_delta_time(np.array([tmn,tmx]))
-    # convert to calendar date
-    YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(time_utc['julian'],
-        format='tuple')
+    # convert start and end time from ATLAS SDP seconds into timescale
+    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
-    tcs = datetime.datetime(int(YY[0]), int(MM[0]), int(DD[0]),
-        int(HH[0]), int(MN[0]), int(SS[0]), int(1e6*(SS[0] % 1)))
-    fileID.attrs['time_coverage_start'] = tcs.isoformat()
-    tce = datetime.datetime(int(YY[1]), int(MM[1]), int(DD[1]),
-        int(HH[1]), int(MN[1]), int(SS[1]), int(1e6*(SS[1] % 1)))
-    fileID.attrs['time_coverage_end'] = tce.isoformat()
+    fileID.attrs['time_coverage_start'] = str(dt[0])
+    fileID.attrs['time_coverage_end'] = str(dt[1])
     fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name
@@ -536,7 +603,7 @@ def arguments():
         help='Output data directory')
     # full path to ATL14 digital elevation file
     parser.add_argument('--dem-model','-m',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL14 DEM file to run')
     # verbosity settings
     # verbose will output information about each output file

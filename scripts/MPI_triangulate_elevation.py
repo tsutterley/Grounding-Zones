@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_triangulate_elevation.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (08/2023)
 
 Calculates interpolated elevations by triangulated irregular
     network meshing (TINs) to compare with an input file
@@ -44,6 +44,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 08/2023: use time functions from timescale.time
     Updated 05/2023: using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
     Updated 12/2022: single implicit import of grounding zone tools
@@ -118,6 +119,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyproj not available", ImportWarning)
+try:
+    import timescale
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("timescale not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -898,24 +904,16 @@ def HDF5_triangulated_data(output_data, MISSION=None, INPUT=None, FILENAME='',
     fileID.attrs['time_type'] = 'UTC'
     # convert start and end time from J2000 seconds into Julian days
     ind, = np.nonzero(output_data['time'] != FILL_VALUE)
-    time_start = np.min(output_data['time'][ind])
-    time_end = np.max(output_data['time'][ind])
-    JD_start = time_start/86400. + 2451545.0
-    JD_end = time_end/86400. + 2451545.0
-    # convert from julian to calendar dates
-    cal_date = is2tk.time.convert_julian(np.array([JD_start,JD_end]),
-        ASTYPE=np.int64)
+    tmn = np.min(output_data['time'][ind])
+    tmx = np.max(output_data['time'][ind])
+    # convert start and end time from ATLAS SDP seconds into timescale
+    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
-    args = (cal_date['hour'][0],cal_date['minute'][0],cal_date['second'][0])
-    fileID.attrs['RangeBeginningTime'] = '{0:02d}:{1:02d}:{2:02d}'.format(*args)
-    args = (cal_date['hour'][-1],cal_date['minute'][-1],cal_date['second'][-1])
-    fileID.attrs['RangeEndingTime'] = '{0:02d}:{1:02d}:{2:02d}'.format(*args)
-    args = (cal_date['year'][0],cal_date['month'][0],cal_date['day'][0])
-    fileID.attrs['RangeBeginningDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
-    args = (cal_date['year'][-1],cal_date['month'][-1],cal_date['day'][-1])
-    fileID.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
-    duration = np.round(time_end - time_start).astype(np.int64)
-    fileID.attrs['DurationTimeSeconds'] = f'{duration:d}'
+    fileID.attrs['time_coverage_start'] = str(dt[0])
+    fileID.attrs['time_coverage_end'] = str(dt[1])
+    fileID.attrs['time_coverage_duration'] = f'{tmx-tmn:0.0f}'
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name
     fileID.attrs['software_version'] = gz.version.full_version

@@ -44,6 +44,7 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 08/2023: create s3 filesystem when using s3 urls as input
+        use time functions from pyTMD.time
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -134,7 +135,7 @@ def find_pressure_files(ddir, MODEL, MJD):
         # append day prior, day of and day after
         JD = mjd + np.arange(-1,2) + 2400000.5
         # convert from Julian Days to calendar dates
-        Y,M,D,_,_,_ = is2tk.time.convert_julian(JD,
+        Y,M,D,_,_,_ = pyTMD.time.convert_julian(JD,
             ASTYPE=int, FORMAT='tuple')
         # append day as formatted strings
         for y,m,d in zip(Y,M,D):
@@ -173,9 +174,9 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
             # convert time to Modified Julian Days
             delta_time = np.copy(fileID.variables[TIMENAME][:])
             units = fileID.variables[TIMENAME].units
-            epoch,to_secs = is2tk.time.parse_date_string(units)
+            epoch,to_secs = pyTMD.time.parse_date_string(units)
             for t,dt in enumerate(delta_time):
-                MJD[c] = is2tk.time.convert_delta_time(dt*to_secs,
+                MJD[c] = pyTMD.time.convert_delta_time(dt*to_secs,
                     epoch1=epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
                 # check dimensions for expver slice
                 if (fileID.variables[VARNAME].ndim == 4):
@@ -354,7 +355,7 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
     MASK = ncdf_landmask(ddir.joinpath(input_mask_file), MASKNAME, OCEAN)
 
     # find and read each reanalysis pressure field
-    MJD = is2tk.time.convert_calendar_dates(int(YY),int(MM),int(DD),
+    MJD = pyTMD.time.convert_calendar_dates(int(YY),int(MM),int(DD),
         epoch=(1858,11,17,0,0,0), scale=1.0)
     FILENAMES = find_pressure_files(ddir, MODEL, MJD)
     # read sea level pressure and calculate anomalies

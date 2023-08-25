@@ -39,6 +39,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 08/2023: create s3 filesystem when using s3 urls as input
+        use time functions from timescale.time
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
         refactored ICESat-2 data product read programs under io
@@ -94,6 +95,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("shapely not available", ImportWarning)
+try:
+    import timescale
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("timescale not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -500,15 +506,6 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
         for imin,imax in ice_gz_indices:
             # find valid indices within range
             i = sorted(set(np.arange(imin,imax+1)) & set(valid))
-            # convert time from ATLAS SDP to days relative into Julian days
-            gps_seconds = atlas_sdp_gps_epoch + val['delta_time'][i]
-            time_leaps = is2tk.time.count_leap_seconds(gps_seconds)
-            # convert from seconds since 1980-01-06T00:00:00 to Julian days
-            time_julian = 2400000.5 + is2tk.time.convert_delta_time(
-                gps_seconds - time_leaps, epoch1=(1980,1,6,0,0,0),
-                epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
-            # convert to calendar date with convert_julian.py
-            cal_date = is2tk.time.convert_julian(time_julian)
             # extract lat/lon and convert to polar stereographic
             X,Y = transformer.transform(val['lon_ph'][i],val['lat_ph'][i])
             # shapely LineString object for altimetry segment
