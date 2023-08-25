@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 icebridge.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 Read altimetry data files from NASA Operation IceBridge (OIB)
 
 PYTHON DEPENDENCIES:
@@ -16,6 +16,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 08/2023: use time functions from timescale.time
     Updated 07/2023: add function docstrings in numpydoc format
     Written 05/2023: moved icebridge data inputs to a separate module
 """
@@ -39,10 +40,10 @@ except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
-    import pyTMD.time
+    import timescale
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
-    warnings.warn("pyTMD not available", ImportWarning)
+    warnings.warn("timescale not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -205,17 +206,18 @@ def read_ATM_qfit_file(input_file, input_subsetter):
             second[i] = np.float64(line_contents[4:])
         # close the input HDF5 file
         fileID.close()
-    # calculate the number of leap seconds between GPS time (seconds
-    # since Jan 6, 1980 00:00:00) and UTC
-    gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
-        hour=hour,minute=minute,second=second,
-        epoch=pyTMD.time._gps_epoch,scale=86400.0)
-    leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
-    # calculation of Julian day taking into account leap seconds
+    # calculate GPS time (seconds since Jan 6, 1980 00:00:00)
+    gps_seconds = timescale.time.convert_calendar_dates(
+        year, month, day,
+        hour=hour, minute=minute, second=second,
+        epoch=timescale.time._gps_epoch,
+        scale=86400.0)
     # converting to J2000 seconds
-    ATM_L1b_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
-        hour=hour,minute=minute,second=second-leap_seconds,
-        epoch=pyTMD.time._j2000_epoch,scale=86400.0)
+    ts = timescale.time.TimeScale().from_deltatime(gps_seconds,
+        epoch=timescale.time._gps_epoch, standard='GPS')
+    ATM_L1b_input['time'] = ts.to_deltatime(
+        epoch=timescale.time._j2000_epoch, scale=86400.0
+    )
     # subset the data to indices if specified
     if input_subsetter:
         for key,val in ATM_L1b_input.items():
@@ -300,20 +302,25 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     minute = np.floor((ATM_L2_input['seconds'] % 3600)/60.0)
     second = ATM_L2_input['seconds'] % 60.0
     # First column in Pre-IceBridge and ICESSN Version 1 files is GPS time
+    # calculate GPS time (seconds since Jan 6, 1980 00:00:00)
+    gps_seconds = timescale.time.convert_calendar_dates(
+        year, month, day,
+        hour=hour, minute=minute, second=second,
+        epoch=timescale.time._gps_epoch,
+        scale=86400.0)
     if (MISSION == 'BLATM2') or (SFX != 'csv'):
-        # calculate the number of leap seconds between GPS time (seconds
-        # since Jan 6, 1980 00:00:00) and UTC
-        gps_seconds = pyTMD.time.convert_calendar_dates(year,month,day,
-            hour=hour,minute=minute,second=second,
-            epoch=pyTMD.time._gps_epoch,scale=86400.0)
-        leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
+        # converting to J2000 seconds from GPS seconds
+        ts = timescale.time.TimeScale().from_deltatime(gps_seconds,
+            epoch=timescale.time._gps_epoch, standard='GPS')
     else:
+        # converting to J2000 seconds from UTC seconds
+        ts = timescale.time.TimeScale().from_deltatime(gps_seconds,
+            epoch=timescale.time._gps_epoch, standard='UTC')
         leap_seconds = 0.0
-    # calculation of Julian day
     # converting to J2000 seconds
-    ATM_L2_input['time'] = pyTMD.time.convert_calendar_dates(year,month,day,
-        hour=hour,minute=minute,second=second-leap_seconds,
-        epoch=pyTMD.time._j2000_epoch,scale=86400.0)
+    ATM_L2_input['time'] = ts.to_deltatime(
+        epoch=timescale.time._j2000_epoch, scale=86400.0
+    )
     # convert RMS from centimeters to meters
     ATM_L2_input['error'] = ATM_L2_input['RMS']/100.0
     # subset the data to indices if specified

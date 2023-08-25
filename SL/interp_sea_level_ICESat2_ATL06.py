@@ -41,6 +41,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 08/2023: create s3 filesystem when using s3 urls as input
+        use time functions from timescale.time
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -101,15 +102,15 @@ except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyproj not available", ImportWarning)
 try:
-    import pyTMD.time
-except (ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
-    warnings.warn("pyTMD not available", ImportWarning)
-try:
     import sklearn.neighbors
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("scikit-learn not available", ImportWarning)
+try:
+    import timescale
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("timescale not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -189,9 +190,9 @@ def interpolate_sea_level(base_dir, xi, yi, MJD, HEM):
     ADT = np.zeros_like(dt)
     # for the range of dates
     for day in range(2):
-        # convert from CNES Julians Days to calendar dates for time
-        YY,MM,DD,HH,MN,SS = is2tk.time.convert_julian(MJD1 + day + 2400000.5,
-            FORMAT='tuple', ASTYPE=int)
+        # convert from Modified Julian Days to calendar dates
+        YY, MM, DD, HH, MN, SS = timescale.time.convert_julian(
+            MJD1 + day + 2400000.5, FORMAT='tuple', ASTYPE=int)
         # sea level directory
         ddir = base_dir.joinpath(f'{YY:4d}')
         # input file for day before the measurement
@@ -348,14 +349,14 @@ def interp_sea_level_ICESat2(base_dir, INPUT_FILE,
 
         # create timescale from ATLAS Standard Epoch time
         # GPS seconds since 2018-01-01 00:00:00 UTC
-        timescale = pyTMD.time.timescale().from_deltatime(val['delta_time'],
-            epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
+        ts = timescale.time.timescale().from_deltatime(val['delta_time'],
+            epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
 
         # extract lat/lon and convert to polar stereographic
         X, Y = transformer.transform(val['longitude'], val['latitude'])
 
         # interpolate sea level anomalies and dynamic topographies
-        interp = interpolate_sea_level(base_dir, X, Y, timescale.MJD, HEM)
+        interp = interpolate_sea_level(base_dir, X, Y, ts.MJD, HEM)
 
         # group attributes for beam
         IS2_atl06_corr_attrs[gtx]['Description'] = IS2_atl06_attrs[gtx]['Description']
@@ -630,9 +631,9 @@ def HDF5_ATL06_corr_write(IS2_atl06_corr, IS2_atl06_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    timescale = pyTMD.time.timescale().from_deltatime(np.array([tmn,tmx]),
-        epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
+    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
     fileID.attrs['time_coverage_start'] = str(dt[0])
     fileID.attrs['time_coverage_end'] = str(dt[1])

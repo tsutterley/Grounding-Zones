@@ -47,6 +47,7 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 08/2023: create s3 filesystem when using s3 urls as input
+        use time functions from pyTMD.time
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
     Updated 11/2022: use f-strings for formatting verbose or ascii output
@@ -139,7 +140,7 @@ def find_pressure_files(ddir, MODEL, MJD):
         # append day prior, day of and day after
         JD = mjd + np.arange(-1,2) + 2400000.5
         # convert from Julian Days to calendar dates
-        Y,M,D,_,_,_ = is2tk.time.convert_julian(JD,
+        Y,M,D,_,_,_ = pyTMD.time.convert_julian(JD,
             ASTYPE=int, FORMAT='tuple')
         # append day as formatted strings
         for y,m,d in zip(Y,M,D):
@@ -178,9 +179,9 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
             # convert time to Modified Julian Days
             delta_time = np.copy(fileID.variables[TIMENAME][:])
             units = fileID.variables[TIMENAME].units
-            epoch,to_secs = is2tk.time.parse_date_string(units)
+            epoch,to_secs = pyTMD.time.parse_date_string(units)
             for t,dt in enumerate(delta_time):
-                MJD[c] = is2tk.time.convert_delta_time(dt*to_secs,
+                MJD[c] = pyTMD.time.convert_delta_time(dt*to_secs,
                     epoch1=epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
                 # check dimensions for expver slice
                 if (fileID.variables[VARNAME].ndim == 4):

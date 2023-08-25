@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_icebridge_data.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (08/2023)
 Calculates geoid undulations for correcting Operation IceBridge elevation data
 
 INPUTS:
@@ -35,6 +35,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 08/2023: use time functions from timescale.time
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 05/2023: move icebridge data inputs to a separate module in io
     Updated 12/2022: single implicit import of grounding zone tools
@@ -85,6 +86,11 @@ try:
 except (ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
+try:
+    import timescale
+except (ImportError, ModuleNotFoundError) as exc:
+    warnings.filterwarnings("module")
+    warnings.warn("timescale not available", ImportWarning)
 # ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -280,24 +286,16 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     fid.attrs['geospatial_lon_units'] = "degrees_east"
     fid.attrs['geospatial_ellipsoid'] = "WGS84"
     fid.attrs['time_type'] = 'UTC'
-    # convert start/end time from J2000 dates into Julian days
-    # J2000: seconds since 2000-01-01 12:00:00 UTC
-    time_range = np.array([np.min(dinput['time']),np.max(dinput['time'])])
-    time_julian = 2400000.5 + is2tk.time.convert_delta_time(time_range,
-        epoch1=(2000,1,1,12,0,0), epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
-    # convert to calendar date
-    cal = is2tk.time.convert_julian(time_julian,ASTYPE=int)
+    # convert start and end time from J2000 seconds into timescale
+    tmn, tmx = np.min(dinput['time']), np.max(dinput['time'])
+    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=timescale.time._j2000_epoch, standard='UTC')
+    duration = ts.day*(np.max(ts.MJD) - np.min(ts.MJD))
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
-    args = (cal['hour'][0],cal['minute'][0],cal['second'][0])
-    fid.attrs['RangeBeginningTime'] = '{0:02d}:{1:02d}:{2:02d}'.format(*args)
-    args = (cal['hour'][-1],cal['minute'][-1],cal['second'][-1])
-    fid.attrs['RangeEndingTime'] = '{0:02d}:{1:02d}:{2:02d}'.format(*args)
-    args = (cal['year'][0],cal['month'][0],cal['day'][0])
-    fid.attrs['RangeBeginningDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
-    args = (cal['year'][-1],cal['month'][-1],cal['day'][-1])
-    fid.attrs['RangeEndingDate'] = '{0:4d}-{1:02d}-{2:02d}'.format(*args)
-    duration = np.round(time_julian[-1]*86400.0 - time_julian[0]*86400.0)
-    fid.attrs['DurationTimeSeconds'] = f'{duration:0.0f}'
+    fid.attrs['time_coverage_start'] = str(dt[0])
+    fid.attrs['time_coverage_end'] = str(dt[1])
+    fid.attrs['time_coverage_duration'] = f'{duration:0.0f}'
     # add software information
     fid.attrs['software_reference'] = gz.version.project_name
     fid.attrs['software_version'] = gz.version.full_version

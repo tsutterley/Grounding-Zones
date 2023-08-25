@@ -12,6 +12,7 @@ matplotlib and cartopy
 Documentation is available at https://grounding-zones.readthedocs.io
 """
 from grounding_zones import io
+from grounding_zones.mosaic import mosaic
 import grounding_zones.utilities
 import grounding_zones.version
 

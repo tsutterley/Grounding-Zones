@@ -26,3 +26,4 @@ dependencies:
      - icesat2-toolkit
      - pyTMD
      - spatial-interpolators
+     - timescale
