@@ -270,9 +270,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
             if (track == 'AT'):
                 # for each along-track cycle
                 for c,cycle in enumerate(cycle_number):
-                    # print('b',cycle,tide[track].data[ii,c])
                     tide[track].data[ii,c] *= tide_adj[track][ii]
-                    # print('a',cycle,tide[track].data[ii,c])
             elif (track == 'XT'):
                 # for all across-track points
                 tide[track].data[ii] *= tide_adj[track][ii]
