@@ -14,7 +14,7 @@ import pyTMD.utilities
 # attempt imports
 try:
     import icesat2_toolkit as is2tk
-except (ImportError, ModuleNotFoundError) as exc:
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
 # ignore warnings

@@ -115,32 +115,32 @@ import scipy.interpolate
 # attempt imports
 try:
     import fiona
-except (ImportError, ModuleNotFoundError) as exc:
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("mpi4py not available", ImportWarning)
 try:
     from mpi4py import MPI
-except (ImportError, ModuleNotFoundError) as exc:
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("mpi4py not available", ImportWarning)
 try:
     import osgeo.gdal
-except (ImportError, ModuleNotFoundError) as exc:
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("GDAL not available", ImportWarning)
 try:
     import pyproj
-except (ImportError, ModuleNotFoundError) as exc:
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyproj not available", ImportWarning)
 try:
     import pyTMD.spatial
-except (ImportError, ModuleNotFoundError) as exc:
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("pyTMD not available", ImportWarning)
 try:
     import shapely.geometry
-except (ImportError, ModuleNotFoundError) as exc:
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("shapely not available", ImportWarning)
 # ignore warnings
