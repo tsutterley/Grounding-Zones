@@ -46,7 +46,7 @@ import scipy.interpolate
 try:
     import matplotlib.pyplot as plt
     from matplotlib import gridspec
-except (ImportError, ModuleNotFoundError) as exc:
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.filterwarnings("module")
     warnings.warn("matplotlib not available", ImportWarning)
 # ignore warnings
