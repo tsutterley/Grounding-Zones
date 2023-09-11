@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_ATL14_DEM_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (09/2023)
 Interpolates ATL14 elevations to ICESat-2 ATL11 segment locations
 
 COMMAND LINE OPTIONS:
@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 09/2023: check that subsetted DEM has a valid shape and mask
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         mosaic version 3 ATL14 data for Antarctica
     Updated 07/2023: using pathlib to define and operate on paths
@@ -149,6 +150,7 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
             MODEL = pathlib.Path(MODEL).expanduser().absolute()
 
         # open ATL14 DEM file for reading
+        logging.info(str(MODEL))
         with netCDF4.Dataset(MODEL, mode='r') as fileID:
             # get original grid coordinates
             x = fileID.variables['x'][:].copy()
@@ -171,6 +173,10 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         indx = slice(np.maximum(IMxmin,0), np.minimum(IMxmax,nx), 1)
         indy = slice(np.maximum(IMymin,0), np.minimum(IMymax,ny), 1)
         DEM.update_bounds(x[indx], y[indy])
+
+    # check that DEM has a valid shape
+    if np.any(np.sign(DEM.shape) == -1):
+        raise ValueError('Values outside of ATL14 range')
 
     # fill ATL14 to mosaic
     DEM.h = np.ma.zeros(DEM.shape, fill_value=fv)
@@ -215,6 +221,12 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
             DEM.ice_area[iy, ix] = fileID['ice_area'][indy, indx]
         # close the ATL14 file
         fileID.close()
+
+    # update masks for DEM
+    for key in ['h', 'h_sigma2', 'ice_area']:
+        val = getattr(DEM, key)
+        val.mask = (val.data == val.fill_value) | np.isnan(val.data)
+        val.data[val.mask] = val.fill_value
 
     # copy variables for outputting to HDF5 file
     IS2_atl11_dem = {}
@@ -411,9 +423,6 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h_sigma']['source'] = 'ATL14'
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h_sigma']['coordinates'] = \
             "../ref_pt ../delta_time ../latitude ../longitude"
-
-    # close the ATL14 elevation file
-    fileID.close()
 
     # check that there are any valid pairs in the dataset
     if bool([k for k in IS2_atl11_dem.keys() if bool(re.match(r'pt\d',k))]):
