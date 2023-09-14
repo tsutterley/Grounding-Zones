@@ -31,6 +31,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 09/2023: check that subsetted DEM has a valid shape and mask
+        set DEM data type as float32 to reduce memory usage
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         mosaic version 3 ATL14 data for Antarctica
     Updated 07/2023: using pathlib to define and operate on paths
@@ -179,9 +180,9 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         raise ValueError('Values outside of ATL14 range')
 
     # fill ATL14 to mosaic
-    DEM.h = np.ma.zeros(DEM.shape, fill_value=fv)
-    DEM.h_sigma2 = np.ma.zeros(DEM.shape, fill_value=fv)
-    DEM.ice_area = np.ma.zeros(DEM.shape, fill_value=fv)
+    DEM.h = np.ma.zeros(DEM.shape, dtype=np.float32, fill_value=fv)
+    DEM.h_sigma2 = np.ma.zeros(DEM.shape, dtype=np.float32, fill_value=fv)
+    DEM.ice_area = np.ma.zeros(DEM.shape, dtype=np.float32, fill_value=fv)
     # iterate over each ATL14 DEM file
     for MODEL in DEM_MODEL:
         # check if DEM is an s3 presigned url
@@ -227,6 +228,11 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         val = getattr(DEM, key)
         val.mask = (val.data == val.fill_value) | np.isnan(val.data)
         val.data[val.mask] = val.fill_value
+
+    # use spline interpolation to calculate DEM values at coordinates
+    S1 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.h.T,kx=1,ky=1)
+    S2 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.h_sigma2.T,kx=1,ky=1)
+    S3 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.ice_area.T,kx=1,ky=1)
 
     # copy variables for outputting to HDF5 file
     IS2_atl11_dem = {}
@@ -381,13 +387,10 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         IS2_atl11_dem_attrs[ptx]['ref_surf']['data_rate'] = ("Data within this group "
             "are stored at the average segment rate.")
 
-        # use spline interpolation to calculate DEM values at coordinates
-        f1 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.h.T,kx=1,ky=1)
-        f2 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.h_sigma2.T,kx=1,ky=1)
-        f3 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.ice_area.T,kx=1,ky=1)
-        dem_h.data[:] = f1.ev(X,Y)
-        dem_h_sigma.data[:] = np.sqrt(f2.ev(X,Y))
-        dem_ice_area = f3.ev(X,Y)
+        # interpolate DEM to segment location
+        dem_h.data[:] = S1.ev(X,Y)
+        dem_h_sigma.data[:] = np.sqrt(S2.ev(X,Y))
+        dem_ice_area = S3.ev(X,Y)
         # update masks and replace fill values
         dem_h.mask[:] = (dem_ice_area <= 0.0) | (np.abs(dem_h.data) >= 1e4)
         dem_h_sigma.mask[:] = (dem_ice_area <= 0.0) | (np.abs(dem_h.data) >= 1e4)
