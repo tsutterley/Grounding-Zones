@@ -422,7 +422,7 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
 
     # check that there are any valid pairs in the dataset
     if bool([k for k in IS2_atl11_dem.keys() if bool(re.match(r'pt\d',k))]):
-        # output HDF5 files with output masks
+        # output HDF5 files with output DEM
         fargs = ('ATL14',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
         file_format = '{0}_{1}{2}_{3}{4}_{5}_{6}{7}.h5'
         OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(file_format.format(*fargs))

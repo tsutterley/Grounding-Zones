@@ -408,7 +408,7 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
 
     # check that there are any valid beams in the dataset
     if bool([k for k in IS2_atl06_dem.keys() if bool(re.match(r'gt\d[lr]',k))]):
-        # output HDF5 files with output masks
+        # output HDF5 files with output DEM
         fargs = ('ATL14',YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX)
         file_format = '{0}_{1}{2}{3}{4}{5}{6}_{7}{8}{9}_{10}_{11}{12}.h5'
         OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(file_format.format(*fargs))
