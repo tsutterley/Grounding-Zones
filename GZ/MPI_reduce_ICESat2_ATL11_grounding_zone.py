@@ -73,35 +73,27 @@ import grounding_zones as gz
 try:
     import fiona
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("fiona not available", ImportWarning)
 try:
     import h5py
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
     from mpi4py import MPI
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("mpi4py not available", ImportWarning)
 try:
     import pyproj
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("pyproj not available", ImportWarning)
 try:
     import shapely.geometry
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("shapely not available", ImportWarning)
 try:
     import timescale
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("timescale not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
 
 # buffered shapefile
 buffer_shapefile = {}

@@ -15,10 +15,7 @@ import pyTMD.utilities
 try:
     import icesat2_toolkit as is2tk
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
 
 # path to an ATL03 file from NSIDC
 ATL03 = ['https://n5eil01u.ecs.nsidc.org','ATLAS','ATL03.005','2018.10.13',

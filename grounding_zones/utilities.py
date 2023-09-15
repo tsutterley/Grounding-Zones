@@ -29,10 +29,7 @@ import subprocess
 try:
     from icesat2_toolkit.utilities import *
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
 
 # PURPOSE: get absolute path within a package from a relative path
 def get_data_path(relpath: list | str | pathlib.Path):

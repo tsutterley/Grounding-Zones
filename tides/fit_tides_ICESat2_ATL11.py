@@ -83,20 +83,15 @@ import grounding_zones as gz
 try:
     import h5py
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
     import icesat2_toolkit as is2tk
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("pyTMD not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
 
 # PURPOSE: Find indices of common reference points between two lists
 # Determines which across-track points correspond with the along-track
