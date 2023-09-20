@@ -67,7 +67,7 @@ except (AttributeError, ImportError, ModuleNotFoundError) as exc:
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
     # check that file exists if entering with read mode
-    filename = pathlib.path(filename).expanduser().absolute()
+    filename = pathlib.Path(filename).expanduser().absolute()
     if kwargs['mode'] in ('r','r+') and not filename.exists():
         raise FileNotFoundError(str(filename))
     # attempt to open HDF5 file
