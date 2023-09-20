@@ -47,10 +47,7 @@ try:
     import matplotlib.pyplot as plt
     from matplotlib import gridspec
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("matplotlib not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
 
 # PURPOSE: test extracting grounding zone properties with different datasets
 def model_grounding_zone(DATASET, n_years, dhdt, reorient, VERBOSE=False):

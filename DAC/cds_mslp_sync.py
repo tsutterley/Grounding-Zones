@@ -58,10 +58,7 @@ import warnings
 try:
     import cdsapi
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("cdsapi not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
 
 # PURPOSE: retrieve ERA5 surface data for a set of years from CDS server
 def cds_mslp_retrieve(base_dir, server, YEAR,

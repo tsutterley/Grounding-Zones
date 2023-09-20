@@ -54,25 +54,20 @@ import grounding_zones as gz
 try:
     import h5py
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
     import icesat2_toolkit as is2tk
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
     import pyproj
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("pyproj not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
 
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
     # check that file exists if entering with read mode
-    filename = pathlib.path(filename).expanduser().absolute()
+    filename = pathlib.Path(filename).expanduser().absolute()
     if kwargs['mode'] in ('r','r+') and not filename.exists():
         raise FileNotFoundError(str(filename))
     # attempt to open HDF5 file

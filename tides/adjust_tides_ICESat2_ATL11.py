@@ -52,25 +52,19 @@ import grounding_zones as gz
 try:
     import h5py
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("h5py not available", ImportWarning)
 try:
     import icesat2_toolkit as is2tk
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
     import pyproj
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("pyproj not available", ImportWarning)
 try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("pyTMD not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
 
 def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     OUTPUT_DIRECTORY=None,

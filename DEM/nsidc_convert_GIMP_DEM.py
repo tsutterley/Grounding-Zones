@@ -74,10 +74,7 @@ import grounding_zones as gz
 try:
     import osgeo.gdal, osgeo.osr, osgeo.ogr
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("GDAL not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
 
 # PURPOSE: read GIMP image mosaic and output as gzipped tar file
 def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):

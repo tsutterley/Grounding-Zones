@@ -53,15 +53,11 @@ import posixpath
 try:
     import paramiko
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("paramiko not available", ImportWarning)
 try:
     import scp
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.filterwarnings("module")
     warnings.warn("scp not available", ImportWarning)
-# ignore warnings
-warnings.filterwarnings("ignore")
 
 # PURPOSE: create argument parser
 def arguments():
