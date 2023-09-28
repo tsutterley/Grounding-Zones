@@ -603,7 +603,7 @@ def arguments():
         help='Output data directory')
     # full path to ATL14 digital elevation file
     parser.add_argument('--dem-model','-m',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL14 DEM file to run')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
