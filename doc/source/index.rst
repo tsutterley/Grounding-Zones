@@ -18,6 +18,7 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     :caption: API Reference
 
     api_reference/io/icebridge.rst
+    api_reference/crs.rst
     api_reference/mosaic.rst
     api_reference/utilities.rst
 
