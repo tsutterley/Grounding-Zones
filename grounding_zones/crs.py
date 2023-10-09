@@ -190,7 +190,7 @@ def wgs84_itrf2014_to_wgs84_itrf2020():
     return pyproj.Transformer.from_pipeline(pipeline)
 
 # PURPOSE: return WGS84 transform for a given ITRF
-def get_transform(ITRF):
+def get_itrf_transform(ITRF):
     """
     Get a transform for converting a given ITRF to ITRF2020
 

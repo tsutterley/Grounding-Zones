@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_triangulate_elevation.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (10/2023)
 
 Calculates interpolated elevations by triangulated irregular
     network meshing (TINs) to compare with an input file
@@ -44,6 +44,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 10/2023: include ITRF transformations for the altimetry data
     Updated 08/2023: use time functions from timescale.time
     Updated 05/2023: using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
@@ -306,7 +307,7 @@ def main():
             error=np.zeros((n_2)), lon=np.zeros((n_2)), lat=np.zeros((n_2)))
         # counter variable for filling arrays
         c = 0
-        # read data from input_files[1:] and combine into single array
+        # read data from input files and combine into single array
         for fi,s in zip(input_files[1:],input_subsetter[1:]):
             if (OIB2 == 'ATM') and (n_2 > 0):
                 # load IceBridge ATM data from fi
@@ -327,8 +328,13 @@ def main():
         if (HEM != HEM2):
             raise RuntimeError(f'Hemisphere Mismatch ({HEM} {HEM2})')
 
+        # convert the ITRFs of the OIB datasets to a common realization
+        ITRF1 = get_ITRF(OIB1, YY1, MM1, HEM)
+        ITRF2 = get_ITRF(OIB2, YY2, MM2, HEM)
+        dinput1 = convert_ITRF(dinput1, ITRF1)
+        dinput2 = convert_ITRF(dinput2, ITRF2)
         # pyproj transformer for converting lat/lon to polar stereographic
-        EPSG = dict(N=3413,S=3031)
+        EPSG = dict(N=3413, S=3031)
         crs1 = pyproj.CRS.from_epsg(4326)
         crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
         transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
@@ -448,16 +454,16 @@ def main():
             combined['lon'] = dinput1['lon'].copy()
             combined['lat'] = dinput1['lat'].copy()
             # output region flags: GR for Greenland and AN for Antarctica
-            hem_flag = {'N':'GR','S':'AN'}
+            region = dict(N='GR', S='AN')[HEM]
             # output HDF5 file with triangulated ATM/LVIS data
             # use starting second to distinguish between files for the day
             JJ1 = np.min(dinput1['time']) % 86400
             # rg_NASA_TRIANGULATED_WGS84_fl1yyyymmddjjjjj-fl2yyyymmdd.H5
-            # where rg is the hemisphere flag (GR or AN) for the region
+            # where rg is the region flag (GR or AN)
             # fl1 and fl2 are the data flags (ATM, LVIS)
             # yymmddjjjjj is the year, month, day and second of input file
             # yymmdd is the year, month and day of the triangulated files
-            FILE = DIRECTORY.joinpath(file_format.format(hem_flag[HEM],
+            FILE = DIRECTORY.joinpath(file_format.format(region,
                 'TRIANGULATED',OIB1,YY1,MM1,DD1,JJ1,OIB2,YY2,MM2,DD2))
             HDF5_triangulated_data(combined, MISSION=M2, INPUT=input_files,
                 FILENAME=FILE, FILL_VALUE=FILL_VALUE, CLOBBER=True)
@@ -465,6 +471,65 @@ def main():
             logging.info(str(FILE))
             # change the permissions level to MODE
             FILE.chmod(args.mode)
+
+# PURPOSE: get the ITRF realization for an OIB dataset
+def get_ITRF(OIB, YY, MM, HEM):
+    if OIB in ('ATM','ATM1b'):
+        # get the ITRF of the ATM data
+        ITRF_table = read_ATM_ITRF_file()
+        region = dict(N='GR', S='AN')[HEM]
+        if (region == 'GR') and (int(MM) < 7):
+            season = 'SP'
+        else:
+            season = 'FA'
+        # get the row of data from the table
+        row, = np.flatnonzero((ITRF_table['year'] == YY) &
+            (ITRF_table['region'] == region) &
+            (ITRF_table['season'] == season))
+        # find the ITRF for the ATM data
+        ITRF = ITRF_table['ITRF'][row]
+    elif OIB in ('LVIS','LVGH') and (int(YY) <= 2016):
+        ITRF = 'ITRF2000'
+    elif OIB in ('LVIS','LVGH') and (int(YY) >= 2017):
+        ITRF = 'ITRF2008'
+    # return the reference frame for the OIB dataset
+    return ITRF
+
+# PURPOSE: read csv file with the ITRF convention for ATM data
+def read_ATM_ITRF_file(header=True, delimiter=','):
+    # read ITRF file
+    ITRF_file = gz.utilities.get_data_path(['data','ATM1B-ITRF.csv'])
+    with ITRF_file.open(mode='r', encoding='utf-8') as f:
+        file_contents = f.read().splitlines()
+    # get header text and row to start reading data
+    if header:
+        header_text = file_contents[0].split(delimiter)
+        start = 1
+    else:
+        ncols = len(file_contents[0].split(delimiter))
+        header_text = [f'col{i:d}' for i in range(ncols)]
+        start = 0
+    # allocate dictionary for ITRF data
+    data = {col:[] for col in header_text}
+    for i,row in enumerate(file_contents[start:]):
+        row = row.split(delimiter)
+        for j,col in enumerate(header_text):
+            data[col].append(row[j])
+    # convert data to numpy arrays
+    for col in header_text:
+        data[col] = np.asarray(data[col])
+    # return the parsed data
+    return data
+
+# PURPOSE: convert the input data to the ITRF reference frame
+def convert_ITRF(data, ITRF):
+    # get the transform for converting to the latest ITRF
+    transform = gz.crs.get_itrf_transform(ITRF)
+    # transform the data to a common ITRF
+    lon,lat,data = transform.transform(data['lon'], data['lat'], data['data'])
+    data.update(lon=lon, lat=lat, data=data)
+    # return the updated data dictionary
+    return data
 
 # PURPOSE: triangulate elevation points to xpt and ypt
 def triangulate_elevation(X, Y, H, T, xpt, ypt, DISTANCE, RMS=None, ANGLE=120.):

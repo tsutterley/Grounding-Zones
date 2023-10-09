@@ -37,6 +37,6 @@ General Methods
 
 .. autofunction:: grounding_zones.crs.wgs84_itrf2014_to_wgs84_itrf2020
 
-.. autofunction:: grounding_zones.crs.get_transform
+.. autofunction:: grounding_zones.crs.get_itrf_transform
 
 .. autofunction:: grounding_zones.crs.get_direction
