@@ -183,7 +183,7 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     # instrument (PRE-OIB ATM or LVIS, OIB ATM or LVIS)
     if OIB in ('ATM','ATM1b'):
         M1,YYMMDD1,HHMMSS1,AX1,SF1 = re.findall(regex[OIB], input_file.name).pop()
-        # early date strings omitted century and millenia (e.g. 93 for 1993)
+        # early date strings omitted century and millennia (e.g. 93 for 1993)
         if (len(YYMMDD1) == 6):
             year_two_digit,MM1,DD1 = YYMMDD1[:2],YYMMDD1[2:4],YYMMDD1[4:]
             year_two_digit = float(year_two_digit)

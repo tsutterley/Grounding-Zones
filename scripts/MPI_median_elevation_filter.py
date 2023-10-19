@@ -406,7 +406,7 @@ def main():
             for fi,s in zip(input_files[1:], input_subsetter[1:]):
                 file_input,att3 = read_HDF5_triangle_data(fi,s)
                 n_3 = gz.io.icebridge.file_length(fi,s,HDF5='data')
-                # iterate through input keys of iterest
+                # iterate through input keys of interest
                 for key in ['data','lon','lat','time','error']:
                     dinput3[key][c:c+n_3] = file_input.get(key,None)
                 # original data file used in the triangulation
@@ -430,7 +430,7 @@ def main():
                 if (n_3 != n_4):
                     logging.critical(fi.name, FILENAME.name)
                     raise RuntimeError(f'Mismatch ({n_3:d} {n_4:d})')
-                # iterate through input keys of iterest
+                # iterate through input keys of interest
                 for key in ['data','lon','lat','time','error']:
                     dinput4[key][c:c+n_4] = file_input.get(key,None)
                 # add file lines to counter

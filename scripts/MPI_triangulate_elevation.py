@@ -62,7 +62,7 @@ UPDATE HISTORY:
     Updated 10/2018: updated GPS time calculation for calculating leap seconds
     Updated 06/2018: can read LVIS LDS version 2.0.2 (2017 campaign onward)
     Updated 02/2018: can reduce input file to run for a subset of points
-    Updated 01/2018: calculate attempts to create a Delaunay trianglulation
+    Updated 01/2018: calculate attempts to create a Delaunay triangulation
     Updated 10/2017: format of YYMMDD from ATM1b qfit filenames
     Updated 06/2017: use actual geospatial lat/lon min and max in attributes
         outputs of QFIT binary read program now includes headers
@@ -232,7 +232,7 @@ def main():
             n_1 = gz.io.icebridge.file_length(input_files[0],None,QFIT=True)
         else:
             n_1 = gz.io.icebridge.file_length(input_files[0],None)
-        # early date strings omitted century and millenia (e.g. 93 for 1993)
+        # early date strings omitted century and millennia (e.g. 93 for 1993)
         if (len(YYMMDD1) == 6):
             year_two_digit,MM1,DD1 = YYMMDD1[:2],YYMMDD1[2:4],YYMMDD1[4:]
             year_two_digit = float(year_two_digit)
@@ -267,7 +267,7 @@ def main():
         else:
             n_2 = np.sum([gz.io.icebridge.file_length(f,input_subsetter[i+1])
                 for i,f in enumerate(input_files[1:])])
-        # early date strings omitted century and millenia (e.g. 93 for 1993)
+        # early date strings omitted century and millennia (e.g. 93 for 1993)
         if (len(YYMMDD2) == 6):
             year_two_digit,MM2,DD2 = YYMMDD2[:2],YYMMDD2[2:4],YYMMDD2[4:]
             year_two_digit = float(year_two_digit)
@@ -318,7 +318,7 @@ def main():
             elif OIB2 in ('LVIS','LVGH') and (n_2 > 0):
                 # load IceBridge LVIS data from fi
                 file_input,file_lines,HEM2 = gz.io.icebridge.read_LVIS_HDF5_file(fi,s)
-            # iterate through input keys of iterest
+            # iterate through input keys of interest
             for key in ['data','lon','lat','time','error']:
                 dinput2[key][c:c+file_lines] = file_input.get(key,None)
             # add file lines to counter

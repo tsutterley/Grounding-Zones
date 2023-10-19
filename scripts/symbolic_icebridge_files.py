@@ -157,7 +157,7 @@ def parse_ATM_qfit_file(input_file):
     rx = re.compile(regex_pattern, re.VERBOSE)
     # extract mission and other parameters from filename
     MISSION,YYMMDD,HHMMSS,AUX,SFX = rx.findall(input_file).pop()
-    # early date strings omitted century and millenia (e.g. 93 for 1993)
+    # early date strings omitted century and millennia (e.g. 93 for 1993)
     if (len(YYMMDD) == 6):
         yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
         year = (yr2d + 1900.0) if (yr2d >= 90) else (yr2d + 2000.0)
@@ -174,7 +174,7 @@ def parse_ATM_icessn_file(input_file):
     rx = re.compile(regex_pattern, re.VERBOSE)
     # extract mission and other parameters from filename
     MISSION,YYMMDD,HHMMSS,AUX,SFX = rx.findall(input_file).pop()
-    # early date strings omitted century and millenia (e.g. 93 for 1993)
+    # early date strings omitted century and millennia (e.g. 93 for 1993)
     if (len(YYMMDD) == 6):
         yr2d,month,day = np.array([YYMMDD[:2],YYMMDD[2:4],YYMMDD[4:]],dtype='i')
         year = (yr2d + 1900.0) if (yr2d >= 90) else (yr2d + 2000.0)

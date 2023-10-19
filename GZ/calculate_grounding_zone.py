@@ -287,7 +287,7 @@ def physical_elastic_model(XI,YI,GZ=[0,0,0],METHOD='trf',ORIENTATION=False,
     popt,pcov = scipy.optimize.curve_fit(elasticmodel, XI, YI,
         p0=p0, bounds=bounds, method=METHOD)
     MODEL = elasticmodel(XI, *popt)
-    # elasticmodel function outputs and 1 standard devation uncertainties
+    # elasticmodel function outputs and 1 standard deviation uncertainties
     GZ = np.zeros((2))
     A = np.zeros((2))
     E = np.zeros((2))
