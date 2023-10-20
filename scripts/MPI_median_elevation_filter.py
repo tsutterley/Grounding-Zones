@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_median_elevation_filter.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (10/2023)
 
 Filters elevation change rates from triangulated Operation IceBridge data
     using an interquartile range algorithm described by Pritchard (2009)
@@ -50,6 +50,7 @@ REFERENCE:
     pp. 451-467 (2017).  https://doi.org/10.5194/tc-11-451-2017
 
 UPDATE HISTORY:
+    Updated 10/2023: include ITRF transformations for the altimetry data
     Updated 08/2023: use time functions from timescale.time
     Updated 05/2023: using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
@@ -195,6 +196,44 @@ def read_HDF5_triangle_data(input_file, input_subsetter):
     # return data and attributes
     return HDF5_data, HDF5_attributes
 
+# PURPOSE: get the ITRF realization for an OIB dataset
+def get_ITRF(OIB, YY, MM, HEM):
+    if OIB in ('ATM','ATM1b'):
+        # get the ITRF of the ATM data
+        ITRF_table = gz.io.icebridge.read_ATM_ITRF_file()
+        region = dict(N='GR', S='AN')[HEM]
+        if (region == 'GR') and (int(MM) < 7):
+            season = 'SP'
+        else:
+            season = 'FA'
+        # get the row of data from the table
+        row, = np.flatnonzero((ITRF_table['year'] == YY) &
+            (ITRF_table['region'] == region) &
+            (ITRF_table['season'] == season))
+        # find the ITRF for the ATM data
+        ITRF = ITRF_table['ITRF'][row]
+    elif OIB in ('LVIS','LVGH') and (int(YY) <= 2016):
+        ITRF = 'ITRF2000'
+    elif OIB in ('LVIS','LVGH') and (int(YY) >= 2017):
+        ITRF = 'ITRF2008'
+    # return the reference frame for the OIB dataset
+    return ITRF
+
+# PURPOSE: convert the input data to the ITRF reference frame
+def convert_ITRF(data, ITRF):
+    # get the transform for converting to the latest ITRF
+    transform = gz.crs.get_itrf_transform(ITRF)
+    # convert time to decimal years
+    ts = timescale.time.Timescale().from_deltatime(data['time'],
+        epoch=timescale.time._j2000_epoch, standard='UTC')
+    # transform the data to a common ITRF
+    lon, lat, data, tdec = transform.transform(
+        data['lon'], data['lat'], data['data'], ts.year
+    )
+    data.update(lon=lon, lat=lat, data=data)
+    # return the updated data dictionary
+    return data
+
 # PURPOSE: check if dh/dt is valid by checking the interquartile range from
 # Pritchard (2009) and the robust dispersion estimator (RDE) from Smith (2017)
 def filter_dhdt(xpt, ypt, hpt, X, Y, H, COUNT=10, DISTANCE=25e3):
@@ -269,15 +308,14 @@ def main():
 
     # compile regular expression operator for finding files
     # and extracting region, instrument and date information
-    f1 = r'TRIANGULATED|LAGRANGIAN|OVERLAPPING_FOOTPRINTS|LAGRANGIAN_FOOTPRINTS'
-    p1 = r'(AN|GR)_NASA_({0})_WGS84_(.*?)(\d+)-(.*?)(\d+)\.H5$'
-    rx1 = re.compile(p1.format(f1), re.VERBOSE)
+    rx = re.compile(r'(AN|GR)_NASA_(.*?)_WGS84_(.*?)'
+        r'(\d{4})(\d{2})(\d{2})(\d+)-(.*?)(\d+)\.H5$', re.VERBOSE)
     # REG1: hemisphere flag (GR or AN) for the region
     # TYPE1: Triangulated data or Lagrangian data
     # OIB1 and OIB2: data flags (ATM, LVIS)
-    # YMDS1: acquisition year, month, day and second
-    # YMD2: triangulated year, month and day
-    REG1,TYPE1,OIB1,YMDS1,OIB2,YMD2 = rx1.findall(input_files[0]).pop()
+    # YY1, MM1, DD1, JJ1: acquisition year, month, day and second
+    # YMD2: interpolated year, month and day
+    REG1,TYPE1,OIB1,YY1,MM1,DD1,JJ1,OIB2,YMD2 = rx.findall(input_files[0]).pop()
     HEM = set_hemisphere(REG1)
     # get the dimensions of the input HDF5 file (sum auxiliary files)
     n_1 = gz.io.icebridge.file_length(input_files[0], None, HDF5='data')
@@ -287,7 +325,7 @@ def main():
     # full path for data directory
     DIRECTORY = input_files[0].parent
     # output mask format for each type
-    file_format = '{0}_NASA_{1}_MASK_{2}{3}-{4}{5}.H5'
+    file_format = '{0}_NASA_{1}_MASK_{2}{3}{4}{5}{6}-{7}{8}.H5'
 
     # lists with input files
     original_files = []
@@ -323,13 +361,13 @@ def main():
         # read the original data file
         if (OIB1 == 'ATM'):
             # load IceBridge ATM data
-            dinput2,file_lines = gz.io.icebridge.read_ATM_icessn_file(FILENAME, None)
+            dinput2,file_lines,_ = gz.io.icebridge.read_ATM_icessn_file(FILENAME, None)
         elif (OIB1 == 'ATM1b'):
             # load IceBridge Level-1b ATM data
-            dinput2,file_lines = gz.io.icebridge.read_ATM_qfit_file(FILENAME, None)
+            dinput2,file_lines,_ = gz.io.icebridge.read_ATM_qfit_file(FILENAME, None)
         elif OIB1 in ('LVIS','LVGH'):
             # load IceBridge LVIS data
-            dinput2,file_lines = gz.io.icebridge.read_LVIS_HDF5_file(FILENAME, None)
+            dinput2,file_lines,_ = gz.io.icebridge.read_LVIS_HDF5_file(FILENAME, None)
         # check that data sizes match
         if (file_lines != n_1):
             logging.critical(input_files[0].name, FILENAME.name)
@@ -347,7 +385,7 @@ def main():
             for fi,s in zip(input_files[1:], input_subsetter[1:]):
                 file_input,att3 = read_HDF5_triangle_data(fi,s)
                 n_3 = gz.io.icebridge.file_length(fi,s,HDF5='data')
-                # iterate through input keys of iterest
+                # iterate through input keys of interest
                 for key in ['data','lon','lat','time','error']:
                     dinput3[key][c:c+n_3] = file_input.get(key,None)
                 # original data file used in the triangulation
@@ -360,18 +398,18 @@ def main():
                 # read the original data file
                 if (OIB1 == 'ATM'):
                     # load IceBridge ATM data from FILENAME
-                    file_input,n_4 = gz.io.icebridge.read_ATM_icessn_file(FILENAME,s)
+                    file_input,n_4,_ = gz.io.icebridge.read_ATM_icessn_file(FILENAME,s)
                 elif (OIB1 == 'ATM1b'):
                     # load IceBridge Level-1b ATM data from FILENAME
-                    file_input,n_4 = gz.io.icebridge.read_ATM_qfit_file(FILENAME,s)
+                    file_input,n_4,_ = gz.io.icebridge.read_ATM_qfit_file(FILENAME,s)
                 elif OIB1 in ('LVIS','LVGH'):
                     # load IceBridge LVIS data from FILENAME
-                    file_input,n_4 = gz.io.icebridge.read_LVIS_HDF5_file(FILENAME,s)
+                    file_input,n_4,_ = gz.io.icebridge.read_LVIS_HDF5_file(FILENAME,s)
                 # check that data sizes match
                 if (n_3 != n_4):
                     logging.critical(fi.name, FILENAME.name)
                     raise RuntimeError(f'Mismatch ({n_3:d} {n_4:d})')
-                # iterate through input keys of iterest
+                # iterate through input keys of interest
                 for key in ['data','lon','lat','time','error']:
                     dinput4[key][c:c+n_4] = file_input.get(key,None)
                 # add file lines to counter
@@ -379,6 +417,10 @@ def main():
             # check that final data sizes match
             if (c != n_2):
                 raise RuntimeError(f'Total Mismatch ({c:d} {n_2:d})')
+
+            # convert the ITRF of the OIB datasets to a common realization
+            ITRF = get_ITRF(OIB1, YY1, MM1, HEM)
+            dinput3 = convert_ITRF(dinput3, ITRF)
 
             # convert from latitude/longitude into polar stereographic
             X1,Y1 = transformer.transform(dinput1['lon'], dinput1['lat'])
@@ -463,7 +505,7 @@ def main():
         # fl1 and fl2 are the data flags (ATM, LVIS)
         # yymmddjjjjj is the year, month, day and second of input file 1
         # yymmdd is the year, month and day of the triangulated files
-        fargs = (REG1, TYPE1, OIB1, YMDS1, OIB2, YMD2)
+        fargs = (REG1, TYPE1, OIB1, YY1, MM1, DD1, JJ1, OIB2, YMD2)
         FILE = DIRECTORY.joinpath(file_format.format(*fargs))
         median_masks = dict(IQR=associated_IQR, RDE=associated_RDE)
         HDF5_triangulated_mask(median_masks, DISTANCE=args.distance,

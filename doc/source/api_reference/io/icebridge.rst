@@ -13,6 +13,8 @@ General Methods
 
 .. autofunction:: grounding_zones.io.icebridge.file_length
 
+.. autofunction:: grounding_zones.io.icebridge.read_ATM_ITRF_file
+
 .. autofunction:: grounding_zones.io.icebridge.read_ATM_qfit_file
 
 .. autofunction:: grounding_zones.io.icebridge.read_ATM_icessn_file
