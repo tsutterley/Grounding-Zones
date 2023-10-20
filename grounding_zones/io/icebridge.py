@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 icebridge.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (10/2023)
 Read altimetry data files from NASA Operation IceBridge (OIB)
 
 PYTHON DEPENDENCIES:
@@ -16,6 +16,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 10/2023: add reader for ATM ITRF convention lookup table
     Updated 08/2023: use time functions from timescale.time
     Updated 07/2023: add function docstrings in numpydoc format
     Written 05/2023: moved icebridge data inputs to a separate module
@@ -27,6 +28,7 @@ import re
 import pathlib
 import warnings
 import numpy as np
+import grounding_zones as gz
 
 # attempt imports
 try:
@@ -82,6 +84,32 @@ def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
         file_lines = len(i)
     # return the number of lines
     return file_lines
+
+# PURPOSE: read csv file with the ITRF convention for ATM data
+def read_ATM_ITRF_file(header=True, delimiter=','):
+    # read ITRF file
+    ITRF_file = gz.utilities.get_data_path(['data','ATM1B-ITRF.csv'])
+    with ITRF_file.open(mode='r', encoding='utf-8') as f:
+        file_contents = f.read().splitlines()
+    # get header text and row to start reading data
+    if header:
+        header_text = file_contents[0].split(delimiter)
+        start = 1
+    else:
+        ncols = len(file_contents[0].split(delimiter))
+        header_text = [f'col{i:d}' for i in range(ncols)]
+        start = 0
+    # allocate dictionary for ITRF data
+    data = {col:[] for col in header_text}
+    for i,row in enumerate(file_contents[start:]):
+        row = row.split(delimiter)
+        for j,col in enumerate(header_text):
+            data[col].append(row[j])
+    # convert data to numpy arrays
+    for col in header_text:
+        data[col] = np.asarray(data[col])
+    # return the parsed data
+    return data
 
 ## PURPOSE: read the ATM Level-1b data file for variables of interest
 def read_ATM_qfit_file(input_file, input_subsetter):
