@@ -168,7 +168,7 @@ def interpolate_tide_adjustment(tile_file,
     # allocate for combined variables
     d = {}
     d['ref_pt'] = np.zeros((npts), dtype=np.int64)
-    d['rgt'] = np.zeros((npts), dtype=np.int8)
+    d['rgt'] = np.zeros((npts), dtype=np.int16)
     d['pair'] = np.zeros((npts), dtype=np.int8)
     d['longitude'] = np.zeros((npts), dtype=np.float64)
     d['latitude'] = np.zeros((npts), dtype=np.float64)
