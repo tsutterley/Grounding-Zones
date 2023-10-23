@@ -3,7 +3,7 @@ u"""
 raster.py
 Written by Tyler Sutterley (10/2023)
 
-Utilities for operating on raster data
+Utilities for reading and operating on raster data
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python

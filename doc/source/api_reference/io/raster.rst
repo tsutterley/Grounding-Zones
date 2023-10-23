@@ -2,7 +2,7 @@
 io.raster
 =========
 
-Utilities for operating on raster data
+Utilities for reading and operating on raster data
 
 `Source code`__
 
