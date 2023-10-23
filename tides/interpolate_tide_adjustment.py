@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interpolate_tide_adjustment.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (10/2023)
 Interpolates tidal adjustment scale factors to output grids
 
 COMMAND LINE OPTIONS:
@@ -25,6 +25,8 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
 
 UPDATE HISTORY:
+    Updated 10/2023: mask out invalid tide adjustment points before fit
+    Updated 08/2023: can set the output directory to be separate
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         single implicit import of grounding zone tools
@@ -172,8 +174,8 @@ def interpolate_tide_adjustment(tile_file,
     d['pair'] = np.zeros((npts), dtype=np.int8)
     d['longitude'] = np.zeros((npts), dtype=np.float64)
     d['latitude'] = np.zeros((npts), dtype=np.float64)
-    d['tide_adj'] = np.zeros((npts), dtype=np.float64)
-    d['tide_adj_sigma'] = np.zeros((npts), dtype=np.float64)
+    d['tide_adj'] = np.ma.zeros((npts), dtype=np.float64)
+    d['tide_adj_sigma'] = np.ma.zeros((npts), dtype=np.float64)
     d['mask'] = np.zeros((npts), dtype=bool)
     Reducer = dict(tide_adj=np.min, tide_adj_sigma=np.max)
     # indices for each pair track
@@ -229,12 +231,14 @@ def interpolate_tide_adjustment(tile_file,
                 for k in ['tide_adj','tide_adj_sigma']:
                     try:
                         temp = f2[ptx]['cycle_stats'][k][:].copy()
+                        fv = f2[ptx]['cycle_stats'][k].fillvalue
                     except Exception as exc:
                         pass
                     else:
                         # reduce matrix to indices
                         d[k][c:c+file_length] = reduce(temp[indices,:],
                             method=Reducer[k], axis=1)
+                        d[k].fill_value = fv
                 # try to extract subsetting variables
                 for k in ['mask']:
                     try:
@@ -251,6 +255,11 @@ def interpolate_tide_adjustment(tile_file,
             f3.close()
         # close the tile file
         f1.close()
+
+    # replace fill values
+    for k in ['tide_adj','tide_adj_sigma']:
+        d[k].mask = (d[k].data == d[k].fill_value)
+        d[k].data[d[k].mask] = d[k].fill_value
 
     # make a global reference point number
     # combining ref_pt, rgt and pair
@@ -322,17 +331,19 @@ def interpolate_tide_adjustment(tile_file,
                 ym = yi + SUBSET*jj/2
                 # clip unique points to coordinates
                 # buffer to improve determination at edges
+                # reduce to valid fit points
                 clipped = np.nonzero((d['x'] >= xm-0.1*SUBSET) &
                     (d['x'] <= xm+1.1*SUBSET) &
                     (d['y'] >= ym-0.1*SUBSET) &
-                    (d['y'] <= ym+1.1*SUBSET))
+                    (d['y'] <= ym+1.1*SUBSET) &
+                    np.logical_not(d['tide_adj'].mask))
                 # create clipped data
                 u = {}
                 for key,val in d.items():
                     u[key] = val[clipped]
                 # mask out grounded, rock and lake points
-                masked = np.nonzero(np.logical_not(u['mask']))
-                u['tide_adj'][masked] = np.nan
+                u['tide_adj'].mask |= np.logical_not(u['mask'])
+                tide_adj_scale = u['tide_adj'].filled(np.nan)
                 # output coordinates for grid subset
                 X = np.arange(xm, xm+SUBSET + dx, dx)
                 Y = np.arange(ym, ym+SUBSET + dy, dy)
@@ -363,20 +374,19 @@ def interpolate_tide_adjustment(tile_file,
                     interp[indy,indx] = 0.0
                     count[indy,indx] = 0.0
                 # check if adjustment exists or is uniform
-                if np.all(u['tide_adj'] == 1):
+                if np.all(tide_adj_scale == 1):
                     mosaic[iy,ix] += interp.copy()
                     weight[iy,ix] += count.copy()
                     continue
-                elif np.all(u['tide_adj'] == 0):
+                elif np.all(tide_adj_scale == 0):
                     weight[iy,ix] += count.copy()
                     continue
-                elif np.all(np.isnan(u['tide_adj'])):
+                elif np.all(np.isnan(tide_adj_scale)):
                     weight[iy,ix] += count.copy()
                     continue
-                elif np.any(np.isnan(u['tide_adj'])):
+                elif np.any(np.isnan(tide_adj_scale)):
                     # replace invalid points
-                    isnan, = np.nonzero(np.isnan(u['tide_adj']))
-                    u['tide_adj'][isnan] = 0.0
+                    tide_adj_scale = np.nan_to_num(tide_adj_scale, nan=0.0)
                 # interpolate sparse points to grid
                 if METHOD in ('spline',):
                     # interpolate with biharmonic splines in tension
