@@ -7,9 +7,13 @@ Interpolates tidal adjustment scale factors to output grids
 COMMAND LINE OPTIONS:
     --help: list the command line options
     -O X, --output-directory X: input/output data directory
+    -H X, --hemisphere X: Region of interest to run
     -W X, --width: Width of tile grid
     -s X, --subset: Width of interpolation subset
     -S X, --spacing X: Output grid spacing
+    -P X, --pad X: Tile pad for creating mosaics
+    -T X, --tide X: Tide model used in correction
+    -I X, --interpolate X: Interpolation method
     -t X, --tension X: Biharmonic spline tension
     -w X, --smooth X: Radial basis function smoothing weight
     -e X, --epsilon X: Radial basis function adjustable constant
@@ -32,7 +36,6 @@ UPDATE HISTORY:
         single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: use argparse descriptions within documentation
-        read mask files to not interpolate over grounded ice
     Updated 01/2022: added options for using radial basis functions
         wait if HDF5 tile file is unavailable for read or write
     Written 12/2021
@@ -96,12 +99,7 @@ def interpolate_tide_adjustment(tile_file,
     SMOOTH=0,
     EPSILON=0,
     POLYNOMIAL=0,
-    VERBOSE=False,
     MODE=0o775):
-
-    # create logger
-    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logging.basicConfig(level=loglevel)
 
     # input tile data file
     tile_file = pathlib.Path(tile_file).expanduser().absolute()
@@ -495,8 +493,8 @@ def arguments():
         help='Tile pad for creating mosaics')
     # tide model to use
     parser.add_argument('--tide','-T',
-        metavar='TIDE', type=str, default='CATS2022',
-        help='Tide model to use in correction')
+        metavar='TIDE', type=str, default='CATS2008-v2023',
+        help='Tide model used in correction')
     # interpolation method
     parser.add_argument('--interpolate','-I',
         type=str, default='radial', choices=('spline','radial'),
@@ -524,7 +522,7 @@ def arguments():
     # permissions mode of the directories and files (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
-        help='Local permissions mode of the output mosaic')
+        help='Local permissions mode of the output file')
     # return the parser
     return parser
 
@@ -533,6 +531,10 @@ def main():
     # Read the system arguments listed after the program
     parser = arguments()
     args,_ = parser.parse_known_args()
+
+    # create logger
+    loglevel = logging.INFO if args.verbose else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
 
     # run program for each file
     for FILE in args.infile:
@@ -549,7 +551,6 @@ def main():
             SMOOTH=args.smooth,
             EPSILON=args.epsilon,
             POLYNOMIAL=args.polynomial,
-            VERBOSE=args.verbose,
             MODE=args.mode)
 
 # run main program

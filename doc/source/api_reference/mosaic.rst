@@ -9,8 +9,8 @@ Utilities for creating spatial mosaics
 .. __: https://github.com/tsutterley/Grounding-Zones/blob/main/grounding_zones/mosaic.py
 
 
-General Methods
-===============
+General Attributes and Methods
+==============================
 
 .. autoclass:: grounding_zones.mosaic
    :members:
