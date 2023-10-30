@@ -126,6 +126,8 @@ def interpolate_tide_adjustment(tile_file,
     dx,dy = np.broadcast_to(np.atleast_1d(SPACING),(2,))
     nx = np.int64(W//dx) + 1
     ny = np.int64(W//dy) + 1
+    # minimum number of points to run interpolation for a tile
+    point_threshold = 3
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413, S=3031)[HEM]
@@ -388,6 +390,9 @@ def interpolate_tide_adjustment(tile_file,
                 elif np.any(np.isnan(tide_adj_scale)):
                     # replace invalid points
                     tide_adj_scale = np.nan_to_num(tide_adj_scale, nan=0.0)
+                elif (len(np.atleast_1d(tide_adj_scale)) <= point_threshold):
+                    weight[iy,ix] += count.copy()
+                    continue
                 # interpolate sparse points to grid
                 if METHOD in ('spline',):
                     # interpolate with biharmonic splines in tension
