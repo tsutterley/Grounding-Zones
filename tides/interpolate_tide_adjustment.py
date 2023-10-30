@@ -335,6 +335,9 @@ def interpolate_tide_adjustment(tile_file,
                     (d['y'] >= ym-0.1*SUBSET) &
                     (d['y'] <= ym+1.1*SUBSET) &
                     np.logical_not(d['tide_adj'].mask))
+                # skip iteration if there are no points
+                if not np.any(clipped):
+                    continue
                 # create clipped data
                 u = {}
                 for key,val in d.items():
