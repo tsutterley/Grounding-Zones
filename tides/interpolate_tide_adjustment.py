@@ -104,7 +104,6 @@ def interpolate_tide_adjustment(tile_file,
     # input tile data file
     tile_file = pathlib.Path(tile_file).expanduser().absolute()
     tile_file_format = 'E{0:0.0f}_N{1:0.0f}.h5'
-    # get center coordinates of tile file
     # regular expression pattern for tile files
     R1 = re.compile(r'E([-+]?\d+)_N([-+]?\d+)', re.VERBOSE)
     # regular expression pattern for ICESat-2 ATL11 files
@@ -118,7 +117,7 @@ def interpolate_tide_adjustment(tile_file,
     # extract tile centers from filename
     tile_centers = R1.findall(tile_file.name).pop()
     xc, yc = 1000.0*np.array(tile_centers, dtype=np.float64)
-    logging.info('Tile File: {0}'.format(str(tile_file)))
+    logging.info(f'Tile File: {str(tile_file)}')
 
     # grid dimensions
     xmin,xmax = xc + np.array([-0.5,0.5])*W
