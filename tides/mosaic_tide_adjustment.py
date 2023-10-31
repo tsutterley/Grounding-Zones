@@ -47,6 +47,7 @@ except (AttributeError, ImportError, ModuleNotFoundError) as exc:
 # filter warnings
 warnings.filterwarnings("ignore")
 
+# PURPOSE: mosaic interpolated tiles to a complete grid
 def mosaic_tide_adjustment(base_dir, output_file,
     HEM=None,
     RANGE=None,
@@ -68,14 +69,15 @@ def mosaic_tide_adjustment(base_dir, output_file,
     logging.info(f"Found {len(initial_file_list)} files")
 
     # valid range of tiles
-    xmin,xmax,ymin,ymax = np.array(RANGE)
+    xmin, xmax, ymin, ymax = np.array(RANGE)
     # reduce file list to those within the valid range
     valid_file_list = []
     for tile in initial_file_list:
         try:
-            xc,yc=[int(item)*1.e3 for item in R1.search(tile).groups()]
-        except Exception:
+            xc,yc = [int(item)*1e3 for item in R1.search(tile.name).groups()]
+        except Exception as exc:
             continue
+        # check that tile center is within range
         if ((xc >= xmin) and (xc <= xmax) & (yc >= ymin) and (yc <= ymax)):
             valid_file_list.append(tile)
     logging.info(f"Found {len(valid_file_list)} files within range")
@@ -98,6 +100,8 @@ def mosaic_tide_adjustment(base_dir, output_file,
     # grid dimensions
     ny, nx = mosaic.dimensions
     logging.info(f'Grid Dimensions {ny:d} {nx:d}')
+    # grid coordinates
+    gridx, gridy = np.meshgrid(mosaic.x, mosaic.y)
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413, S=3031)[HEM]
@@ -159,36 +163,38 @@ def mosaic_tide_adjustment(base_dir, output_file,
     # build the output mosaic
     for tile in sorted(valid_file_list):
         # read tile grid from HDF5
-        fileID = h5py.File(tile)
-        x = fileID['geophysical']['x'][:]
-        y = fileID['geophysical']['y'][:]
-        # get image coordinates of tile
-        iy, ix = mosaic.image_coordinates(x, y)
-        for key in ['tide_adjust_scale', 'weight']:
-            output[key][iy, ix] = fileID[key][:]
-        # close the input file
-        fileID.close()
+        with h5py.File(tile) as fileID:
+            x = fileID['geophysical']['x'][:]
+            y = fileID['geophysical']['y'][:]
+            # get image coordinates of tile
+            iy, ix = mosaic.image_coordinates(x, y)
+            for key in ['tide_adj_scale', 'weight']:
+                output[key][iy, ix] = fileID['geophysical'][key][:]
 
     # crop mosaic to bounds
     if np.any(CROP):
         # column and row indices
-        cols = np.flatnonzero((mosaic.x >= CROP[0]) & (mosaic.x <= CROP[1]))
-        rows = np.flatnonzero((mosaic.y >= CROP[2]) & (mosaic.y <= CROP[3]))
+        xind, = np.nonzero((mosaic.x >= CROP[0]) & (mosaic.x <= CROP[1]))
+        xslice = slice(xind[0], xind[-1], 1)
+        yind, = np.nonzero((mosaic.y >= CROP[2]) & (mosaic.y <= CROP[3]))
+        yslice = slice(yind[0], yind[-1], 1)
         # crop the output variables to range
-        output['x'] = np.copy(output['x'][cols])
-        output['y'] = np.copy(output['y'][rows])
-        for key in ['tide_adjust_scale', 'weight']:
-            output[key] = np.copy(output[key][rows, cols])
+        output['x'] = np.copy(output['x'][xslice])
+        output['y'] = np.copy(output['y'][yslice])
+        for key in ['tide_adj_scale', 'weight']:
+            output[key] = np.copy(output[key][yslice, xslice])
 
-    # read geotiff mask
+    # update mask for grounded ice values
     if MASK is not None:
-        MASK = pathlib.Path(MASK).expanduser().absolute()
+        # read mask from geotiff file
         # flip to be monotonically increasing in y dimension
-        mask = gz.io.raster().from_file(MASK, format='geotiff').flip()
+        MASK = pathlib.Path(MASK).expanduser().absolute()
+        raster = gz.io.raster().from_file(MASK, format='geotiff').flip()
         # warp to output grid and mask tide adjustment grid
-        mask = mask.warp(output['x'], output['y'], order=1)
-        ii,jj = np.nonzero(mask.data <= np.finfo(np.float32).eps)
-        output['tide_adjust_scale'][ii,jj] = 0.0
+        mask = raster.warp(gridx, gridy, order=1)
+        ii, jj = np.nonzero(mask.data <= np.finfo(np.float32).eps)
+        for key in ['tide_adj_scale', 'weight']:
+            output[key][ii,jj] = 0.0
 
     # open output HDF5 file
     fileID = h5py(output_file, mode='w')
