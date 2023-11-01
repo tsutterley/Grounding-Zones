@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 raster.py
-Written by Tyler Sutterley (10/2023)
+Written by Tyler Sutterley (11/2023)
 
 Utilities for reading and operating on raster data
 
@@ -22,9 +22,11 @@ PROGRAM DEPENDENCIES:
     spatial.py: utilities for reading and writing spatial data
 
 UPDATE HISTORY:
+    Updated 11/2023: cache interpolators for improving computational times
     Written 10/2023
 """
 import warnings
+import collections
 import numpy as np
 import scipy.interpolate
 # attempt imports
@@ -43,7 +45,8 @@ class raster:
     np.seterr(invalid='ignore')
     def __init__(self, **kwargs):
         # set default class attributes
-        self.attributes=dict()
+        self.attributes = dict()
+        self.interpolator = collections.OrderedDict()
 
     # PURPOSE: read a raster file
     def from_file(self, input_file, format=None, **kwargs):
@@ -104,33 +107,48 @@ class raster:
             operation for converting mask to boolean
         """
         temp = raster()
-        if (order == 0):
-            # interpolate with nearest-neighbors
-            xcoords = (len(self.x)-1)*(xout-self.x[0])/(self.x[-1]-self.x[0])
-            ycoords = (len(self.y)-1)*(yout-self.y[0])/(self.y[-1]-self.y[0])
-            xcoords = np.clip(xcoords,0,len(self.x)-1)
-            ycoords = np.clip(ycoords,0,len(self.y)-1)
-            XI = np.around(xcoords).astype(np.int32)
-            YI = np.around(ycoords).astype(np.int32)
-            temp.data = self.data[YI, XI]
-            if hasattr(self.data, 'mask'):
-                temp.mask = reducer(self.data.mask[YI, XI]).astype(bool)
-            elif hasattr(self, 'mask'):
-                temp.mask = reducer(self.mask[YI, XI]).astype(bool)
-        else:
-            # interpolate with bivariate spline approximations
-            s1 = scipy.interpolate.RectBivariateSpline(self.x, self.y,
-                self.data.T, kx=order, ky=order)
-            temp.data = s1.ev(xout, yout)
-            # try to interpolate the mask
-            if hasattr(self.data, 'mask'):
-                s2 = scipy.interpolate.RectBivariateSpline(self.x, self.y,
-                    self.data.mask.T, kx=order, ky=order)
-                temp.mask = reducer(s2.ev(xout, yout)).astype(bool)
-            elif hasattr(self, 'mask'):
-                s2 = scipy.interpolate.RectBivariateSpline(self.x, self.y,
-                    self.mask.T, kx=order, ky=order)
-                temp.mask = reducer(s2.ev(xout, yout)).astype(bool)
+        # for each field in the input data
+        for field in self.fields:
+            # extract data for field
+            d_in = getattr(self, field)
+            # interpolate values
+            if (order == 0):
+                # interpolate with nearest-neighbors
+                xcoord = (len(self.x)-1)*(xout-self.x[0])/(self.x[-1]-self.x[0])
+                ycoord = (len(self.y)-1)*(yout-self.y[0])/(self.y[-1]-self.y[0])
+                xcoord = np.clip(xcoord, 0, len(self.x)-1)
+                ycoord = np.clip(ycoord, 0, len(self.y)-1)
+                XI = np.around(xcoord).astype(np.int32)
+                YI = np.around(ycoord).astype(np.int32)
+                # interpolate data and mask for field
+                d_out = d_in[YI, XI]
+                if np.is_masked(d_in):
+                    mask = reducer(d_in.mask[YI, XI])
+                    d_out = np.ma.array(d_out, mask=mask.astype(bool))
+                # set interpolated data for field
+                setattr(temp, field, d_out)
+            else:
+                # interpolate with bivariate spline approximations
+                # cache interpolator for faster interpolation
+                if field not in self.interpolator:
+                    self.interpolator[field] = \
+                        scipy.interpolate.RectBivariateSpline(
+                            self.x, self.y, d_in.T,
+                            kx=order, ky=order
+                        )
+                    if np.is_masked(d_in):
+                        self.interpolator[field].mask = \
+                            scipy.interpolate.RectBivariateSpline(
+                                self.x, self.y, d_in.mask.T,
+                                kx=order, ky=order
+                            )
+                # interpolate data and mask for field
+                d_out = self.interpolator[field].ev(xout, yout)
+                if hasattr(self, 'mask'):
+                    mask = reducer(self.interpolator[field].mask.ev(xout, yout))
+                    d_out = np.ma.array(d_out, mask=mask.astype(bool))
+                # set interpolated data for field
+                setattr(temp, field, d_out)
         # return the interpolated data on the output grid
         return temp
 
@@ -181,7 +199,7 @@ class raster:
         temp = raster()
         # copy attributes or update attributes dictionary
         if isinstance(self.attributes, list):
-            setattr(temp,'attributes', self.attributes)
+            setattr(temp, 'attributes', self.attributes)
         elif isinstance(self.attributes, dict):
             temp.attributes.update(self.attributes)
         # get dimensions and field names

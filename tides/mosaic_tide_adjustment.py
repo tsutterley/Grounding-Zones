@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 mosaic_tide_adjustment.py
-Written by Tyler Sutterley (10/2023)
+Written by Tyler Sutterley (11/2023)
 
 Creates a mosaic of interpolated tidal adjustment scale factors
 
@@ -18,6 +18,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the output mosaic
 
 UPDATE HISTORY:
+    Updated 11/2023: mask individual tiles before building mosaic
     Updated 10/2023: use grounding zone mosaic and raster utilities
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -100,8 +101,13 @@ def mosaic_tide_adjustment(base_dir, output_file,
     # grid dimensions
     ny, nx = mosaic.dimensions
     logging.info(f'Grid Dimensions {ny:d} {nx:d}')
-    # grid coordinates
-    gridx, gridy = np.meshgrid(mosaic.x, mosaic.y)
+
+    # update mask for grounded ice values
+    if MASK is not None:
+        # read mask from geotiff file
+        # flip to be monotonically increasing in y dimension
+        MASK = pathlib.Path(MASK).expanduser().absolute()
+        raster = gz.io.raster().from_file(MASK, format='geotiff').flip()
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413, S=3031)[HEM]
@@ -163,13 +169,25 @@ def mosaic_tide_adjustment(base_dir, output_file,
     # build the output mosaic
     for tile in sorted(valid_file_list):
         # read tile grid from HDF5
-        with h5py.File(tile) as fileID:
-            x = fileID['geophysical']['x'][:]
-            y = fileID['geophysical']['y'][:]
-            # get image coordinates of tile
-            iy, ix = mosaic.image_coordinates(x, y)
-            for key in ['tide_adj_scale', 'weight']:
-                output[key][iy, ix] = fileID['geophysical'][key][:]
+        fileID = h5py.File(tile):
+        x = fileID['geophysical']['x'][:]
+        y = fileID['geophysical']['y'][:]
+        tide_adj_scale = fileID['geophysical']['tide_adj_scale'][:]
+        weight = fileID['geophysical']['weight'][:]
+        # mask tide adjustment scale factor
+        if MASK is not None:
+            # warp to output grid and mask tide adjustment grid
+            gridx, gridy = np.meshgrid(x, y)
+            mask = raster.warp(gridx, gridy, order=1)
+            ii, jj = np.nonzero(mask.data <= np.finfo(np.float32).eps)
+            tide_adj_scale[ii, jj] = 0.0
+        # get image coordinates of tile
+        iy, ix = mosaic.image_coordinates(x, y)
+        # add tile to output mosaic
+        output['tide_adj_scale'][iy, ix] = tide_adj_scale[:]
+        output['weight'][iy, ix] = weight[:]
+        # close the input HDF5 file
+        fileID.close()
 
     # crop mosaic to bounds
     if np.any(CROP):
@@ -184,20 +202,8 @@ def mosaic_tide_adjustment(base_dir, output_file,
         for key in ['tide_adj_scale', 'weight']:
             output[key] = np.copy(output[key][yslice, xslice])
 
-    # update mask for grounded ice values
-    if MASK is not None:
-        # read mask from geotiff file
-        # flip to be monotonically increasing in y dimension
-        MASK = pathlib.Path(MASK).expanduser().absolute()
-        raster = gz.io.raster().from_file(MASK, format='geotiff').flip()
-        # warp to output grid and mask tide adjustment grid
-        mask = raster.warp(gridx, gridy, order=1)
-        ii, jj = np.nonzero(mask.data <= np.finfo(np.float32).eps)
-        for key in ['tide_adj_scale', 'weight']:
-            output[key][ii,jj] = 0.0
-
     # open output HDF5 file
-    fileID = h5py(output_file, mode='w')
+    fileID = h5py.File(output_file, mode='w')
     # for each output variable
     h5 = {}
     for key,val in output.items():
