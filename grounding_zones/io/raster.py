@@ -122,7 +122,7 @@ class raster:
                 YI = np.around(ycoord).astype(np.int32)
                 # interpolate data and mask for field
                 d_out = d_in[YI, XI]
-                if np.is_masked(d_in):
+                if np.ma.is_masked(d_in):
                     mask = reducer(d_in.mask[YI, XI])
                     d_out = np.ma.array(d_out, mask=mask.astype(bool))
                 # set interpolated data for field
@@ -136,7 +136,7 @@ class raster:
                             self.x, self.y, d_in.T,
                             kx=order, ky=order
                         )
-                    if np.is_masked(d_in):
+                    if np.ma.is_masked(d_in):
                         self.interpolator[field].mask = \
                             scipy.interpolate.RectBivariateSpline(
                                 self.x, self.y, d_in.mask.T,
