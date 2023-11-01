@@ -177,8 +177,7 @@ def mosaic_tide_adjustment(base_dir, output_file,
         # mask tide adjustment scale factor
         if MASK is not None:
             # warp to output grid and mask tide adjustment grid
-            gridx, gridy = np.meshgrid(x, y)
-            mask = raster.warp(gridx, gridy, order=1)
+            mask = raster.warp(x, y, order=1)
             ii, jj = np.nonzero(mask.data <= np.finfo(np.float32).eps)
             tide_adj_scale[ii, jj] = 0.0
         # get image coordinates of tile

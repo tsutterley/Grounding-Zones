@@ -45,6 +45,8 @@ class raster:
     np.seterr(invalid='ignore')
     def __init__(self, **kwargs):
         # set default class attributes
+        self.dims = []
+        self.fields = []
         self.attributes = dict()
         self.interpolator = collections.OrderedDict()
 
@@ -67,8 +69,6 @@ class raster:
             format=format,
             **kwargs
         )
-        # separate dimensions from fields
-        self.dims, self.fields = ([], [])
         # convert from dictionary to class attributes
         for key,val in dinput.items():
             if key in ('x','y','time'):
@@ -82,7 +82,79 @@ class raster:
         # return the raster object
         return self
 
-    def warp(self, xout, yout, order=0, reducer=np.ceil):
+    def interp(self, x, y, order=0, reducer=np.ceil):
+        """
+        Sample raster data at points
+
+        Parameters
+        ----------
+        datain: np.ndarray
+            input data grid to be interpolated
+        x: np.ndarray
+            output x-coordinates
+        y: np.ndarray
+            output y-coordinates
+        order: int, default 0
+            interpolation order
+
+                - ``0``: nearest-neighbor interpolation
+                - ``k``: bivariate spline interpolation of degree k
+        reducer: obj, default np.ceil
+            operation for converting mask to boolean
+        """
+        # output dictionary with interpolated data
+        temp = collections.OrderedDict()
+        # copy dimensions
+        temp.x = np.copy(x)
+        temp.y = np.copy(y)
+        # copy field names
+        temp.fields = self.fields
+        # for each field in the input data
+        for field in self.fields:
+            # extract data for field
+            d_in = getattr(self, field)
+            # interpolate values
+            if (order == 0):
+                # interpolate with nearest-neighbors
+                xcoord = (len(self.x)-1)*(x-self.x[0])/(self.x[-1]-self.x[0])
+                ycoord = (len(self.y)-1)*(y-self.y[0])/(self.y[-1]-self.y[0])
+                xcoord = np.clip(xcoord, 0, len(self.x)-1)
+                ycoord = np.clip(ycoord, 0, len(self.y)-1)
+                XI = np.around(xcoord).astype(np.int32)
+                YI = np.around(ycoord).astype(np.int32)
+                # interpolate data and mask for field
+                d_out = d_in[YI, XI]
+                if np.ma.is_masked(d_in):
+                    mask = reducer(d_in.mask[YI, XI])
+                    d_out = np.ma.array(d_out, mask=mask.astype(bool))
+                # set interpolated data for field
+                temp[field] = d_out
+            else:
+                # interpolate with bivariate spline approximations
+                # cache interpolator for faster interpolation
+                if field not in self.interpolator:
+                    self.interpolator[field] = \
+                        scipy.interpolate.RectBivariateSpline(
+                            self.x, self.y, d_in.T,
+                            kx=order, ky=order
+                        )
+                    if np.ma.is_masked(d_in):
+                        self.interpolator[field].mask = \
+                            scipy.interpolate.RectBivariateSpline(
+                                self.x, self.y, d_in.mask.T,
+                                kx=order, ky=order
+                            )
+                # interpolate data and mask for field
+                d_out = self.interpolator[field].ev(x, y)
+                if np.ma.is_masked(d_in):
+                    mask = reducer(self.interpolator[field].mask.ev(x, y))
+                    d_out = np.ma.array(d_out, mask=mask.astype(bool))
+                # set interpolated data for field
+                temp[field] = d_out
+        # return the interpolated data on the output grid
+        return temp
+
+    def warp(self, x, y, order=0, reducer=np.ceil):
         """
         Interpolate raster data to a new grid
 
@@ -90,13 +162,9 @@ class raster:
         ----------
         datain: np.ndarray
             input data grid to be interpolated
-        xin: np.ndarray
-            input x-coordinate array (monotonically increasing)
-        yin: np.ndarray
-            input y-coordinate array (monotonically increasing)
-        xout: np.ndarray
+        x: np.ndarray
             output x-coordinate array
-        yout: np.ndarray
+        y: np.ndarray
             output y-coordinate array
         order: int, default 0
             interpolation order
@@ -107,6 +175,10 @@ class raster:
             operation for converting mask to boolean
         """
         temp = raster()
+        # copy field names
+        temp.fields = self.fields
+        # create meshgrid of output coordinates
+        xout, yout = np.meshgrid(x, y)
         # for each field in the input data
         for field in self.fields:
             # extract data for field
