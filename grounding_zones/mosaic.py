@@ -20,6 +20,7 @@ class mosaic:
     """
     def __init__(self, **kwargs):
         self.extent = [np.inf,-np.inf,np.inf,-np.inf]
+        self.spacing = [None,None]
         self.fill_value = np.nan
 
     def update_spacing(self, x, y):
