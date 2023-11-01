@@ -169,7 +169,7 @@ def mosaic_tide_adjustment(base_dir, output_file,
     # build the output mosaic
     for tile in sorted(valid_file_list):
         # read tile grid from HDF5
-        fileID = h5py.File(tile):
+        fileID = h5py.File(tile)
         x = fileID['geophysical']['x'][:]
         y = fileID['geophysical']['y'][:]
         tide_adj_scale = fileID['geophysical']['tide_adj_scale'][:]
