@@ -144,7 +144,7 @@ class raster:
                             )
                 # interpolate data and mask for field
                 d_out = self.interpolator[field].ev(xout, yout)
-                if hasattr(self, 'mask'):
+                if np.ma.is_masked(d_in):
                     mask = reducer(self.interpolator[field].mask.ev(xout, yout))
                     d_out = np.ma.array(d_out, mask=mask.astype(bool))
                 # set interpolated data for field
