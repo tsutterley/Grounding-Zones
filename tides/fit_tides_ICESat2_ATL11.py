@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (11/2023)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 11/2023: filter absolute heights in reference to geoid
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: verify crossover timescales are at least 1d
         initially set tide adjustment data and error masks to True
@@ -148,8 +149,8 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
     # file format for associated auxiliary files
     file_format = '{0}_{1}_{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
 
-    # height threshold (filter points below 0m elevation)
-    THRESHOLD = 0.0
+    # height threshold (filter points below threshold geoid heights)
+    THRESHOLD = 10.0
     # maximum height sigmas allowed in tidal adjustment fit
     sigma_tolerance = 0.5
     output_tolerance = 0.5
@@ -367,7 +368,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             # segment_mask &= np.logical_not(IB['AT'].mask[s,:])
             segment_mask &= np.logical_not(tide_ocean['AT'].mask[s,:])
             segment_mask &= quality_summary['AT'][s,:]
-            segment_mask &= (h_corr['AT'].data[s,:] > THRESHOLD)
+            segment_mask &= ((h_corr['AT'].data[s,:] - geoid_h[s]) > THRESHOLD)
             segment_mask &= (h_sigma['AT'].data[s,:] < sigma_tolerance)
             segment_mask &= mds1[ptx]['subsetting']['ice_gz'][s]
             if not np.any(segment_mask):
