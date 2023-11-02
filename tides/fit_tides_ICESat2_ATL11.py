@@ -411,11 +411,11 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             nu = n_max - n_terms
 
             # tuple for parameter bounds (lower and upper)
-            lb,ub = ([0.0,np.min(h),-2.0],[1.0,np.max(h),2.0])
+            lb,ub = ([0.0, np.min(h), -2.0], [1.0, np.max(h), 2.0])
             # use linear least-squares with bounds on the variables
             try:
                 results = scipy.optimize.lsq_linear(DMAT, h, bounds=(lb,ub))
-                # Mean square error
+                # estimated mean square error
                 MSE = np.sum(results['fun']**2)/np.float64(nu)
                 # Covariance Matrix
                 # Multiplying the design matrix by itself
@@ -424,10 +424,8 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
                 # continue to next iteration
                 continue
             else:
-                # cadj,sadj,H,dH = np.copy(results['x'])
+                # extract fit parameters
                 adj, H, dH = np.copy(results['x'])
-                # calculate mean square error
-                MSE = np.sum(results['fun']**2)/nu
                 # standard error from covariance matrix
                 adj_sigma,*_ = np.sqrt(MSE*np.diag(Hinv))
             # check that errors are smaller than tolerance
