@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interpolate_tide_adjustment.py
-Written by Tyler Sutterley (10/2023)
+Written by Tyler Sutterley (11/2023)
 Interpolates tidal adjustment scale factors to output grids
 
 COMMAND LINE OPTIONS:
@@ -29,6 +29,7 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
 
 UPDATE HISTORY:
+    Updated 11/2023: only mask out invalid points within fit domain
     Updated 10/2023: mask out invalid tide adjustment points before fit
     Updated 08/2023: can set the output directory to be separate
     Updated 05/2023: using pathlib to define and operate on paths
@@ -176,6 +177,7 @@ def interpolate_tide_adjustment(tile_file,
     d['tide_adj'] = np.ma.zeros((npts), dtype=np.float64)
     d['tide_adj_sigma'] = np.ma.zeros((npts), dtype=np.float64)
     d['mask'] = np.zeros((npts), dtype=bool)
+    d['ice_gz'] = np.ones((npts), dtype=bool)
     Reducer = dict(tide_adj=np.min, tide_adj_sigma=np.max)
     # indices for each pair track
     pair = dict(pt1=1, pt2=2, pt3=3)
@@ -239,6 +241,14 @@ def interpolate_tide_adjustment(tile_file,
                             method=Reducer[k], axis=1)
                         d[k].fill_value = fv
                 # try to extract subsetting variables
+                for k in ['ice_gz']:
+                    try:
+                        temp = f2[ptx]['subsetting'][k][:].copy()
+                    except Exception as exc:
+                        pass
+                    else:
+                        # reduce to indices
+                        d[k][c:c+file_length] = temp[indices]
                 for k in ['mask']:
                     try:
                         temp = f3[ptx]['subsetting'][k][:].copy()
@@ -257,7 +267,7 @@ def interpolate_tide_adjustment(tile_file,
 
     # replace fill values
     for k in ['tide_adj','tide_adj_sigma']:
-        d[k].mask = (d[k].data == d[k].fill_value)
+        d[k].mask = (d[k].data == d[k].fill_value) | np.isnan(d[k].data)
         d[k].data[d[k].mask] = d[k].fill_value
 
     # make a global reference point number
@@ -328,14 +338,17 @@ def interpolate_tide_adjustment(tile_file,
                 # minimum x and y for iteration
                 xm = xi + SUBSET*ii/2
                 ym = yi + SUBSET*jj/2
+                # reduce to valid fit points
+                ice_gz, = np.nonzero(d['ice_gz'])
+                valid_ice_gz = np.ones_like(d['ice_gz'])
+                valid_ice_gz[ice_gz] ^= d['tide_adj'].mask[ice_gz]
                 # clip unique points to coordinates
                 # buffer to improve determination at edges
-                # reduce to valid fit points
                 clipped = np.nonzero((d['x'] >= xm-0.1*SUBSET) &
                     (d['x'] <= xm+1.1*SUBSET) &
                     (d['y'] >= ym-0.1*SUBSET) &
                     (d['y'] <= ym+1.1*SUBSET) &
-                    np.logical_not(d['tide_adj'].mask))
+                    valid_ice_gz)
                 # skip iteration if there are no points
                 if not np.any(clipped):
                     continue
