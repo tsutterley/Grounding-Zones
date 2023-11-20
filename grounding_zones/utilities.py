@@ -20,6 +20,7 @@ UPDATE HISTORY:
 """
 from __future__ import annotations
 
+import sys
 import ssl
 import pathlib
 import inspect

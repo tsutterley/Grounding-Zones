@@ -92,8 +92,8 @@ def ncdf_pressure(fileID, VARNAME, TIMENAME, MEAN, OCEAN, AREA):
     # invalid value
     fill_value = fileID.variables[VARNAME]._FillValue
     # allocate for pressure fields
-    SLP = np.ma.zeros((24,ny,nx), fill_value=fill_value)
-    TPX = np.ma.zeros((24,ny,nx), fill_value=fill_value)
+    SLP = np.ma.zeros((24,ny,nx), dtype=np.float32, fill_value=fill_value)
+    TPX = np.ma.zeros((24,ny,nx), dtype=np.float32, fill_value=fill_value)
     # calculate total area of reanalysis ocean
     # ocean pressure points will be based on reanalysis mask
     ii,jj = np.nonzero(OCEAN)
@@ -253,7 +253,6 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
     regex_years = r'\d{4}' if (YEAR is None) else r'|'.join(map(str,YEAR))
     rx = re.compile(regex_pattern.format(regex_years), re.VERBOSE)
     input_files = [fi for fi in ddir.iterdir() if rx.match(fi.name)]
-    print(ddir)
     # for each reanalysis file
     for INPUT_FILE in sorted(input_files):
         # extract parameters from filename
