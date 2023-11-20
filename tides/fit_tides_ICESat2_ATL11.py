@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (11/2023)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -51,6 +51,8 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 11/2023: filter absolute heights in reference to geoid
+        include input mask for grounding zone in output HDF5 file
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: verify crossover timescales are at least 1d
         initially set tide adjustment data and error masks to True
@@ -148,8 +150,8 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
     # file format for associated auxiliary files
     file_format = '{0}_{1}_{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
 
-    # height threshold (filter points below 0m elevation)
-    THRESHOLD = 0.0
+    # height threshold (filter points below threshold geoid heights)
+    THRESHOLD = 10.0
     # maximum height sigmas allowed in tidal adjustment fit
     sigma_tolerance = 0.5
     output_tolerance = 0.5
@@ -179,13 +181,13 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         # output data dictionaries for beam pair
         IS2_atl11_tide[ptx] = dict(cycle_stats=collections.OrderedDict(),
             crossing_track_data=collections.OrderedDict(),
-            grounding_zone_data=collections.OrderedDict())
-        IS2_atl11_fill[ptx] = dict(cycle_stats={},crossing_track_data={},
-            grounding_zone_data={})
-        IS2_atl11_dims[ptx] = dict(cycle_stats={},crossing_track_data={},
-            grounding_zone_data={})
-        IS2_atl11_tide_attrs[ptx] = dict(cycle_stats={},crossing_track_data={},
-            grounding_zone_data={})
+            subsetting=collections.OrderedDict())
+        IS2_atl11_fill[ptx] = dict(cycle_stats={},
+            crossing_track_data={}, subsetting={})
+        IS2_atl11_dims[ptx] = dict(cycle_stats={},
+            crossing_track_data={}, subsetting={})
+        IS2_atl11_tide_attrs[ptx] = dict(cycle_stats={},
+            crossing_track_data={}, subsetting={})
 
         # extract along-track and across-track variables
         ref_pt = {}
@@ -285,6 +287,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         mds1[ptx]['subsetting'] = {}
         mds1[ptx]['subsetting'].setdefault('ice_gz',
             np.zeros((n_points),dtype=bool))
+        attr1[ptx]['subsetting'] = {}
         # check that mask file exists
         try:
             mds2,attr2 = is2tk.io.ATL11.read_pair(f3,ptx,
@@ -294,7 +297,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         else:
             mds1[ptx]['subsetting']['ice_gz'] = \
                 mds2[ptx]['subsetting']['ice_gz']
-            B = attr2[ptx]['subsetting']['ice_gz']['source']
+            attr1[ptx]['subsetting'].update(attr2[ptx]['subsetting'])
 
         # read tide model
         if TIDE_MODEL:
@@ -367,7 +370,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             # segment_mask &= np.logical_not(IB['AT'].mask[s,:])
             segment_mask &= np.logical_not(tide_ocean['AT'].mask[s,:])
             segment_mask &= quality_summary['AT'][s,:]
-            segment_mask &= (h_corr['AT'].data[s,:] > THRESHOLD)
+            segment_mask &= ((h_corr['AT'].data[s,:] - geoid_h[s]) > THRESHOLD)
             segment_mask &= (h_sigma['AT'].data[s,:] < sigma_tolerance)
             segment_mask &= mds1[ptx]['subsetting']['ice_gz'][s]
             if not np.any(segment_mask):
@@ -399,22 +402,22 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             # create design matrix
             p0 = np.ones_like(t)
             p1 = 365.25*(t - np.median(t))
-            DMAT = np.c_[tide,p0,p1]
+            DMAT = np.c_[tide, p0, p1]
             # check if there are enough unique dates for fit
             u_days = np.unique(np.round(p1)/365.25)
             if (len(u_days) <= 3):
                 # continue to next iteration
                 continue
-            n_max,n_terms = np.shape(DMAT)
+            n_max, n_terms = np.shape(DMAT)
             # nu = Degrees of Freedom
             nu = n_max - n_terms
 
             # tuple for parameter bounds (lower and upper)
-            lb,ub = ([0.0,np.min(h),-2.0],[1.0,np.max(h),2.0])
+            lb,ub = ([0.0, np.min(h), -2.0], [1.0, np.max(h), 2.0])
             # use linear least-squares with bounds on the variables
             try:
                 results = scipy.optimize.lsq_linear(DMAT, h, bounds=(lb,ub))
-                # Mean square error
+                # estimated mean square error
                 MSE = np.sum(results['fun']**2)/np.float64(nu)
                 # Covariance Matrix
                 # Multiplying the design matrix by itself
@@ -423,10 +426,8 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
                 # continue to next iteration
                 continue
             else:
-                # cadj,sadj,H,dH = np.copy(results['x'])
+                # extract fit parameters
                 adj, H, dH = np.copy(results['x'])
-                # calculate mean square error
-                MSE = np.sum(results['fun']**2)/nu
                 # standard error from covariance matrix
                 adj_sigma,*_ = np.sqrt(MSE*np.diag(Hinv))
             # check that errors are smaller than tolerance
@@ -448,10 +449,14 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
                 tide_adj_sigma['XT'].mask[i2] = False
 
         # set fill values for invalid data
-        tide_adj['AT'].data[tide_adj['AT'].mask] = tide_adj['AT'].fill_value
-        tide_adj_sigma['AT'].data[tide_adj_sigma['AT'].mask] = tide_adj_sigma['AT'].fill_value
-        tide_adj['XT'].data[tide_adj['XT'].mask] = tide_adj['XT'].fill_value
-        tide_adj_sigma['XT'].data[tide_adj_sigma['XT'].mask] = tide_adj_sigma['XT'].fill_value
+        tide_adj['AT'].data[tide_adj['AT'].mask] = \
+            tide_adj['AT'].fill_value
+        tide_adj_sigma['AT'].data[tide_adj_sigma['AT'].mask] = \
+            tide_adj_sigma['AT'].fill_value
+        tide_adj['XT'].data[tide_adj['XT'].mask] = \
+            tide_adj['XT'].fill_value
+        tide_adj_sigma['XT'].data[tide_adj_sigma['XT'].mask] = \
+            tide_adj_sigma['XT'].fill_value
 
         # group attributes for beam
         IS2_atl11_tide_attrs[ptx]['description'] = ('Contains the primary science parameters '
@@ -765,6 +770,24 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         IS2_atl11_tide_attrs[ptx][XT]['tide_adj_sigma']['coordinates'] = \
             "ref_pt delta_time latitude longitude"
 
+        # subsetting variables
+        IS2_atl11_tide_attrs[ptx]['subsetting']['Description'] = ("The subsetting group "
+            "contains parameters used to reduce annual land ice height segments to specific "
+            "regions of interest.")
+        IS2_atl11_tide_attrs[ptx]['subsetting']['data_rate'] = ("Data within this group "
+            "are stored at the average segment rate.")
+
+        # for each mask
+        for key, val in mds1[ptx]['subsetting'].items():
+            IS2_atl11_tide[ptx]['subsetting'][key] = val.copy()
+            IS2_atl11_fill[ptx]['subsetting'][key] = None
+            IS2_atl11_dims[ptx]['subsetting'][key] = ['ref_pt']
+            IS2_atl11_tide_attrs[ptx]['subsetting'][key] = {}
+            IS2_atl11_tide_attrs[ptx]['subsetting'][key].update(
+                attr1[ptx]['subsetting'][key])
+            IS2_atl11_tide_attrs[ptx]['subsetting'][key]['coordinates'] = \
+                "../ref_pt ../delta_time ../latitude ../longitude"
+
     # output flexure correction HDF5 file
     args = (PRD,TIDE_MODEL,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
     file_format = '{0}_{1}_FIT_TIDES_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
@@ -777,13 +800,14 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         CROSSOVERS=True,
         FILL_VALUE=IS2_atl11_fill,
         DIMENSIONS=IS2_atl11_dims,
+        SUBSETTING=True,
         CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the correction values for ICESat-2 data to HDF5
 def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
-    FILENAME='', FILL_VALUE=None, DIMENSIONS=None, GROUNDING_ZONE=False,
+    FILENAME='', FILL_VALUE=None, DIMENSIONS=None, SUBSETTING=False,
     CROSSOVERS=False, CLOBBER=False):
     # setting HDF5 clobber attribute
     if CLOBBER:
@@ -848,12 +872,13 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
 
         # add to cycle_stats variables
         groups = ['cycle_stats']
-        # if there were valid fits: add to grounding_zone_data variables
-        if GROUNDING_ZONE:
-            groups.append('grounding_zone_data')
         # if running crossovers: add to crossing_track_data variables
         if CROSSOVERS:
             groups.append('crossing_track_data')
+        # if adding subsetting variables: add to subsetting variables
+        if SUBSETTING:
+            groups.append('subsetting')
+        # for each correction group
         for key in groups:
             fileID[ptx].create_group(key)
             h5[ptx][key] = {}
@@ -876,10 +901,10 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
                 if DIMENSIONS[ptx][key][k]:
                     # attach dimensions
                     for i,dim in enumerate(DIMENSIONS[ptx][key][k]):
-                        if (key == 'cycle_stats'):
-                            h5[ptx][key][k].dims[i].attach_scale(h5[ptx][dim])
-                        else:
+                        if (key == 'crossing_track_data'):
                             h5[ptx][key][k].dims[i].attach_scale(h5[ptx][key][dim])
+                        else:
+                            h5[ptx][key][k].dims[i].attach_scale(h5[ptx][dim])
                 else:
                     # make dimension
                     h5[ptx][key][k].make_scale(k)

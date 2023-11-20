@@ -18,6 +18,7 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     :caption: API Reference
 
     api_reference/io/icebridge.rst
+    api_reference/io/raster.rst
     api_reference/crs.rst
     api_reference/mosaic.rst
     api_reference/utilities.rst
@@ -136,3 +137,4 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/tides/compute_tides_ICESat2_ATL12.rst
     api_reference/tides/fit_tides_ICESat2_ATL11.rst
     api_reference/tides/interpolate_tide_adjustment.rst
+    api_reference/tides/mosaic_tide_adjustment.rst

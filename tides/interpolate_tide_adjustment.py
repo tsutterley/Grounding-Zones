@@ -1,15 +1,19 @@
 #!/usr/bin/env python
 u"""
 interpolate_tide_adjustment.py
-Written by Tyler Sutterley (10/2023)
+Written by Tyler Sutterley (11/2023)
 Interpolates tidal adjustment scale factors to output grids
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
     -O X, --output-directory X: input/output data directory
+    -H X, --hemisphere X: Region of interest to run
     -W X, --width: Width of tile grid
     -s X, --subset: Width of interpolation subset
     -S X, --spacing X: Output grid spacing
+    -P X, --pad X: Tile pad for creating mosaics
+    -T X, --tide X: Tide model used in correction
+    -I X, --interpolate X: Interpolation method
     -t X, --tension X: Biharmonic spline tension
     -w X, --smooth X: Radial basis function smoothing weight
     -e X, --epsilon X: Radial basis function adjustable constant
@@ -25,6 +29,7 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
 
 UPDATE HISTORY:
+    Updated 11/2023: only mask out invalid points within fit domain
     Updated 10/2023: mask out invalid tide adjustment points before fit
     Updated 08/2023: can set the output directory to be separate
     Updated 05/2023: using pathlib to define and operate on paths
@@ -32,7 +37,6 @@ UPDATE HISTORY:
         single implicit import of grounding zone tools
     Updated 07/2022: place some imports within try/except statements
     Updated 06/2022: use argparse descriptions within documentation
-        read mask files to not interpolate over grounded ice
     Updated 01/2022: added options for using radial basis functions
         wait if HDF5 tile file is unavailable for read or write
     Written 12/2021
@@ -96,17 +100,11 @@ def interpolate_tide_adjustment(tile_file,
     SMOOTH=0,
     EPSILON=0,
     POLYNOMIAL=0,
-    VERBOSE=False,
     MODE=0o775):
-
-    # create logger
-    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logging.basicConfig(level=loglevel)
 
     # input tile data file
     tile_file = pathlib.Path(tile_file).expanduser().absolute()
     tile_file_format = 'E{0:0.0f}_N{1:0.0f}.h5'
-    # get center coordinates of tile file
     # regular expression pattern for tile files
     R1 = re.compile(r'E([-+]?\d+)_N([-+]?\d+)', re.VERBOSE)
     # regular expression pattern for ICESat-2 ATL11 files
@@ -120,7 +118,7 @@ def interpolate_tide_adjustment(tile_file,
     # extract tile centers from filename
     tile_centers = R1.findall(tile_file.name).pop()
     xc, yc = 1000.0*np.array(tile_centers, dtype=np.float64)
-    logging.info('Tile File: {0}'.format(str(tile_file)))
+    logging.info(f'Tile File: {str(tile_file)}')
 
     # grid dimensions
     xmin,xmax = xc + np.array([-0.5,0.5])*W
@@ -128,6 +126,8 @@ def interpolate_tide_adjustment(tile_file,
     dx,dy = np.broadcast_to(np.atleast_1d(SPACING),(2,))
     nx = np.int64(W//dx) + 1
     ny = np.int64(W//dy) + 1
+    # minimum number of points to run interpolation for a tile
+    point_threshold = 3
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413, S=3031)[HEM]
@@ -177,6 +177,7 @@ def interpolate_tide_adjustment(tile_file,
     d['tide_adj'] = np.ma.zeros((npts), dtype=np.float64)
     d['tide_adj_sigma'] = np.ma.zeros((npts), dtype=np.float64)
     d['mask'] = np.zeros((npts), dtype=bool)
+    d['ice_gz'] = np.ones((npts), dtype=bool)
     Reducer = dict(tide_adj=np.min, tide_adj_sigma=np.max)
     # indices for each pair track
     pair = dict(pt1=1, pt2=2, pt3=3)
@@ -240,6 +241,14 @@ def interpolate_tide_adjustment(tile_file,
                             method=Reducer[k], axis=1)
                         d[k].fill_value = fv
                 # try to extract subsetting variables
+                for k in ['ice_gz']:
+                    try:
+                        temp = f2[ptx]['subsetting'][k][:].copy()
+                    except Exception as exc:
+                        pass
+                    else:
+                        # reduce to indices
+                        d[k][c:c+file_length] = temp[indices]
                 for k in ['mask']:
                     try:
                         temp = f3[ptx]['subsetting'][k][:].copy()
@@ -258,7 +267,7 @@ def interpolate_tide_adjustment(tile_file,
 
     # replace fill values
     for k in ['tide_adj','tide_adj_sigma']:
-        d[k].mask = (d[k].data == d[k].fill_value)
+        d[k].mask = (d[k].data == d[k].fill_value) | np.isnan(d[k].data)
         d[k].data[d[k].mask] = d[k].fill_value
 
     # make a global reference point number
@@ -329,14 +338,20 @@ def interpolate_tide_adjustment(tile_file,
                 # minimum x and y for iteration
                 xm = xi + SUBSET*ii/2
                 ym = yi + SUBSET*jj/2
+                # reduce to valid fit points
+                ice_gz, = np.nonzero(d['ice_gz'])
+                valid_ice_gz = np.ones_like(d['ice_gz'])
+                valid_ice_gz[ice_gz] ^= d['tide_adj'].mask[ice_gz]
                 # clip unique points to coordinates
                 # buffer to improve determination at edges
-                # reduce to valid fit points
                 clipped = np.nonzero((d['x'] >= xm-0.1*SUBSET) &
                     (d['x'] <= xm+1.1*SUBSET) &
                     (d['y'] >= ym-0.1*SUBSET) &
                     (d['y'] <= ym+1.1*SUBSET) &
-                    np.logical_not(d['tide_adj'].mask))
+                    valid_ice_gz)
+                # skip iteration if there are no points
+                if not np.any(clipped):
+                    continue
                 # create clipped data
                 u = {}
                 for key,val in d.items():
@@ -387,6 +402,9 @@ def interpolate_tide_adjustment(tile_file,
                 elif np.any(np.isnan(tide_adj_scale)):
                     # replace invalid points
                     tide_adj_scale = np.nan_to_num(tide_adj_scale, nan=0.0)
+                elif (len(np.atleast_1d(tide_adj_scale)) <= point_threshold):
+                    weight[iy,ix] += count.copy()
+                    continue
                 # interpolate sparse points to grid
                 if METHOD in ('spline',):
                     # interpolate with biharmonic splines in tension
@@ -495,8 +513,8 @@ def arguments():
         help='Tile pad for creating mosaics')
     # tide model to use
     parser.add_argument('--tide','-T',
-        metavar='TIDE', type=str, default='CATS2022',
-        help='Tide model to use in correction')
+        metavar='TIDE', type=str, default='CATS2008-v2023',
+        help='Tide model used in correction')
     # interpolation method
     parser.add_argument('--interpolate','-I',
         type=str, default='radial', choices=('spline','radial'),
@@ -524,7 +542,7 @@ def arguments():
     # permissions mode of the directories and files (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
-        help='Local permissions mode of the output mosaic')
+        help='Local permissions mode of the output file')
     # return the parser
     return parser
 
@@ -533,6 +551,10 @@ def main():
     # Read the system arguments listed after the program
     parser = arguments()
     args,_ = parser.parse_known_args()
+
+    # create logger
+    loglevel = logging.INFO if args.verbose else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
 
     # run program for each file
     for FILE in args.infile:
@@ -549,7 +571,6 @@ def main():
             SMOOTH=args.smooth,
             EPSILON=args.epsilon,
             POLYNOMIAL=args.polynomial,
-            VERBOSE=args.verbose,
             MODE=args.mode)
 
 # run main program

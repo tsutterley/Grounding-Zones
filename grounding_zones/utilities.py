@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 utilities.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (11/2023)
 Download and management utilities for syncing time and auxiliary files
 Adds additional modules to the icesat2_toolkit utilities
 
@@ -10,6 +10,7 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 11/2023: updated ssl context to fix deprecation error
     Updated 05/2023: using pathlib to define and expand paths
     Updated 01/2023: add default ssl context attribute with protocol
     Updated 12/2022: functions for managing and maintaining git repositories
@@ -19,6 +20,7 @@ UPDATE HISTORY:
 """
 from __future__ import annotations
 
+import sys
 import ssl
 import pathlib
 import inspect
@@ -106,14 +108,41 @@ def convert_arg_line_to_args(arg_line):
             continue
         yield arg
 
+def _create_default_ssl_context() -> ssl.SSLContext:
+    """Creates the default SSL context
+    """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    _set_ssl_context_options(context)
+    context.options |= ssl.OP_NO_COMPRESSION
+    return context
+
+def _create_ssl_context_no_verify() -> ssl.SSLContext:
+    """Creates an SSL context for unverified connections
+    """
+    context = _create_default_ssl_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+def _set_ssl_context_options(context: ssl.SSLContext) -> None:
+    """Sets the default options for the SSL context
+    """
+    if sys.version_info >= (3, 10) or ssl.OPENSSL_VERSION_INFO >= (1, 1, 0, 7):
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+    else:
+        context.options |= ssl.OP_NO_SSLv2
+        context.options |= ssl.OP_NO_SSLv3
+        context.options |= ssl.OP_NO_TLSv1
+        context.options |= ssl.OP_NO_TLSv1_1
+
 # default ssl context
-_default_ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+_default_ssl_context = _create_ssl_context_no_verify()
 
 # PURPOSE: list a directory on Polar Geospatial Center https server
 def pgc_list(
         HOST: str | list,
         timeout: int | None = None,
-        context = _default_ssl_context,
+        context: ssl.SSLContext = _default_ssl_context,
         parser = lxml.etree.HTMLParser(),
         format: str = '%Y-%m-%d %H:%M',
         pattern: str = '',

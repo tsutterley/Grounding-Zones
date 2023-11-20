@@ -84,6 +84,62 @@ def ncdf_mean_pressure(FILENAME,VARNAME,LONNAME,LATNAME):
         latitude = fileID.variables[LATNAME][:].squeeze()
     return (mean_pressure,longitude,latitude)
 
+# PURPOSE: read sea level pressure fields and calculate anomalies
+# spatially subset pressure maps to latitudinal range of ATL11 points
+def ncdf_pressure(fileID, VARNAME, TIMENAME, MEAN, OCEAN, AREA):
+    # shape of subsetted pressure field
+    ny,nx = np.shape(MEAN)
+    # invalid value
+    fill_value = fileID.variables[VARNAME]._FillValue
+    # allocate for pressure fields
+    SLP = np.ma.zeros((24,ny,nx), dtype=np.float32, fill_value=fill_value)
+    TPX = np.ma.zeros((24,ny,nx), dtype=np.float32, fill_value=fill_value)
+    # calculate total area of reanalysis ocean
+    # ocean pressure points will be based on reanalysis mask
+    ii,jj = np.nonzero(OCEAN)
+    ocean_area = np.sum(AREA[ii,jj])
+    # parameters for conventional TOPEX/POSEIDON IB correction
+    rho0 = 1025.0
+    g0 = -9.80665
+    p0 = 101325.0
+    # counter for filling arrays
+    c = 0
+    # convert time to Modified Julian Days
+    delta_time = np.copy(fileID.variables[TIMENAME][:])
+    for t,dt in enumerate(delta_time):
+        # check dimensions for expver slice
+        if (fileID.variables[VARNAME].ndim == 4):
+            _,nexp,_,_ = fileID.variables[VARNAME].shape
+            # sea level pressure for time
+            pressure = fileID.variables[VARNAME][t,:,:,:].copy()
+            # iterate over expver slices to find valid outputs
+            for j in range(nexp):
+                # check if any are valid for expver
+                if np.any(pressure[j,:,:]):
+                    # remove average with respect to time
+                    AveRmvd = pressure[j,:,:] - MEAN
+                    # conventional TOPEX/POSEIDON IB correction
+                    TPX[c,:,:] = (pressure[j,:,:]-p0)/(rho0*g0)
+                    break
+        else:
+            # sea level pressure for time
+            pressure = fileID.variables[VARNAME][t,:,:].copy()
+            # remove average with respect to time
+            AveRmvd = pressure - MEAN
+            # conventional TOPEX/POSEIDON IB correction
+            TPX[c,:,:] = (pressure[:,:] - p0)/(rho0*g0)
+        # calculate average oceanic pressure values
+        AVERAGE = np.sum(AveRmvd[ii,jj]*AREA[ii,jj])/ocean_area
+        # calculate sea level pressure anomalies and
+        # reduce to latitudinal range of ATL11 points
+        SLP[c,:,:] = AveRmvd[:,:] - AVERAGE
+        # clear temp variables for iteration to free up memory
+        pressure,AveRmvd = (None,None)
+        # add to counter
+        c += 1
+    # return sea level pressure anomalies and TOPX/POSEIDON IB correction
+    return (SLP, TPX)
+
 # PURPOSE:  calculate the instantaneous inverse barometer response
 def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
     DENSITY=None, MODE=0o775):
@@ -107,6 +163,7 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
         LATNAME = 'latitude'
         TIMENAME = 'time'
         IBNAME = 'ib'
+        TPXNAME = 'tpx'
         UNITS = 'm'
         # hours since 1900-01-01 00:00:0.0
         TIME_LONGNAME = 'Time'
@@ -127,6 +184,7 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
         LATNAME = 'latitude'
         TIMENAME = 'time'
         IBNAME = 'ib'
+        TPXNAME = 'tpx'
         UNITS = 'm'
         # hours since 1900-01-01 00:00:0.0
         TIME_LONGNAME = 'Time'
@@ -148,6 +206,7 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
         LATNAME = 'lat'
         TIMENAME = 'time'
         IBNAME = 'IB'
+        TPXNAME = 'TPX'
         UNITS = 'm'
         # minutes since start of file
         TIME_LONGNAME = 'Time'
@@ -156,10 +215,9 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
         OCEAN = 1
 
     # read mean pressure field
-    mean_file = ddir.joinpath(input_mean_file.format(RANGE[0],RANGE[1]))
-    mean_pressure,lon,lat=ncdf_mean_pressure(mean_file,VARNAME,LONNAME,LATNAME)
-    # shape of mean pressure field
-    ny,nx = np.shape(mean_pressure)
+    mean_file = ddir.joinpath(input_mean_file.format(RANGE[0], RANGE[1]))
+    mean_pressure, lon, lat = ncdf_mean_pressure(mean_file,
+        VARNAME, LONNAME, LATNAME)
 
     # grid step size in radians
     dphi = np.pi*np.abs(lon[1] - lon[0])/180.0
@@ -176,26 +234,23 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
     a_axis = wgs84.a_axis
     b_axis = wgs84.b_axis
     # calculate grid areas globally
-    AREA = dphi*dth*np.sin(gridtheta)*np.sqrt((a_axis**2)*(b_axis**2) *
+    cell_areas = dphi*dth*np.sin(gridtheta)*np.sqrt((a_axis**2)*(b_axis**2) *
         ((np.sin(gridtheta)**2)*(np.cos(gridphi)**2) +
         (np.sin(gridtheta)**2)*(np.sin(gridphi)**2)) +
         (a_axis**4)*(np.cos(gridtheta)**2))
     # read land-sea mask to find ocean values
     # ocean pressure points will be based on reanalysis mask
-    MASK = ncdf_landmask(ddir.joinpath(input_mask_file), MASKNAME, OCEAN)
-    # calculate total area of reanalysis ocean
-    # ocean pressure points will be based on reanalysis mask
-    ii,jj = np.nonzero(MASK)
-    ocean_area = np.sum(AREA[ii,jj])
+    ocean_function = ncdf_landmask(ddir.joinpath(input_mask_file),
+        MASKNAME, OCEAN)
 
     # gravitational acceleration at mean sea level at the equator
     ge = 9.780356
     # gravitational acceleration at mean sea level over colatitudes
     # from Heiskanen and Moritz, Physical Geodesy, (1967)
-    gs = ge*(1.0+5.2885e-3*np.cos(gridtheta)**2-5.9e-6*np.cos(2.0*gridtheta)**2)
+    gs = ge*(1.0 + 5.2885e-3*np.cos(gridtheta)**2 - 5.9e-6*np.cos(2.0*gridtheta)**2)
 
     # read each reanalysis pressure field for each year
-    regex_years = r'\d{4}' if (YEAR is None) else '|'.join(map(str,YEAR))
+    regex_years = r'\d{4}' if (YEAR is None) else r'|'.join(map(str,YEAR))
     rx = re.compile(regex_pattern.format(regex_years), re.VERBOSE)
     input_files = [fi for fi in ddir.iterdir() if rx.match(fi.name)]
     # for each reanalysis file
@@ -213,6 +268,7 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
             FILENAME = output_file_format.format(YEAR,MONTH,DAY)
         # full path to output file
         OUTPUT_FILE = ddir.joinpath(FILENAME)
+
         # read netCDF4 mean sea level file
         with netCDF4.Dataset(INPUT_FILE, 'r') as fileID:
             # number of time points in file
@@ -224,40 +280,17 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
             # copy latitude and longitude
             dinput[LONNAME] = lon.copy()
             dinput[LATNAME] = lat.copy()
-            # invalid value
+            # calculate sea level pressure anomalies and
+            # traditional TOPEX/POSEIDON IB correction
             fill_value = fileID.variables[VARNAME]._FillValue
-            # reduced sea level pressure field
-            SLP = np.ma.zeros((nt,ny,nx),fill_value=fill_value)
-            # calculate reduced sea level pressure for each time
-            for t, dt in enumerate(dinput[TIMENAME]):
-                # check dimensions for expver slice
-                if (fileID.variables[VARNAME].ndim == 4):
-                    _,nexp,_,_ = fileID.variables[VARNAME].shape
-                    # sea level pressure for time
-                    pressure = fileID.variables[VARNAME][t,:,:,:].copy()
-                    # iterate over expver slices to find valid outputs
-                    for j in range(nexp):
-                        # check if any are valid for expver
-                        if np.any(pressure[j,:,:]):
-                            # remove average with respect to time
-                            AveRmvd = pressure[j,:,:] - mean_pressure
-                            break
-                else:
-                    # sea level pressure for time
-                    pressure = fileID.variables[VARNAME][t,:,:].copy()
-                    # remove average with respect to time
-                    AveRmvd = pressure - mean_pressure
-                # calculate average oceanic pressure values
-                AVERAGE = np.sum(AveRmvd[ii,jj]*AREA[ii,jj])/ocean_area
-                # calculate sea level pressure anomalies
-                SLP[t,:,:] = AveRmvd - AVERAGE
-                # clear temp variables for iteration to free up memory
-                pressure,AveRmvd = (None,None)
+            SLP, TPX = ncdf_pressure(fileID, VARNAME, TIMENAME,
+                mean_pressure, ocean_function, cell_areas)
         # calculate inverse barometer response
         dinput[IBNAME] = -SLP*(DENSITY*gs)**-1
+        dinput[TPXNAME] = TPX
         # output to file
         ncdf_IB_write(dinput, fill_value,
-            FILENAME=OUTPUT_FILE, IBNAME=IBNAME,
+            FILENAME=OUTPUT_FILE, IBNAME=IBNAME, TPXNAME=TPXNAME,
             LONNAME=LONNAME, LATNAME=LATNAME, TIMENAME=TIMENAME,
             TIME_UNITS=TIME_UNITS, TIME_LONGNAME=TIME_LONGNAME,
             UNITS=UNITS, DENSITY=DENSITY)
@@ -266,8 +299,8 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
 
 # PURPOSE: write output inverse barometer fields data to file
 def ncdf_IB_write(dinput, fill_value, FILENAME=None, IBNAME=None,
-    LONNAME=None, LATNAME=None, TIMENAME=None, TIME_UNITS=None,
-    TIME_LONGNAME=None, UNITS=None, DENSITY=None):
+    TPXNAME=None, LONNAME=None, LATNAME=None, TIMENAME=None,
+    TIME_UNITS=None, TIME_LONGNAME=None, UNITS=None, DENSITY=None):
     # validate input path
     FILENAME = pathlib.Path(FILENAME).expanduser().absolute()
     # opening NetCDF file for writing
@@ -283,6 +316,8 @@ def ncdf_IB_write(dinput, fill_value, FILENAME=None, IBNAME=None,
     nc[LONNAME]=fileID.createVariable(LONNAME,dinput[LONNAME].dtype,(LONNAME,))
     nc[TIMENAME]=fileID.createVariable(TIMENAME,dinput[TIMENAME].dtype,(TIMENAME,))
     nc[IBNAME] = fileID.createVariable(IBNAME, dinput[IBNAME].dtype,
+        (TIMENAME,LATNAME,LONNAME,), fill_value=fill_value, zlib=True)
+    nc[TPXNAME] = fileID.createVariable(TPXNAME, dinput[TPXNAME].dtype,
         (TIMENAME,LATNAME,LONNAME,), fill_value=fill_value, zlib=True)
     # filling NetCDF variables
     for key,val in dinput.items():
@@ -300,6 +335,12 @@ def ncdf_IB_write(dinput, fill_value, FILENAME=None, IBNAME=None,
     nc[IBNAME].long_name = 'Instantaneous_inverse_barometer_(IB)_response'
     nc[IBNAME].units = UNITS
     nc[IBNAME].density = DENSITY
+    # Defining attributes for conventional inverse barometer correction
+    nc[TPXNAME].long_name = 'Conventional_(TOPEX/POSEIDON)_IB_response'
+    nc[TPXNAME].units = UNITS
+    nc[TPXNAME].density = 1025.0
+    nc[TPXNAME].gravity = -9.80665
+    nc[TPXNAME].pressure = 101325.0
 
     # add software information
     fileID.software_reference = gz.version.project_name

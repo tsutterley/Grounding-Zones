@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL06_grounding_zone.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (11/2023)
 
 Create masks for reducing ICESat-2 land ice height data to within
     a buffer region near the ice sheet grounding zone
@@ -11,6 +11,7 @@ COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -O X, --output-directory X: input/output data directory
     -B X, --buffer X: Distance in kilometers to buffer from grounding line
+    -p X, --polygon X: Georeferenced file containing a set of polygons
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
 
@@ -42,6 +43,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2023: add option to read a specific georeferenced file
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from timescale.time
     Updated 07/2023: using pathlib to define and operate on paths
@@ -148,6 +150,10 @@ def arguments():
     parser.add_argument('--buffer','-B',
         type=float, default=20.0,
         help='Distance in kilometers to buffer grounding zone')
+    # alternatively read a specific georeferenced file
+    parser.add_argument('--polygon','-p',
+        type=pathlib.Path, default=None,
+        help='Georeferenced file containing a set of polygons')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -169,9 +175,13 @@ def set_hemisphere(GRANULE):
     return projection_flag
 
 # PURPOSE: load the polygon object for the buffered estimated grounding zone
-def load_grounding_zone(base_dir, HEM, BUFFER):
+def load_grounding_zone(base_dir, HEM, BUFFER, shapefile=None):
     # buffered shapefile for region
-    input_shapefile = base_dir.joinpath(buffer_shapefile[HEM].format(BUFFER))
+    if shapefile is None:
+        shapefile = buffer_shapefile[HEM].format(BUFFER)
+        input_shapefile = base_dir.joinpath(shapefile)
+    else:
+        input_shapefile = pathlib.Path(shapefile).expanduser().absolute()
     # read buffered shapefile
     logging.info(str(input_shapefile))
     shape = fiona.open(str(input_shapefile))
@@ -192,7 +202,7 @@ def load_grounding_zone(base_dir, HEM, BUFFER):
             x,y = np.transpose(coords)
             poly_list.append(list(zip(x,y)))
         # convert poly_list into Polygon object with holes
-        poly_obj = shapely.geometry.Polygon(poly_list[0],holes=poly_list[1:])
+        poly_obj = shapely.geometry.Polygon(poly_list[0], holes=poly_list[1:])
         # Valid Polygon cannot have overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
@@ -261,7 +271,8 @@ def main():
     # read data on rank 0
     if (comm.rank == 0):
         # read shapefile and create shapely multipolygon objects
-        mpoly_obj, epsg = load_grounding_zone(args.directory, HEM, args.buffer)
+        mpoly_obj, epsg = load_grounding_zone(args.directory, HEM,
+            args.buffer, shapefile=args.polygon)
     else:
         # create empty object for list of shapely objects
         mpoly_obj = None
@@ -445,8 +456,9 @@ def main():
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz'] = {}
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['contentType'] = "referenceInformation"
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['long_name'] = 'Grounding Zone Mask'
-        IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['description'] = ("Grounding zone mask "
-            "calculated using delineations from {0} buffered by {1:0.0f} km.".format(grounded_description[HEM],args.buffer))
+        IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['description'] = \
+            ("Grounding zone mask calculated using delineations from {0} buffered by "
+             "{1:0.0f} km.".format(grounded_description[HEM],args.buffer))
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['reference'] = grounded_reference[HEM]
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['source'] = args.buffer
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['coordinates'] = \
