@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_SET_icebridge_data.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (01/2024)
 Calculates radial solid Earth tide displacements for correcting Operation
     IceBridge elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
@@ -32,6 +32,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 01/2024: refactored lunisolar ephemerides functions
     Updated 05/2023: use timescale class for time conversion operations
         add option for using higher resolution ephemerides from JPL
         using pathlib to define and operate on paths
@@ -183,14 +184,8 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
     X, Y, Z = pyTMD.spatial.to_cartesian(dinput['lon'], dinput['lat'],
         h=dinput['data'], a_axis=units.a_axis, flat=units.flat)
     # compute ephemerides for lunisolar coordinates
-    if (EPHEMERIDES.lower() == 'approximate'):
-        # get low-resolution solar and lunar ephemerides
-        SX, SY, SZ = pyTMD.astro.solar_ecef(timescale.MJD)
-        LX, LY, LZ = pyTMD.astro.lunar_ecef(timescale.MJD)
-    elif (EPHEMERIDES.upper() == 'JPL'):
-        # compute solar and lunar ephemerides from JPL kernel
-        SX, SY, SZ = pyTMD.astro.solar_ephemerides(timescale.MJD)
-        LX, LY, LZ = pyTMD.astro.lunar_ephemerides(timescale.MJD)
+    SX, SY, SZ = pyTMD.astro.solar_ecef(timescale.MJD, ephemerides=EPHEMERIDES)
+    LX, LY, LZ = pyTMD.astro.lunar_ecef(timescale.MJD, ephemerides=EPHEMERIDES)
     # convert coordinates to column arrays
     XYZ = np.c_[X, Y, Z]
     SXYZ = np.c_[SX, SY, SZ]

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat_GLA12.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (01/2024)
 Calculates tidal elevations for correcting ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -27,7 +27,8 @@ COMMAND LINE OPTIONS:
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
-    --apply-flexure: Apply ice flexure scaling factor to height constituents
+    --infer-minor: Infer the height values for minor constituents
+    --apply-flexure: Apply ice flexure scaling factor to height values
         Only valid for models containing flexure fields
     -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
@@ -48,7 +49,7 @@ PROGRAM DEPENDENCIES:
     spatial: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
     astro.py: computes the basic astronomical mean longitudes
-    convert_crs.py: convert points to and from Coordinates Reference Systems
+    crs.py: Coordinate Reference System (CRS) routines
     load_constituent.py: loads parameters for a given tidal constituent
     arguments.py: load the nodal corrections for tidal constituents
     io/model.py: retrieves tide model parameters for named tide models
@@ -60,6 +61,7 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 01/2024: made the inferrence of minor constituents an option
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         changed ESR netCDF4 format to TMD3 format
     Updated 05/2023: use timescale class for time conversion operations
@@ -135,6 +137,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     METHOD='spline',
     EXTRAPOLATE=False,
     CUTOFF=None,
+    INFER_MINOR=False,
     APPLY_FLEXURE=False,
     VERBOSE=False,
     MODE=0o775):
@@ -265,9 +268,11 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     tide.mask = np.any(hc.mask,axis=1)
     tide.data[:] = pyTMD.predict.drift(timescale.tide, hc, c,
         deltat=deltat, corrections=model.format)
-    minor = pyTMD.predict.infer_minor(timescale.tide, hc, c,
-        deltat=deltat, corrections=model.format)
-    tide.data[:] += minor.data[:]
+    # calculate values for minor constituents by inferrence
+    if INFER_MINOR:
+        minor = pyTMD.predict.infer_minor(timescale.tide, hc, c,
+            deltat=deltat, corrections=model.format)
+        tide.data[:] += minor.data[:]
     # replace masked and nan values with fill value
     invalid, = np.nonzero(np.isnan(tide.data) | tide.mask)
     tide.data[invalid] = tide.fill_value
@@ -528,10 +533,14 @@ def arguments():
     parser.add_argument('--cutoff','-c',
         type=np.float64, default=10.0,
         help='Extrapolation cutoff in kilometers')
+    # infer minor constituents from major
+    parser.add_argument('--infer-minor',
+        default=False, action='store_true',
+        help='Infer the height values for minor constituents')
     # apply flexure scaling factors to height constituents
     parser.add_argument('--apply-flexure',
         default=False, action='store_true',
-        help='Apply ice flexure scaling factor to height constituents')
+        help='Apply ice flexure scaling factor to height values')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -561,6 +570,7 @@ def main():
             METHOD=args.interpolate,
             EXTRAPOLATE=args.extrapolate,
             CUTOFF=args.cutoff,
+            INFER_MINOR=args.infer_minor,
             APPLY_FLEXURE=args.apply_flexure,
             VERBOSE=args.verbose,
             MODE=args.mode)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_SET_ICESat_GLA12.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (01/2024)
 Calculates radial solid Earth tide displacements for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
     elevation data following IERS Convention (2010) guidelines
@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
     predict.py: calculates solid Earth tides
 
 UPDATE HISTORY:
+    Updated 01/2024: refactored lunisolar ephemerides functions
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
         add option for using higher resolution ephemerides from JPL
@@ -153,14 +154,8 @@ def compute_SET_ICESat(INPUT_FILE,
     X, Y, Z = pyTMD.spatial.to_cartesian(lon_40HZ, lat_40HZ, h=elev_40HZ,
         a_axis=wgs84.a_axis, flat=wgs84.flat)
     # compute ephemerides for lunisolar coordinates
-    if (EPHEMERIDES.lower() == 'approximate'):
-        # get low-resolution solar and lunar ephemerides
-        SX, SY, SZ = pyTMD.astro.solar_ecef(timescale.MJD)
-        LX, LY, LZ = pyTMD.astro.lunar_ecef(timescale.MJD)
-    elif (EPHEMERIDES.upper() == 'JPL'):
-        # compute solar and lunar ephemerides from JPL kernel
-        SX, SY, SZ = pyTMD.astro.solar_ephemerides(timescale.MJD)
-        LX, LY, LZ = pyTMD.astro.lunar_ephemerides(timescale.MJD)
+    SX, SY, SZ = pyTMD.astro.solar_ecef(timescale.MJD, ephemerides=EPHEMERIDES)
+    LX, LY, LZ = pyTMD.astro.lunar_ecef(timescale.MJD, ephemerides=EPHEMERIDES)
     # convert coordinates to column arrays
     XYZ = np.c_[X, Y, Z]
     SXYZ = np.c_[SX, SY, SZ]
