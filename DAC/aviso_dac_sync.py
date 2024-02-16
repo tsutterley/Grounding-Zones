@@ -85,7 +85,7 @@ def aviso_dac_sync(DIRECTORY,
     regex_years = r'|'.join(rf'{y:d}' for y in YEAR) if YEAR else r'\d+'
     R1 = re.compile(rf'({regex_years})', re.VERBOSE)
     # compile regular expression pattern for finding files
-    R2 = re.compile(r'dac_dif_(\d+)_(\d+).nc.bz2$', re.VERBOSE)
+    R2 = re.compile(r'dac_dif_(\d+)_(\d+).nc(.bz2)?$', re.VERBOSE)
 
     # find remote yearly directories for DAC
     YEARS,_ = gz.utilities.ftp_list(

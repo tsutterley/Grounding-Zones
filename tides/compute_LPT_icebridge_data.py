@@ -205,7 +205,7 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
     dtr = np.pi/180.0
     atr = np.pi/648000.0
     # earth and physical parameters for ellipsoid
-    units = pyTMD.constants('WGS84')
+    units = pyTMD.datum('WGS84')
     # tidal love number appropriate for the load tide
     hb2 = 0.6207
     # bad value

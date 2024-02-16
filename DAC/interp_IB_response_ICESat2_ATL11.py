@@ -354,7 +354,7 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
     gridtheta = (90.0 - gridlat)*np.pi/180.0
 
     # ellipsoidal parameters of WGS84 ellipsoid
-    wgs84 = pyTMD.constants('WGS84')
+    wgs84 = pyTMD.datum('WGS84')
     # semimajor and semiminor axes of the ellipsoid [m]
     a_axis = wgs84.a_axis
     b_axis = wgs84.b_axis

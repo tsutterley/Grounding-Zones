@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (11/2023)
+Written by Tyler Sutterley (12/2023)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -51,6 +51,7 @@ PROGRAM DEPENDENCIES:
     time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 12/2023: don't have a default tide model in arguments
     Updated 11/2023: filter absolute heights in reference to geoid
         include input mask for grounding zone in output HDF5 file
     Updated 08/2023: create s3 filesystem when using s3 urls as input
@@ -102,10 +103,7 @@ def common_reference_points(XT, AT):
     return ind2
 
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
-# calculate mean elevation between all dates in file
-# calculate inflexion point using elevation surface slopes
-# use mean elevation to calculate elevation anomalies
-# use anomalies to calculate inward and seaward limits of tidal flexure
+# use an initial tide model as a prior for estimating ice flexure
 def fit_tides_ICESat2(tide_dir, INPUT_FILE,
     OUTPUT_DIRECTORY=None,
     TIDE_MODEL=None,
@@ -994,7 +992,7 @@ def arguments():
     # command line parameters
     parser.add_argument('infile',
         type=pathlib.Path, nargs='+',
-        help='ICESat GLA12 file to run')
+        help='ICESat-2 ATL11 file to run')
     # directory with tide data
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=pathlib.Path.cwd(),
@@ -1006,7 +1004,7 @@ def arguments():
     # tide model to use
     parser.add_argument('--tide','-T',
         metavar='TIDE', type=str,
-        choices=get_available_models(), default='CATS2022',
+        choices=get_available_models(),
         help='Tide model to use in correction')
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,

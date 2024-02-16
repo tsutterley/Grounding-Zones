@@ -6,7 +6,7 @@ Interpolates ATL14 elevations to ICESat-2 ATL11 segment locations
 
 COMMAND LINE OPTIONS:
     -O X, --output-directory X: input/output data directory
-    -m X, --model X: path to ATL14 model file
+    -m X, --dem-model X: path to ATL14 model file
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
 
