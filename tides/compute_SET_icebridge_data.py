@@ -173,7 +173,7 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
             input_file, input_subsetter)
 
     # earth and physical parameters for WGS84 ellipsoid
-    units = pyTMD.constants('WGS84')
+    units = pyTMD.datum('WGS84')
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
     timescale = pyTMD.time.timescale().from_deltatime(dinput['time'],
         epoch=pyTMD.time._j2000_epoch, standard='UTC')

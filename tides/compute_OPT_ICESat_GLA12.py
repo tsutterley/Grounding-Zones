@@ -175,8 +175,8 @@ def compute_OPT_ICESat(INPUT_FILE,
         hour=h,minute=m,second=s)
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
-    topex = pyTMD.constants('TOPEX')
-    wgs84 = pyTMD.constants('WGS84')
+    topex = pyTMD.datum('TOPEX')
+    wgs84 = pyTMD.datum('WGS84')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
     lat_40HZ, elev_40HZ = pyTMD.spatial.convert_ellipsoid(
         lat_TPX, elev_TPX,

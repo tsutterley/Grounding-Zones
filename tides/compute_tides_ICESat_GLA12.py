@@ -219,8 +219,8 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
-    topex = pyTMD.constants('TOPEX')
-    wgs84 = pyTMD.constants('WGS84')
+    topex = pyTMD.datum('TOPEX')
+    wgs84 = pyTMD.datum('WGS84')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
     lat_40HZ, elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
         topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
