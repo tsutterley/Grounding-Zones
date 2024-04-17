@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_icebridge_data.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (04/2024)
 Calculates long-period equilibrium tidal elevations for correcting Operation
     IceBridge elevation data
 
@@ -21,17 +21,22 @@ PYTHON DEPENDENCIES:
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
     netCDF4: Python interface to the netCDF C library
-         https://unidata.github.io/netcdf4-python/netCDF4/index.html
+        https://unidata.github.io/netcdf4-python/netCDF4/index.html
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
-    time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
     predict.py: calculates long-period equilibrium ocean tides
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
@@ -73,6 +78,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: read Operation IceBridge data from NSIDC
 # compute long-period equilibrium tides at points and times
@@ -171,10 +180,10 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
             input_file, input_subsetter)
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    timescale = pyTMD.time.timescale().from_deltatime(dinput['time'],
-        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    ts = timescale.time.Timescale().from_deltatime(dinput['time'],
+        epoch=timescale.time._j2000_epoch, standard='UTC')
     # convert tide times to dynamical time
-    tide_time = timescale.tide + timescale.tt_ut1
+    tide_time = ts.tide + ts.tt_ut1
 
     # output tidal HDF5 file
     # form: rg_NASA_model_EQUILIBRIUM_TIDES_WGS84_fl1yyyymmddjjjjj.H5
@@ -237,8 +246,8 @@ def compute_LPET_icebridge_data(arg, VERBOSE=False, MODE=0o775):
     fid.attrs['geospatial_ellipsoid'] = "WGS84"
     fid.attrs['time_type'] = 'UTC'
     # add attributes with measurement date start, end and duration
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
-    duration = timescale.day*(np.max(timescale.MJD) - np.min(timescale.MJD))
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
+    duration = ts.day*(np.max(ts.MJD) - np.min(ts.MJD))
     fid.attrs['time_coverage_start'] = str(dt[0])
     fid.attrs['time_coverage_end'] = dt[-1]
     fid.attrs['time_coverage_duration'] = f'{duration:0.0f}'

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_IB_ICESat2_ATL07.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (04/2024)
 Calculates and interpolates inverse-barometer responses to times and
     locations of ICESat-2 ATL07 sea ice height data
 
@@ -28,11 +28,15 @@ PYTHON DEPENDENCIES:
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://h5py.org
     netCDF4: Python interface to the netCDF C library
-         https://unidata.github.io/netcdf4-python/netCDF4/index.html
+        https://unidata.github.io/netcdf4-python/netCDF4/index.html
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
     io/ATL07.py: reads ICESat-2 sea ice height data files
-    time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
 
 REFERENCES:
@@ -43,6 +47,7 @@ REFERENCES:
         Rev. A, 84 pp., (1994)
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from pyTMD.time
     Updated 05/2023: use timescale class for time conversion operations
@@ -89,6 +94,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: read land sea mask to get indices of oceanic values
 def ncdf_landmask(FILENAME, MASKNAME, OCEAN):
@@ -128,7 +137,7 @@ def find_pressure_files(ddir, MODEL, MJD):
         # append day prior, day of and day after
         JD = mjd + np.arange(-1,2) + 2400000.5
         # convert from Julian Days to calendar dates
-        Y,M,D,_,_,_ = pyTMD.time.convert_julian(JD,
+        Y,M,D,_,_,_ = timescale.time.convert_julian(JD,
             ASTYPE=int, FORMAT='tuple')
         # append day as formatted strings
         for y,m,d in zip(Y,M,D):
@@ -167,9 +176,9 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
             # convert time to Modified Julian Days
             delta_time = np.copy(fileID.variables[TIMENAME][:])
             units = fileID.variables[TIMENAME].units
-            epoch,to_secs = pyTMD.time.parse_date_string(units)
+            epoch,to_secs = timescale.time.parse_date_string(units)
             for t,dt in enumerate(delta_time):
-                MJD[c] = pyTMD.time.convert_delta_time(dt*to_secs,
+                MJD[c] = timescale.time.convert_delta_time(dt*to_secs,
                     epoch1=epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
                 # check dimensions for expver slice
                 if (fileID.variables[VARNAME].ndim == 4):
@@ -334,7 +343,7 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
     gridtheta = (90.0 - gridlat)*np.pi/180.0
 
     # ellipsoidal parameters of WGS84 ellipsoid
-    wgs84 = pyTMD.datum('WGS84')
+    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # semimajor and semiminor axes of the ellipsoid [m]
     a_axis = wgs84.a_axis
     b_axis = wgs84.b_axis
@@ -348,7 +357,7 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
     MASK = ncdf_landmask(ddir.joinpath(input_mask_file), MASKNAME, OCEAN)
 
     # find and read each reanalysis pressure field
-    MJD = pyTMD.time.convert_calendar_dates(int(YY),int(MM),int(DD),
+    MJD = timescale.time.convert_calendar_dates(int(YY),int(MM),int(DD),
         epoch=(1858,11,17,0,0,0), scale=1.0)
     FILENAMES = find_pressure_files(ddir, MODEL, MJD)
     # read sea level pressure and calculate anomalies
@@ -391,8 +400,8 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
 
         # create timescale from ATLAS Standard Epoch time
         # GPS seconds since 2018-01-01 00:00:00 UTC
-        timescale = pyTMD.time.timescale().from_deltatime(val['delta_time'],
-            epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
+        ts = timescale.time.Timescale().from_deltatime(val['delta_time'],
+            epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
 
         # calculate projected coordinates of input coordinates
         ix,iy = transformer.transform(val['longitude'], val['latitude'])
@@ -406,13 +415,13 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
         gs = ge*(1.0 + 5.2885e-3*np.cos(th)**2 - 5.9e-6*np.cos(2.0*th)**2)
 
         # interpolate sea level pressure anomalies to points
-        SLP = R1.__call__(np.c_[timescale.MJD,iy,ix])
+        SLP = R1.__call__(np.c_[ts.MJD,iy,ix])
         # calculate inverse barometer response
         IB = np.ma.zeros((n_seg))
         IB.data[:] = -SLP*(DENSITY*gs)**-1
         # interpolate conventional inverse barometer response to points
         TPX = np.ma.zeros((n_seg))
-        TPX.data[:] = R2.__call__(np.c_[timescale.MJD,iy,ix])
+        TPX.data[:] = R2.__call__(np.c_[ts.MJD,iy,ix])
         # replace any nan values with fill value
         IB.mask = np.isnan(IB.data)
         TPX.mask = np.isnan(TPX.data)
@@ -732,9 +741,9 @@ def HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    timescale = pyTMD.time.timescale().from_deltatime(np.array([tmn,tmx]),
-        epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
+    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
     fileID.attrs['time_coverage_start'] = str(dt[0])
     fileID.attrs['time_coverage_end'] = str(dt[1])

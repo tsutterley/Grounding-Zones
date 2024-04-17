@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_IB_ICESat_GLA12.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (04/2024)
 Calculates and interpolates inverse-barometer responses for ICESat/GLAS
     L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
 
@@ -31,10 +31,14 @@ PYTHON DEPENDENCIES:
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://h5py.org
     netCDF4: Python interface to the netCDF C library
-         https://unidata.github.io/netcdf4-python/netCDF4/index.html
+        https://unidata.github.io/netcdf4-python/netCDF4/index.html
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
-    time.py: utilities for calculating time operations
     spatial.py: utilities for reading and writing spatial data
     utilities.py: download and management utilities for syncing files
 
@@ -46,6 +50,7 @@ REFERENCES:
         Rev. A, 84 pp., (1994)
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from pyTMD.time
     Updated 12/2022: single implicit import of grounding zone tools
@@ -92,6 +97,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: read land sea mask to get indices of oceanic values
 def ncdf_landmask(FILENAME, MASKNAME, OCEAN):
@@ -133,7 +142,7 @@ def find_pressure_files(ddir, MODEL, MJD):
         # append day prior, day of and day after
         JD = mjd + np.arange(-1,2) + 2400000.5
         # convert from Julian Days to calendar dates
-        Y,M,D,_,_,_ = pyTMD.time.convert_julian(JD,
+        Y,M,D,_,_,_ = timescale.time.convert_julian(JD,
             ASTYPE=int, FORMAT='tuple')
         # append day as formatted strings
         for y,m,d in zip(Y,M,D):
@@ -172,9 +181,9 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
             # convert time to Modified Julian Days
             delta_time = np.copy(fileID.variables[TIMENAME][:])
             units = fileID.variables[TIMENAME].units
-            epoch,to_secs = pyTMD.time.parse_date_string(units)
+            epoch,to_secs = timescale.time.parse_date_string(units)
             for t,dt in enumerate(delta_time):
-                MJD[c] = pyTMD.time.convert_delta_time(dt*to_secs,
+                MJD[c] = timescale.time.convert_delta_time(dt*to_secs,
                     epoch1=epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
                 # check dimensions for expver slice
                 if (fileID.variables[VARNAME].ndim == 4):
@@ -341,12 +350,12 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL,
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    timescale = pyTMD.time.timescale().from_deltatime(DS_UTCTime_40HZ[:],
-        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    ts = timescale.time.Timescale().from_deltatime(DS_UTCTime_40HZ[:],
+        epoch=timescale.time._j2000_epoch, standard='UTC')
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
-    topex = pyTMD.datum('TOPEX')
-    wgs84 = pyTMD.datum('WGS84')
+    topex = pyTMD.datum(ellipsoid='TOPEX', units='MKS')
+    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
     lat_40HZ,elev_40HZ = is2tk.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
         topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
@@ -387,7 +396,7 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL,
     MASK = ncdf_landmask(ddir.joinpath(input_mask_file),MASKNAME,OCEAN)
 
     # find and read each reanalysis pressure field
-    FILENAMES = find_pressure_files(ddir, MODEL, timescale.MJD)
+    FILENAMES = find_pressure_files(ddir, MODEL, ts.MJD)
     # read sea level pressure and calculate anomalies
     islp,itpx,ilat,imjd = ncdf_pressure(FILENAMES, VARNAME, TIMENAME,
         LATNAME, mean_pressure, MASK, AREA)
@@ -404,13 +413,13 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL,
     gs = ge*(1.0 + 5.2885e-3*np.cos(theta_40HZ)**2 - 5.9e-6*np.cos(2.0*theta_40HZ)**2)
 
     # interpolate sea level pressure anomalies to points
-    SLP = R1.__call__(np.c_[timescale.MJD, iy, ix])
+    SLP = R1.__call__(np.c_[ts.MJD, iy, ix])
     # calculate inverse barometer response
     IB = np.ma.zeros((rec_ndx_40HZ), fill_value=fv)
     IB.data = -SLP*(DENSITY*gs)**-1
     # interpolate conventional inverse barometer response to points
     TPX = np.ma.zeros((rec_ndx_40HZ), fill_value=fv)
-    TPX.data = R2.__call__(np.c_[timescale.MJD, iy, ix])
+    TPX.data = R2.__call__(np.c_[ts.MJD, iy, ix])
     # replace any nan values with fill value
     IB.mask = np.isnan(IB.data)
     TPX.mask = np.isnan(TPX.data)

@@ -25,7 +25,6 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
-    time.py: utilities for calculating time operations
     spatial: utilities for reading, writing and operating on spatial data
 
 UPDATE HISTORY:
@@ -175,8 +174,8 @@ def tile_ICESat_GLA12(input_file,
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
-    topex = pyTMD.datum('TOPEX')
-    wgs84 = pyTMD.datum('WGS84')
+    topex = pyTMD.datum(ellipsoid='TOPEX', units='MKS')
+    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
     lat_40HZ, elev_40HZ = pyTMD.spatial.convert_ellipsoid(
         lat_TPX, elev_TPX,

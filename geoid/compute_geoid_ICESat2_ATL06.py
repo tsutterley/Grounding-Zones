@@ -21,10 +21,10 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
-    time.py: Utilities for calculating time operations
-    convert_delta_time.py: converts from delta time into Julian and year-decimal
     io/ATL06.py: reads ICESat-2 land ice along-track height data files
     utilities.py: download and management utilities for syncing files
     geoid_undulation.py: geoidal undulation at a given latitude and longitude
@@ -80,7 +80,7 @@ try:
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
-    import timescale
+    import timescale.time
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("timescale not available", ImportWarning)
 

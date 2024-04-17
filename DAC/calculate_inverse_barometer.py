@@ -24,7 +24,7 @@ PYTHON DEPENDENCIES:
         https://numpy.org
         https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     netCDF4: Python interface to the netCDF C library
-         https://unidata.github.io/netcdf4-python/netCDF4/index.html
+        https://unidata.github.io/netcdf4-python/netCDF4/index.html
 
 PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for files
@@ -229,7 +229,7 @@ def calculate_inverse_barometer(base_dir, MODEL, YEAR=None, RANGE=None,
     gridtheta = (90.0 - gridlat)*np.pi/180.0
 
     # ellipsoidal parameters of WGS84 ellipsoid
-    wgs84 = pyTMD.datum('WGS84')
+    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # semimajor and semiminor axes of the ellipsoid [m]
     a_axis = wgs84.a_axis
     b_axis = wgs84.b_axis

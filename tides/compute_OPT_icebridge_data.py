@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_OPT_icebridge_data.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (04/2024)
 Calculates radial ocean pole tide displacements for correcting Operation
     IceBridge elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
@@ -31,9 +31,13 @@ PYTHON DEPENDENCIES:
         https://docs.scipy.org/doc/
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
-    time.py: utilities for calculating time operations
     spatial.py: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
     eop.py: utilities for calculating Earth Orientation Parameters (EOP)
@@ -41,6 +45,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
     Updated 05/2023: use timescale class for time conversion operations
         use defaults from eop module for pole tide and EOP files
         using pathlib to define and operate on paths
@@ -95,6 +100,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: read Operation IceBridge data from NSIDC
 # compute ocean pole tide radial displacements at data points and times
@@ -200,14 +209,14 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
     lon = dinput['lon'][:]
     lat = dinput['lat'][:]
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    timescale = pyTMD.time.timescale().from_deltatime(dinput['time'],
-        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    ts = timescale.time.Timescale().from_deltatime(dinput['time'],
+        epoch=timescale.time._j2000_epoch, standard='UTC')
     # convert dynamic time to Modified Julian Days (MJD)
-    MJD = timescale.tt - 2400000.5
+    MJD = ts.tt - 2400000.5
     # convert Julian days to calendar dates
-    Y,M,D,h,m,s = pyTMD.time.convert_julian(timescale.tt, format='tuple')
+    Y,M,D,h,m,s = timescale.time.convert_julian(ts.tt, format='tuple')
     # calculate time in year-decimal format
-    time_decimal = pyTMD.time.convert_calendar_decimal(Y,M,day=D,
+    time_decimal = timescale.time.convert_calendar_decimal(Y,M,day=D,
         hour=h,minute=m,second=s)
     # elevation
     h1 = dinput['data'][:]
@@ -216,7 +225,7 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
     dtr = np.pi/180.0
     atr = np.pi/648000.0
     # earth and physical parameters for ellipsoid
-    units = pyTMD.datum('WGS84')
+    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # mean equatorial gravitational acceleration [m/s^2]
     ge = 9.7803278
     # density of sea water [kg/m^3]
@@ -229,14 +238,14 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
     # convert from geodetic latitude to geocentric latitude
     # calculate X, Y and Z from geodetic latitude and longitude
     X,Y,Z = pyTMD.spatial.to_cartesian(lon, lat, h=h1,
-        a_axis=units.a_axis, flat=units.flat)
+        a_axis=wgs84.a_axis, flat=wgs84.flat)
     # calculate geocentric latitude and convert to degrees
     latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))/dtr
 
     # pole tide displacement scale factor
-    Hp = np.sqrt(8.0*np.pi/15.0)*(units.omega**2*units.a_axis**4)/units.GM
-    K = 4.0*np.pi*units.G*rho_w*Hp*units.a_axis/(3.0*ge)
-    K1 = 4.0*np.pi*units.G*rho_w*Hp*units.a_axis**3/(3.0*units.GM)
+    Hp = np.sqrt(8.0*np.pi/15.0)*(wgs84.omega**2*wgs84.a_axis**4)/wgs84.GM
+    K = 4.0*np.pi*wgs84.G*rho_w*Hp*wgs84.a_axis/(3.0*ge)
+    K1 = 4.0*np.pi*wgs84.G*rho_w*Hp*wgs84.a_axis**3/(3.0*wgs84.GM)
 
     # output ocean pole tide HDF5 file
     # form: rg_NASA_OCEAN_POLE_TIDE_WGS84_fl1yyyymmddjjjjj.H5
@@ -276,9 +285,10 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
         UR = r1.__call__(np.c_[lon,latitude_geocentric])
 
     # calculate angular coordinates of mean/secular pole at time
-    mpx, mpy, fl = pyTMD.eop.iers_mean_pole(time_decimal, convention=CONVENTION)
+    mpx, mpy, fl = timescale.eop.iers_mean_pole(time_decimal,
+        convention=CONVENTION)
     # read and interpolate IERS daily polar motion values
-    px, py = pyTMD.eop.iers_polar_motion(MJD, k=3, s=0)
+    px, py = timescale.eop.iers_polar_motion(MJD, k=3, s=0)
     # calculate differentials from mean/secular pole positions
     mx = px - mpx
     my = -(py - mpy)
@@ -329,8 +339,8 @@ def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
     fid.attrs['geospatial_ellipsoid'] = "WGS84"
     fid.attrs['time_type'] = 'UTC'
     # add attributes with measurement date start, end and duration
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
-    duration = timescale.day*(np.max(timescale.MJD) - np.min(timescale.MJD))
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
+    duration = ts.day*(np.max(ts.MJD) - np.min(ts.MJD))
     fid.attrs['time_coverage_start'] = str(dt[0])
     fid.attrs['time_coverage_end'] = dt[-1]
     fid.attrs['time_coverage_duration'] = f'{duration:0.0f}'
@@ -347,7 +357,7 @@ def get_available_conventions():
     """Create a list of available EOP conventions
     """
     try:
-        return pyTMD.eop._conventions
+        return timescale.eop._conventions
     except (NameError, AttributeError):
         return ('2003', '2010', '2015', '2018')
 

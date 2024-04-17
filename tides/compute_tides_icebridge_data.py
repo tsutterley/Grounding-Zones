@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_icebridge_data.py
-Written by Tyler Sutterley (01/2024)
+Written by Tyler Sutterley (04/2024)
 Calculates tidal elevations for correcting Operation IceBridge elevation data
 
 Uses OTIS format tidal solutions provided by Ohio State University and ESR
@@ -43,12 +43,16 @@ PYTHON DEPENDENCIES:
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
     netCDF4: Python interface to the netCDF C library
-         https://unidata.github.io/netcdf4-python/netCDF4/index.html
+        https://unidata.github.io/netcdf4-python/netCDF4/index.html
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
-    time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
     astro.py: computes the basic astronomical mean longitudes
     crs.py: Coordinate Reference System (CRS) routines
@@ -64,6 +68,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
     Updated 01/2024: made the inferrence of minor constituents an option
     Updated 08/2023: changed ESR netCDF4 format to TMD3 format
     Updated 05/2023: use timescale class for time conversion operations
@@ -132,6 +137,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: read Operation IceBridge data from NSIDC
 # compute tides at points and times using tidal model driver algorithms
@@ -247,8 +256,8 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
             input_file, input_subsetter)
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    timescale = pyTMD.time.timescale().from_deltatime(dinput['time'],
-        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    ts = timescale.time.Timescale().from_deltatime(dinput['time'],
+        epoch=timescale.time._j2000_epoch, standard='UTC')
 
     # read tidal constants and interpolate to grid points
     if model.format in ('OTIS','ATLAS','TMD3'):
@@ -268,7 +277,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
             model.model_file, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
         # delta time (TT - UT1)
-        deltat = timescale.tt_ut1
+        deltat = ts.tt_ut1
     elif (model.format == 'FES'):
         amp,ph = pyTMD.io.FES.extract_constants(dinput['lon'], dinput['lat'],
             model.model_file, type=model.type, version=model.version,
@@ -277,7 +286,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         # available model constituents
         c = model.constituents
         # delta time (TT - UT1)
-        deltat = timescale.tt_ut1
+        deltat = ts.tt_ut1
 
     # calculate complex phase in radians for Euler's
     cph = -1j*ph*np.pi/180.0
@@ -310,11 +319,11 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     fill_value = -9999.0
     tide = np.ma.empty((file_lines),fill_value=fill_value)
     tide.mask = np.any(hc.mask,axis=1)
-    tide.data[:] = pyTMD.predict.drift(timescale.tide, hc, c,
+    tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
         deltat=deltat, corrections=model.format)
     # calculate values for minor constituents by inferrence
     if INFER_MINOR:
-        minor = pyTMD.predict.infer_minor(timescale.tide, hc, c,
+        minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
             deltat=deltat, corrections=model.format)
         tide.data[:] += minor.data[:]
     # replace invalid values with fill value
@@ -360,8 +369,8 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     fid.attrs['geospatial_ellipsoid'] = "WGS84"
     fid.attrs['time_type'] = 'UTC'
     # add attributes with measurement date start, end and duration
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
-    duration = timescale.day*(np.max(timescale.MJD) - np.min(timescale.MJD))
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
+    duration = ts.day*(np.max(ts.MJD) - np.min(ts.MJD))
     fid.attrs['time_coverage_start'] = str(dt[0])
     fid.attrs['time_coverage_end'] = dt[-1]
     fid.attrs['time_coverage_duration'] = f'{duration:0.0f}'
