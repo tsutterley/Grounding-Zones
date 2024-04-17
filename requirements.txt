@@ -3,5 +3,7 @@ matplotlib
 numpy
 pyproj
 python-dateutil
+pyTMD
 pyyaml
 scipy>=1.10.1
+timescale

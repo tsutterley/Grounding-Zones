@@ -16,14 +16,14 @@ dependencies:
   - pyproj
   - python>=3.6
   - python-dateutil
+  - pyTMD
   - pyyaml
   - scipy>=1.10.1
   - scikit-learn
   - shapely
+  - timescale
   - pip:
      - ATM1b-QFIT
      - geoid-toolkit
      - icesat2-toolkit
-     - pyTMD
      - spatial-interpolators
-     - timescale
