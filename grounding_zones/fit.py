@@ -563,12 +563,12 @@ def _spline(t_in, KNOTS=[], ORDER_TIME=3, **kwargs):
     TMAT: list
         time-variable design matrix based on polynomial order
     """
-    SPL = BSpline.design_matrix(t_in, KNOTS, ORDER_TIME, extrapolate=True).toarray()
-    TMAT = SPL.T.tolist()
-    # add constant term
-    TMAT[0] = np.ones_like(t_in)
-    # return the design matrix
-    return TMAT
+    # transpose the design matrix and add constant term
+    TMAT = BSpline.design_matrix(t_in, KNOTS, ORDER_TIME,
+        extrapolate=True).transpose().toarray()
+    TMAT[0,:] = np.ones_like(t_in)
+    # return the design matrix as a list
+    return TMAT.tolist()
 
 def _surface(x_in, y_in, ORDER_SPACE=3, **kwargs):
     """
