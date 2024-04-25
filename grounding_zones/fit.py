@@ -42,6 +42,8 @@ OUTPUTS:
 
 OPTIONS:
     RELATIVE: relative period
+    FIT_TYPE: type of time-variable polynomial fit to apply
+        ('polynomial', 'chebyshev', 'spline')
     ORDER_TIME: maximum polynomial order in time-variable fit
         (0=constant, 1=linear, 2=quadratic)
     ORDER_SPACE:  maximum polynomial order in spatial fit
@@ -58,12 +60,14 @@ PYTHON DEPENDENCIES:
 UPDATE HISTORY:
     Updated 04/2024: rewritten for python3 and added function docstrings
         add optional TERMS argument to augment the design matrix
+        add spline design matrix option for time-variable fit
     Updated 09/2017: using rcond=-1 in numpy least-squares algorithms
         use median statistics for reducing to valid points
     Written 03/2014
 """
 import numpy as np
 import scipy.stats
+from scipy.interpolate import BSpline
 
 # PURPOSE: iteratively fit a polynomial surface to the elevation data to
 # reduce to within a valid window
@@ -87,6 +91,7 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
 
         - ``'polynomial'``
         - ``'chebyshev'``
+        - ``'spline'``
     ORDER_TIME: int
         maximum polynomial order in time-variable fit
     ORDER_SPACE: int
@@ -270,6 +275,7 @@ def surface_fit(t_in, x_in, y_in, d_in,
 
         - ``'polynomial'``
         - ``'chebyshev'``
+        - ``'spline'``
     ORDER_TIME: int
         maximum polynomial order in time-variable fit
     ORDER_SPACE: int
@@ -318,6 +324,8 @@ def surface_fit(t_in, x_in, y_in, d_in,
         TMAT, t_rel = _polynomial(t_in, **kwargs)
     elif (FIT_TYPE.lower() == 'chebyshev'):
         TMAT = _chebyshev(t_in, **kwargs)
+    elif (FIT_TYPE.lower() == 'spline'):
+        TMAT = _spline(t_in, **kwargs)
     else:
         raise ValueError(f'Fit type {FIT_TYPE} not recognized')
     # append the time-variable design matrix
@@ -534,6 +542,31 @@ def _chebyshev(t_in, RELATIVE=None, ORDER_TIME=3, **kwargs):
     TMAT.append(t_norm)
     for o in range(2, ORDER_TIME+1):
         TMAT.append(2.0*t_norm*TMAT[o-1] - TMAT[o-2])
+    # return the design matrix
+    return TMAT
+
+def _spline(t_in, KNOTS=[], ORDER_TIME=3, **kwargs):
+    """
+    Create a B-spline design matrix for a time-series
+    
+    Parameters
+    ----------
+    t_in: np.ndarray
+        input time array
+    KNOTS: list or np.ndarray
+        Sorted 1D array of knots
+    ORDER_TIME: int
+        B-spline degree
+
+    Returns
+    -------
+    TMAT: list
+        time-variable design matrix based on polynomial order
+    """
+    SPL = BSpline.design_matrix(t_in, KNOTS, ORDER_TIME, extrapolate=True).toarray()
+    TMAT = SPL.T.tolist()
+    # add constant term
+    TMAT[0] = np.ones_like(t_in)
     # return the design matrix
     return TMAT
 
