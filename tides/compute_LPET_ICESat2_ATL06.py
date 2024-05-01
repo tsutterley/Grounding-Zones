@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_ICESat2_ATL06.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (04/2024)
 Calculates long-period equilibrium tidal elevations for correcting ICESat-2
     land ice elevation data
 Will calculate the long-period tides for all ATL06 segments and not just ocean
@@ -22,14 +22,19 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
     io/ATL06.py: reads ICESat-2 land ice along-track height data files
-    time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
     predict.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
@@ -70,6 +75,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: read ICESat-2 land ice data (ATL06) from NSIDC
 # compute long-period equilibrium tides at points and times
@@ -153,9 +162,9 @@ def compute_LPET_ICESat2(INPUT_FILE,
 
         # create timescale from ATLAS Standard Epoch time
         # GPS seconds since 2018-01-01 00:00:00 UTC
-        timescale = pyTMD.time.timescale().from_deltatime(val['delta_time'],
-            epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
-        tide_time = timescale.tide + timescale.tt_ut1
+        ts = timescale.time.Timescale().from_deltatime(val['delta_time'],
+            epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
+        tide_time = ts.tide + ts.tt_ut1
 
         # predict long-period equilibrium tides at latitudes and time
         tide_lpe = np.ma.zeros((n_seg), fill_value=fv)
@@ -427,9 +436,9 @@ def HDF5_ATL06_tide_write(IS2_atl06_tide, IS2_atl06_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    timescale = pyTMD.time.timescale().from_deltatime(np.array([tmn,tmx]),
-        epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
+    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
     fileID.attrs['time_coverage_start'] = str(dt[0])
     fileID.attrs['time_coverage_end'] = str(dt[1])

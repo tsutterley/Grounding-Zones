@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_SET_icebridge_data.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (04/2024)
 Calculates radial solid Earth tide displacements for correcting Operation
     IceBridge elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
@@ -23,15 +23,21 @@ PYTHON DEPENDENCIES:
         https://docs.scipy.org/doc/
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
-    time.py: utilities for calculating time operations
     spatial.py: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
     predict.py: calculates solid Earth tides
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
+    Updated 01/2024: refactored lunisolar ephemerides functions
     Updated 05/2023: use timescale class for time conversion operations
         add option for using higher resolution ephemerides from JPL
         using pathlib to define and operate on paths
@@ -61,6 +67,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: read Operation IceBridge data from NSIDC
 # compute solid earth tide radial displacements at data points and times
@@ -172,37 +182,31 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
             input_file, input_subsetter)
 
     # earth and physical parameters for WGS84 ellipsoid
-    units = pyTMD.constants('WGS84')
+    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    timescale = pyTMD.time.timescale().from_deltatime(dinput['time'],
-        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    ts = timescale.time.Timescale().from_deltatime(dinput['time'],
+        epoch=timescale.time._j2000_epoch, standard='UTC')
     # convert tide times to dynamical time
-    tide_time = timescale.tide + timescale.tt_ut1
+    tide_time = ts.tide + ts.tt_ut1
 
     # convert input coordinates to cartesian
     X, Y, Z = pyTMD.spatial.to_cartesian(dinput['lon'], dinput['lat'],
-        h=dinput['data'], a_axis=units.a_axis, flat=units.flat)
+        h=dinput['data'], a_axis=wgs84.a_axis, flat=wgs84.flat)
     # compute ephemerides for lunisolar coordinates
-    if (EPHEMERIDES.lower() == 'approximate'):
-        # get low-resolution solar and lunar ephemerides
-        SX, SY, SZ = pyTMD.astro.solar_ecef(timescale.MJD)
-        LX, LY, LZ = pyTMD.astro.lunar_ecef(timescale.MJD)
-    elif (EPHEMERIDES.upper() == 'JPL'):
-        # compute solar and lunar ephemerides from JPL kernel
-        SX, SY, SZ = pyTMD.astro.solar_ephemerides(timescale.MJD)
-        LX, LY, LZ = pyTMD.astro.lunar_ephemerides(timescale.MJD)
+    SX, SY, SZ = pyTMD.astro.solar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
+    LX, LY, LZ = pyTMD.astro.lunar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
     # convert coordinates to column arrays
     XYZ = np.c_[X, Y, Z]
     SXYZ = np.c_[SX, SY, SZ]
     LXYZ = np.c_[LX, LY, LZ]
     # predict solid earth tides (cartesian)
     dxi = pyTMD.predict.solid_earth_tide(tide_time,
-        XYZ, SXYZ, LXYZ, a_axis=units.a_axis,
+        XYZ, SXYZ, LXYZ, a_axis=wgs84.a_axis,
         tide_system=TIDE_SYSTEM)
     # calculate radial component of solid earth tides
     dln, dlt, drad = pyTMD.spatial.to_geodetic(
         X + dxi[:,0], Y + dxi[:,1], Z + dxi[:,2],
-        a_axis=units.a_axis, flat=units.flat)
+        a_axis=wgs84.a_axis, flat=wgs84.flat)
     # remove effects of original topography
     dinput['tide_earth'] = drad - dinput['data']
     # calculate permanent tide offset (meters)
@@ -265,10 +269,10 @@ def compute_SET_icebridge_data(arg, TIDE_SYSTEM=None, EPHEMERIDES=None,
     fid.attrs['geospatial_ellipsoid'] = "WGS84"
     fid.attrs['time_type'] = 'UTC'
     # add attributes with measurement date start, end and duration
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
-    duration = timescale.day*(np.max(timescale.MJD) - np.min(timescale.MJD))
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
+    duration = ts.day*(np.max(ts.MJD) - np.min(ts.MJD))
     fid.attrs['time_coverage_start'] = str(dt[0])
-    fid.attrs['time_coverage_end'] = dt[-1]
+    fid.attrs['time_coverage_end'] = str(dt[-1])
     fid.attrs['time_coverage_duration'] = f'{duration:0.0f}'
     # add software information
     fid.attrs['software_reference'] = pyTMD.version.project_name

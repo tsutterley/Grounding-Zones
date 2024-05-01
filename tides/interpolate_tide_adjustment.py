@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interpolate_tide_adjustment.py
-Written by Tyler Sutterley (11/2023)
+Written by Tyler Sutterley (12/2023)
 Interpolates tidal adjustment scale factors to output grids
 
 COMMAND LINE OPTIONS:
@@ -29,6 +29,7 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
 
 UPDATE HISTORY:
+    Updated 12/2023: don't have a default tide model in arguments
     Updated 11/2023: only mask out invalid points within fit domain
     Updated 10/2023: mask out invalid tide adjustment points before fit
     Updated 08/2023: can set the output directory to be separate
@@ -513,7 +514,7 @@ def arguments():
         help='Tile pad for creating mosaics')
     # tide model to use
     parser.add_argument('--tide','-T',
-        metavar='TIDE', type=str, default='CATS2008-v2023',
+        metavar='TIDE', type=str,
         help='Tide model used in correction')
     # interpolation method
     parser.add_argument('--interpolate','-I',

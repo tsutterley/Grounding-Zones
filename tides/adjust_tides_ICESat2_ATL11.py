@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 adjust_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (04/2024)
 Applies interpolated tidal adjustment scale factors to
     ICESat-2 ATL11 annual land ice height data within
     ice sheet grounding zones
@@ -22,6 +22,11 @@ PYTHON DEPENDENCIES:
         https://docs.scipy.org/doc/
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
     io/model.py: retrieves tide model parameters for named tide models
@@ -29,6 +34,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -65,6 +71,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     OUTPUT_DIRECTORY=None,
@@ -686,9 +696,9 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    timescale = pyTMD.time.timescale().from_deltatime(np.array([tmn,tmx]),
-        epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
+    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
     fileID.attrs['time_coverage_start'] = str(dt[0])
     fileID.attrs['time_coverage_end'] = str(dt[1])

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 icebridge.py
-Written by Tyler Sutterley (10/2023)
+Written by Tyler Sutterley (05/2024)
 Read altimetry data files from NASA Operation IceBridge (OIB)
 
 PYTHON DEPENDENCIES:
@@ -10,12 +10,15 @@ PYTHON DEPENDENCIES:
         https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
-    time.py: Utilities for calculating time operations
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 05/2024: added reader for LVIS2 ascii files
+        added output writer for LVIS HDF5 files
     Updated 10/2023: add reader for ATM ITRF convention lookup table
     Updated 08/2023: use time functions from timescale.time
     Updated 07/2023: add function docstrings in numpydoc format
@@ -25,6 +28,9 @@ UPDATE HISTORY:
 from __future__ import print_function
 
 import re
+import io
+import copy
+import time
 import pathlib
 import warnings
 import numpy as np
@@ -40,7 +46,7 @@ try:
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("h5py not available", ImportWarning)
 try:
-    import timescale
+    import timescale.time
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("timescale not available", ImportWarning)
 
@@ -374,6 +380,94 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     # return the output variables
     return ATM_L2_input, file_lines, HEM
 
+# PURPOSE: read LVIS Level-2 data files from NSIDC
+def read_LVIS_ascii_file(input_file: str | pathlib.Path | io.BytesIO):
+    """
+    Reads LVIS Level-2 ascii data files
+
+    Parameters
+    ----------
+    input_file: str
+        Full path of input LVIS file to be read
+
+    Returns
+    -------
+    ILVIS2_MDS: dict
+        Complete set of Level-2 variables from ascii file
+    """
+    # verify input file is an absolute path
+    if not isinstance(input_file, io.BytesIO):
+        input_file = pathlib.Path(input_file).expanduser().absolute()
+    # LVIS region flags: GL for Greenland and AQ for Antarctica
+    lvis_flag = {'GL':'N','AQ':'S'}
+    # regular expression pattern for extracting parameters from new format of
+    # LVIS2 files (format for LDS 1.04 and 2.0+)
+    mission_flag = r'(BLVIS2|BVLIS2|ILVIS2|ILVGH2)'
+    regex = rf'{mission_flag}_(GL|AQ)(\d+)_(\d{{2}})(\d{{2}})_(R\d+)_(\d+).TXT'
+    rx1 = re.compile(regex, re.IGNORECASE)
+    # extract mission, region and other parameters from filename
+    MISSION, REGION, YY, MM, DD, RLD, SS = rx1.findall(input_file.name).pop()
+    LDS_VERSION = '2.0.2' if (int(RLD[1:3]) >= 18) else '1.04'
+    # input file column types for ascii format LVIS files
+    # https://lvis.gsfc.nasa.gov/Data/Data_Structure/DataStructure_LDS104.html
+    # https://lvis.gsfc.nasa.gov/Data/Data_Structure/DataStructure_LDS202.html
+    if (LDS_VERSION == '1.04'):
+        file_dtype = {}
+        file_dtype['names'] = ('LVIS_LFID','Shot_Number','Time',
+            'Longitude_Centroid','Latitude_Centroid','Elevation_Centroid',
+            'Longitude_Low','Latitude_Low','Elevation_Low',
+            'Longitude_High','Latitude_High','Elevation_High')
+        file_dtype['formats']=('i','i','f','f','f','f','f','f','f','f','f','f')
+    elif (LDS_VERSION == '2.0.2'):
+        file_dtype = {}
+        file_dtype['names'] = ('LVIS_LFID','Shot_Number','Time',
+            'Longitude_Low','Latitude_Low','Elevation_Low',
+            'Longitude_Top','Latitude_Top','Elevation_Top',
+            'Longitude_High','Latitude_High','Elevation_High',
+            'RH10','RH15','RH20','RH25','RH30','RH35','RH40','RH45','RH50',
+            'RH55','RH60','RH65','RH70','RH75','RH80','RH85','RH90','RH95',
+            'RH96','RH97','RH98','RH99','RH100','Azimuth','Incident_Angle',
+            'Range','Complexity','Flag1','Flag2','Flag3')
+        file_dtype['formats'] = ('i','i','f','f','f','f','f','f','f','f','f',
+            'f','f','f','f','f','f','f','f','f','f','f','f','f','f','f','f','f',
+            'f','f','f','f','f','f','f','f','f','f','f','i','i','i')
+    # read icebridge LVIS dataset
+    if isinstance(input_file, io.BytesIO):
+        file_contents = [i.decode('utf-8') for i in input_file if 
+            re.match(rb'^(?!\#|\n)',i)]
+    else:
+        with input_file.open(mode='r', encoding='utf-8') as f:
+            file_contents = [i for i in f.readlines() if 
+                re.match(r'^(?!\#|\n)',i)]
+    # compile regular expression operator for reading lines (extracts numbers)
+    rx2 = re.compile(r'[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[Ee][+-]?\d+)?')
+    # output python dictionary with variables
+    ILVIS2_MDS = {}
+    # create output variables with length equal to the number of file lines
+    for key,val in zip(file_dtype['names'],file_dtype['formats']):
+        ILVIS2_MDS[key] = np.zeros_like(file_contents, dtype=val)
+    # for each line within the file
+    for line_number,line_entries in enumerate(file_contents):
+        # find numerical instances within the line
+        line_contents = rx2.findall(line_entries)
+        # for each variable of interest: save to dinput as float
+        for i,key in enumerate(file_dtype['names']):
+            ILVIS2_MDS[key][line_number] = line_contents[i]
+    # calculation of julian day (not including hours, minutes and seconds)
+    ts = timescale.time.Timescale().from_calendar(
+        float(YY), float(MM), float(DD),
+        second=ILVIS2_MDS['Time']
+    )
+    # converting to J2000 seconds and adding seconds since start of day
+    ILVIS2_MDS['J2000'] = ts.to_deltatime(
+        epoch=timescale.time._j2000_epoch, scale=86400.0
+    )
+    # save LVIS version
+    ILVIS2_MDS['LDS_VERSION'] = copy.copy(LDS_VERSION)
+    ILVIS2_MDS['region'] = lvis_flag[REGION]
+    # return the output variables
+    return ILVIS2_MDS
+
 # PURPOSE: read the LVIS Level-2 data file for variables of interest
 def read_LVIS_HDF5_file(input_file, input_subsetter):
     """
@@ -405,10 +499,10 @@ def read_LVIS_HDF5_file(input_file, input_subsetter):
     input_file = pathlib.Path(input_file).expanduser().absolute()
     # LVIS region flags: GL for Greenland and AQ for Antarctica
     lvis_flag = {'GL':'N','AQ':'S'}
-    # regular expression pattern for extracting parameters from HDF5 files
-    # computed in read_icebridge_lvis.py
+    # regular expression pattern for extracting parameters from new format of
+    # LVIS2 files (format for LDS 1.04 and 2.0+)
     mission_flag = r'(BLVIS2|BVLIS2|ILVIS2|ILVGH2)'
-    regex_pattern = rf'{mission_flag}_(.*?)(\d+)_(\d+)_(R\d+)_(\d+).H5'
+    regex_pattern = rf'{mission_flag}_(GL|AQ)(\d+)_(\d+)_(R\d+)_(\d+).H5'
     regex = re.compile(regex_pattern, re.VERBOSE)
     # extract mission, region and other parameters from filename
     MISSION,REGION,YY,MMDD,RLD,SS = regex.findall(input_file.name).pop()
@@ -490,3 +584,321 @@ def read_LVIS_HDF5_file(input_file, input_subsetter):
             LVIS_L2_input[key] = val[input_subsetter]
     # return the output variables
     return LVIS_L2_input, file_lines, lvis_flag[REGION]
+
+# PURPOSE: output HDF5 file with geolocated elevation surfaces
+# calculated from LVIS Level-1b waveform products
+def write_LVIS_HDF5_file(
+        ILVIS2_MDS: dict,
+        LDS_VERSION: str,
+        filename: str | pathlib.Path | None = None,
+        lineage: str | pathlib.Path | None = None
+    ):
+    """
+    Writes LVIS Level-2 data to HDF5 files
+
+    Parameters
+    ----------
+    ILVIS2_MDS: dict
+        Complete set of LVIS Level-2 variables
+    LDS_VERSION: str
+        Version of the LVIS Data Structure (1.04 or 2.0.2)
+    filename: str or pathlib.Path or None
+        Output HDF5 filename
+    lineage: str or pathlib.Path or None
+        Original LVIS filename or lineage information
+    """
+    # open output HDF5 file
+    fileID = h5py.File(filename, 'w')
+
+    # create sub-groups within HDF5 file
+    fileID.create_group('Time')
+    fileID.create_group('Geolocation')
+    fileID.create_group('Elevation_Surfaces')
+    # sub-groups specific to the LDS version 2.0.2
+    if (LDS_VERSION == '2.0.2'):
+        fileID.create_group('Waveform')
+        fileID.create_group('Instrument_Parameters')
+
+    # Dimensions of parameters
+    n_records, = ILVIS2_MDS['Shot_Number'].shape
+
+    # Defining output HDF5 variable attributes
+    attributes = {}
+    # LVIS_LFID
+    attributes['LVIS_LFID'] = {}
+    attributes['LVIS_LFID']['long_name'] = 'LVIS Record Index'
+    attributes['LVIS_LFID']['description'] = ('LVIS file identification, '
+        'including date and time of collection and file number. The third '
+        'through seventh values in first field represent the Modified Julian '
+        'Date of data collection.')
+    # Shot Number
+    attributes['Shot_Number'] = {}
+    attributes['Shot_Number']['long_name'] = ('Shot Number')
+    attributes['Shot_Number']['description'] = ('Laser shot assigned during '
+        'collection')
+    # Time
+    attributes['Time'] = {}
+    attributes['Time']['long_name'] = 'Transmit time of each shot'
+    attributes['Time']['units'] = 'Seconds'
+    attributes['Time']['description'] = 'UTC decimal seconds of the day'
+    # J2000
+    attributes['J2000'] = {}
+    attributes['J2000']['long_name'] = ('Transmit time of each shot in J2000 '
+        'seconds')
+    attributes['J2000']['units'] = 'seconds since 2000-01-01 12:00:00 UTC'
+    attributes['J2000']['description'] = ('The transmit time of each shot in '
+        'the 1 second frame measured as UTC seconds elapsed since Jan 1 '
+        '2000 12:00:00 UTC.')
+    # Centroid
+    attributes['Longitude_Centroid'] = {}
+    attributes['Longitude_Centroid']['long_name'] = 'Longitude_Centroid'
+    attributes['Longitude_Centroid']['units'] = 'Degrees East'
+    attributes['Longitude_Centroid']['description'] = ('Corresponding longitude '
+        'of the LVIS Level-1B waveform centroid')
+    attributes['Latitude_Centroid'] = {}
+    attributes['Latitude_Centroid']['long_name'] = 'Latitude_Centroid'
+    attributes['Latitude_Centroid']['units'] = 'Degrees North'
+    attributes['Latitude_Centroid']['description'] = ('Corresponding latitude of '
+        'the LVIS Level-1B waveform centroid')
+    attributes['Elevation_Centroid'] = {}
+    attributes['Elevation_Centroid']['long_name'] = 'Elevation_Centroid'
+    attributes['Elevation_Centroid']['units'] = 'Meters'
+    attributes['Elevation_Centroid']['description'] = ('Elevation surface of the '
+        'LVIS Level-1B waveform centroid')
+    # Lowest mode
+    attributes['Longitude_Low'] = {}
+    attributes['Longitude_Low']['long_name'] = 'Longitude_Low'
+    attributes['Longitude_Low']['units'] = 'Degrees East'
+    attributes['Longitude_Low']['description'] = ('Longitude of the '
+        'lowest detected mode within the LVIS Level-1B waveform')
+    attributes['Latitude_Low'] = {}
+    attributes['Latitude_Low']['long_name'] = 'Latitude_Low'
+    attributes['Latitude_Low']['units'] = 'Degrees North'
+    attributes['Latitude_Low']['description'] = ('Latitude of the '
+        'lowest detected mode within the LVIS Level-1B waveform')
+    attributes['Elevation_Low'] = {}
+    attributes['Elevation_Low']['long_name'] = 'Elevation_Low'
+    attributes['Elevation_Low']['units'] = 'Meters'
+    attributes['Elevation_Low']['description'] = ('Mean Elevation of the '
+        'lowest detected mode within the LVIS Level-1B waveform')
+    # Highest mode
+    attributes['Longitude_High'] = {}
+    attributes['Longitude_High']['long_name'] = 'Longitude_High'
+    attributes['Longitude_High']['units'] = 'Degrees East'
+    attributes['Longitude_High']['description'] = ('Longitude of the '
+        'highest detected mode within the LVIS Level-1B waveform')
+    attributes['Latitude_High'] = {}
+    attributes['Latitude_High']['long_name'] = 'Latitude_High'
+    attributes['Latitude_High']['units'] = 'Degrees North'
+    attributes['Latitude_High']['description'] = ('Latitude of the '
+        'highest detected mode within the LVIS Level-1B waveform')
+    attributes['Elevation_High'] = {}
+    attributes['Elevation_High']['long_name'] = 'Elevation_High'
+    attributes['Elevation_High']['units'] = 'Meters'
+    attributes['Elevation_High']['description'] = ('Mean Elevation of the '
+        'highest detected mode within the LVIS Level-1B waveform')
+    # Highest detected signal
+    attributes['Longitude_Top'] = {}
+    attributes['Longitude_Top']['long_name'] = 'Longitude_Top'
+    attributes['Longitude_Top']['units'] = 'Degrees East'
+    attributes['Longitude_Top']['description'] = ('Longitude of the '
+        'highest detected signal within the LVIS Level-1B waveform')
+    attributes['Latitude_Top'] = {}
+    attributes['Latitude_Top']['long_name'] = 'Latitude_Top'
+    attributes['Latitude_Top']['units'] = 'Degrees North'
+    attributes['Latitude_Top']['description'] = ('Latitude of the '
+        'highest detected signal within the LVIS Level-1B waveform')
+    attributes['Elevation_Top'] = {}
+    attributes['Elevation_Top']['long_name'] = 'Elevation_Top'
+    attributes['Elevation_Top']['units'] = 'Meters'
+    attributes['Elevation_Top']['description'] = ('Mean Elevation of the '
+        'highest detected signal within the LVIS Level-1B waveform')
+    # heights at which a percentage of the waveform energy occurs
+    pv = [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75,
+        80, 85, 90, 95, 96, 97, 98, 99, 100]
+    for RH in pv:
+        attributes[f'RH{RH:d}'] = {}
+        attributes[f'RH{RH:d}']['long_name'] = f'RH{RH:d}'
+        attributes[f'RH{RH:d}']['units'] = 'Meters'
+        attributes[f'RH{RH:d}']['description'] = ('Height relative to the '
+            f'lowest detected mode at which {RH:d}% of the waveform '
+            'energy occurs')
+    # Laser parmeters
+    # Azimuth
+    attributes['Azimuth'] = {}
+    attributes['Azimuth']['long_name'] = 'Azimuth'
+    attributes['Azimuth']['units'] = 'degrees'
+    attributes['Azimuth']['description'] = 'Azimuth angle of the laser beam.'
+    attributes['Azimuth']['valid_min'] = 0.0
+    attributes['Azimuth']['valid_max'] = 360.0
+    # Incident Angle
+    attributes['Incident_Angle'] = {}
+    attributes['Incident_Angle']['long_name'] = 'Incident_Angle'
+    attributes['Incident_Angle']['units'] = 'degrees'
+    attributes['Incident_Angle']['description'] = ('Off-nadir incident angle '
+        'of the laser beam.')
+    attributes['Incident_Angle']['valid_min'] = 0.0
+    attributes['Incident_Angle']['valid_max'] = 360.0
+    # Range
+    attributes['Range'] = {}
+    attributes['Range']['long_name'] = 'Range'
+    attributes['Range']['units'] = 'meters'
+    attributes['Range']['description'] = ('Distance between the instrument and '
+        'the ground.')
+    # Complexity
+    attributes['Complexity'] = {}
+    attributes['Complexity']['long_name'] = 'Complexity'
+    attributes['Complexity']['description'] = ('Complexity metric for the '
+        'return waveform.')
+    # Flags
+    attributes['Flag1'] = {}
+    attributes['Flag1']['long_name'] = 'Flag1'
+    attributes['Flag1']['description'] = ('Flag indicating LVIS channel used '
+        'to locate lowest detected mode.')
+    attributes['Flag2'] = {}
+    attributes['Flag2']['long_name'] = 'Flag1'
+    attributes['Flag2']['description'] = ('Flag indicating LVIS channel used '
+        'to calculate RH metrics.')
+    attributes['Flag3'] = {}
+    attributes['Flag3']['long_name'] = 'Flag1'
+    attributes['Flag3']['description'] = ('Flag indicating LVIS channel '
+        'waveform contained in Level-1B file.')
+
+    # Defining the HDF5 dataset variables
+    h5 = {}
+
+    # Defining Shot_Number dimension variable
+    dim = 'Shot_Number'
+    h5[dim] = fileID.create_dataset(dim,
+        (n_records,), data=ILVIS2_MDS[dim], dtype=ILVIS2_MDS[dim].dtype,
+        compression='gzip')
+    h5[dim].make_scale(dim)
+    # add HDF5 variable attributes
+    for att_name,att_val in attributes[dim].items():
+        h5[dim].attrs[att_name] = att_val
+
+    # Time Variables
+    for k in ['LVIS_LFID','Time','J2000']:
+        v = ILVIS2_MDS[k]
+        h5[k] = fileID.create_dataset(f'Time/{k}',
+            (n_records,), data=v, dtype=v.dtype,
+            compression='gzip')
+        # attach dimensions
+        h5[k].dims[0].label = dim
+        h5[k].dims[0].attach_scale(h5[dim])
+        # add HDF5 variable attributes
+        for att_name,att_val in attributes[k].items():
+            h5[k].attrs[att_name] = att_val
+
+    # Geolocation Variables
+    if (LDS_VERSION == '1.04'):
+        geolocation_keys = ['Longitude_Centroid','Longitude_Low',
+            'Longitude_High','Latitude_Centroid','Latitude_Low','Latitude_High']
+    elif (LDS_VERSION == '2.0.2'):
+        geolocation_keys = ['Longitude_Low','Longitude_High','Longitude_Top',
+            'Latitude_Low','Latitude_High','Latitude_Top']
+    for k in geolocation_keys:
+        v = ILVIS2_MDS[k]
+        h5[k] = fileID.create_dataset(f'Geolocation/{k}',
+            (n_records,), data=v, dtype=v.dtype,
+            compression='gzip')
+        # attach dimensions
+        h5[k].dims[0].label = dim
+        h5[k].dims[0].attach_scale(h5[dim])
+        # add HDF5 variable attributes
+        for att_name,att_val in attributes[k].items():
+            h5[k].attrs[att_name] = att_val
+
+    # Elevation Surface Variables
+    if (LDS_VERSION == '1.04'):
+        elevation_keys = ['Elevation_Centroid','Elevation_Low','Elevation_High']
+    elif (LDS_VERSION == '2.0.2'):
+        elevation_keys = ['Elevation_Low','Elevation_High','Elevation_Top']
+    for k in elevation_keys:
+        v = ILVIS2_MDS[k]
+        h5[k] = fileID.create_dataset(f'Elevation_Surfaces/{k}',
+            (n_records,), data=v, dtype=v.dtype,
+            compression='gzip')
+        # attach dimensions
+        h5[k].dims[0].label = dim
+        h5[k].dims[0].attach_scale(h5[dim])
+        # add HDF5 variable attributes
+        for att_name,att_val in attributes[k].items():
+            h5[k].attrs[att_name] = att_val
+
+    # variables specific to the LDS version 2.0.2
+    if (LDS_VERSION == '2.0.2'):
+        # Waveform Variables
+        height_keys = ['RH10','RH15','RH20','RH25','RH30','RH35','RH40',
+            'RH45','RH50','RH55','RH60','RH65','RH70','RH75','RH80','RH85',
+            'RH90','RH95','RH96','RH97','RH98','RH99','RH100','Complexity']
+        for k in height_keys:
+            v = ILVIS2_MDS[k]
+            h5[k] = fileID.create_dataset(f'Waveform/{k}',
+                (n_records,), data=v, dtype=v.dtype,
+                compression='gzip')
+            # attach dimensions
+            h5[k].dims[0].label = dim
+            h5[k].dims[0].attach_scale(h5[dim])
+            # add HDF5 variable attributes
+            for att_name,att_val in attributes[k].items():
+                h5[k].attrs[att_name] = att_val
+
+        # instrument parameter variables
+        instrument_parameter_keys = ['Azimuth','Incident_Angle','Range',
+            'Flag1','Flag2','Flag3']
+        for k in instrument_parameter_keys:
+            v = ILVIS2_MDS[k]
+            h5[k]=fileID.create_dataset(f'Instrument_Parameters/{k}',
+                (n_records,), data=v, dtype=v.dtype,
+                compression='gzip')
+            # attach dimensions
+            h5[k].dims[0].label = dim
+            h5[k].dims[0].attach_scale(h5[dim])
+            # add HDF5 variable attributes
+            for att_name,att_val in attributes[k].items():
+                h5[k].attrs[att_name] = att_val
+
+    # Defining global attributes for output HDF5 file
+    fileID.attrs['featureType'] = 'trajectory'
+    fileID.attrs['title'] = 'IceBridge LVIS L2 Geolocated Surface Elevation'
+    fileID.attrs['comment'] = ('Operation IceBridge products may include test '
+        'flight data that are not useful for research and scientific analysis. '
+        'Test flights usually occur at the beginning of campaigns. Users '
+        'should read flight reports for the flights that collected any of the '
+        'data they intend to use')
+    fileID.attrs['summary'] = ("Surface elevation measurements over areas "
+        "including Greenland and Antarctica. The data were collected as part "
+        "of NASA Operation IceBridge funded campaigns.")
+    fileID.attrs['references'] = '{0}, {1}'.format('http://lvis.gsfc.nasa.gov/',
+        'http://nsidc.org/data/docs/daac/icebridge/ilvis2')
+    fileID.attrs['date_created'] = time.strftime('%Y-%m-%d',time.localtime())
+    fileID.attrs['project'] = 'NASA Operation IceBridge'
+    fileID.attrs['instrument'] = 'Land, Vegetation, and Ice Sensor (LVIS)'
+    fileID.attrs['processing_level'] = '2'
+    fileID.attrs['lineage'] = pathlib.Path(lineage).name
+    # LVIS Data Structure (LDS) version
+    # https://lvis.gsfc.nasa.gov/Data/Data_Structure/DataStructure_LDS104.html
+    # https://lvis.gsfc.nasa.gov/Data/Data_Structure/DataStructure_LDS202.html
+    fileID.attrs['version'] = f'LDSv{LDS_VERSION}'
+    # Geospatial and temporal parameters
+    fileID.attrs['geospatial_lat_min'] = ILVIS2_MDS['Latitude_Low'].min()
+    fileID.attrs['geospatial_lat_max'] = ILVIS2_MDS['Latitude_Low'].max()
+    fileID.attrs['geospatial_lon_min'] = ILVIS2_MDS['Longitude_Low'].min()
+    fileID.attrs['geospatial_lon_max'] = ILVIS2_MDS['Longitude_Low'].max()
+    fileID.attrs['geospatial_lat_units'] = "degrees_north"
+    fileID.attrs['geospatial_lon_units'] = "degrees_east"
+    fileID.attrs['geospatial_ellipsoid'] = "WGS84"
+    fileID.attrs['time_type'] = 'UTC'
+    fileID.attrs['date_type'] = 'J2000'
+    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
+    ts = timescale.time.Timescale().from_deltatime(ILVIS2_MDS['J2000'],
+        epoch=timescale.time._j2000_epoch, standard='UTC')
+    # add attributes with measurement date start, end and duration
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
+    duration = ts.day*(np.max(ts.MJD) - np.min(ts.MJD))
+    fileID.attrs['time_coverage_start'] = str(dt[0])
+    fileID.attrs['time_coverage_end'] = str(dt[-1])
+    fileID.attrs['time_coverage_duration'] = f'{duration:0.0f}'
+    # Closing the HDF5 file
+    fileID.close()

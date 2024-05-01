@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat_GLA12.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (04/2024)
 Calculates tidal elevations for correcting ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -27,7 +27,8 @@ COMMAND LINE OPTIONS:
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
-    --apply-flexure: Apply ice flexure scaling factor to height constituents
+    --infer-minor: Infer the height values for minor constituents
+    --apply-flexure: Apply ice flexure scaling factor to height values
         Only valid for models containing flexure fields
     -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
@@ -42,13 +43,17 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
-    time.py: utilities for calculating time operations
     spatial: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
     astro.py: computes the basic astronomical mean longitudes
-    convert_crs.py: convert points to and from Coordinates Reference Systems
+    crs.py: Coordinate Reference System (CRS) routines
     load_constituent.py: loads parameters for a given tidal constituent
     arguments.py: load the nodal corrections for tidal constituents
     io/model.py: retrieves tide model parameters for named tide models
@@ -60,6 +65,8 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
+    Updated 01/2024: made the inferrence of minor constituents an option
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         changed ESR netCDF4 format to TMD3 format
     Updated 05/2023: use timescale class for time conversion operations
@@ -123,6 +130,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # compute tides at points and times using tidal model driver algorithms
@@ -135,6 +146,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     METHOD='spline',
     EXTRAPOLATE=False,
     CUTOFF=None,
+    INFER_MINOR=False,
     APPLY_FLEXURE=False,
     VERBOSE=False,
     MODE=0o775):
@@ -216,15 +228,15 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
-    topex = pyTMD.constants('TOPEX')
-    wgs84 = pyTMD.constants('WGS84')
+    topex = pyTMD.datum(ellipsoid='TOPEX', units='MKS')
+    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
     lat_40HZ, elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
         topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    timescale = pyTMD.time.timescale().from_deltatime(DS_UTCTime_40HZ[:],
-        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    ts = timescale.time.Timescale().from_deltatime(DS_UTCTime_40HZ[:],
+        epoch=timescale.time._j2000_epoch, standard='UTC')
 
     # read tidal constants and interpolate to grid points
     if model.format in ('OTIS','ATLAS','TMD3'):
@@ -244,7 +256,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
             model.model_file, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
         # delta time (TT - UT1)
-        deltat = timescale.tt_ut1
+        deltat = ts.tt_ut1
     elif (model.format == 'FES'):
         amp,ph = pyTMD.io.FES.extract_constants(lon_40HZ, lat_40HZ,
             model.model_file, type=model.type, version=model.version,
@@ -253,7 +265,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
         # available model constituents
         c = model.constituents
         # delta time (TT - UT1)
-        deltat = timescale.tt_ut1
+        deltat = ts.tt_ut1
 
     # calculate complex phase in radians for Euler's
     cph = -1j*ph*np.pi/180.0
@@ -263,11 +275,13 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     # predict tidal elevations at time and infer minor corrections
     tide = np.ma.empty((n_40HZ),fill_value=fv)
     tide.mask = np.any(hc.mask,axis=1)
-    tide.data[:] = pyTMD.predict.drift(timescale.tide, hc, c,
+    tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
         deltat=deltat, corrections=model.format)
-    minor = pyTMD.predict.infer_minor(timescale.tide, hc, c,
-        deltat=deltat, corrections=model.format)
-    tide.data[:] += minor.data[:]
+    # calculate values for minor constituents by inferrence
+    if INFER_MINOR:
+        minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
+            deltat=deltat, corrections=model.format)
+        tide.data[:] += minor.data[:]
     # replace masked and nan values with fill value
     invalid, = np.nonzero(np.isnan(tide.data) | tide.mask)
     tide.data[invalid] = tide.fill_value
@@ -528,10 +542,14 @@ def arguments():
     parser.add_argument('--cutoff','-c',
         type=np.float64, default=10.0,
         help='Extrapolation cutoff in kilometers')
+    # infer minor constituents from major
+    parser.add_argument('--infer-minor',
+        default=False, action='store_true',
+        help='Infer the height values for minor constituents')
     # apply flexure scaling factors to height constituents
     parser.add_argument('--apply-flexure',
         default=False, action='store_true',
-        help='Apply ice flexure scaling factor to height constituents')
+        help='Apply ice flexure scaling factor to height values')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -561,6 +579,7 @@ def main():
             METHOD=args.interpolate,
             EXTRAPOLATE=args.extrapolate,
             CUTOFF=args.cutoff,
+            INFER_MINOR=args.infer_minor,
             APPLY_FLEXURE=args.apply_flexure,
             VERBOSE=args.verbose,
             MODE=args.mode)

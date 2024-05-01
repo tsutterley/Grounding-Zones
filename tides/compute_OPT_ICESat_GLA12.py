@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_OPT_ICESat_GLA12.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (04/2024)
 Calculates radial ocean pole tide displacements for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
     elevation data following IERS Convention (2010) guidelines
@@ -30,9 +30,13 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
-    time.py: utilities for calculating time operations
     spatial.py: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
     eop.py: utilities for calculating Earth Orientation Parameters (EOP)
@@ -46,6 +50,7 @@ REFERENCES:
         doi: 10.1007/s00190-015-0848-7
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
         use defaults from eop module for pole tide and EOP files
@@ -87,6 +92,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # compute ocean pole tide radial displacements at points and times
@@ -164,19 +173,19 @@ def compute_OPT_ICESat(INPUT_FILE,
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    timescale = pyTMD.time.timescale().from_deltatime(DS_UTCTime_40HZ[:],
-        epoch=pyTMD.time._j2000_epoch, standard='UTC')
+    ts = timescale.time.Timescale().from_deltatime(DS_UTCTime_40HZ[:],
+        epoch=timescale.time._j2000_epoch, standard='UTC')
     # convert dynamic time to Modified Julian Days (MJD)
-    MJD = timescale.tt - 2400000.5
+    MJD = ts.tt - 2400000.5
     # convert Julian days to calendar dates
-    Y,M,D,h,m,s = pyTMD.time.convert_julian(timescale.tt, format='tuple')
+    Y,M,D,h,m,s = timescale.time.convert_julian(ts.tt, format='tuple')
     # calculate time in year-decimal format
-    time_decimal = pyTMD.time.convert_calendar_decimal(Y,M,day=D,
+    time_decimal = timescale.time.convert_calendar_decimal(Y,M,day=D,
         hour=h,minute=m,second=s)
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
-    topex = pyTMD.constants('TOPEX')
-    wgs84 = pyTMD.constants('WGS84')
+    topex = pyTMD.datum(ellipsoid='TOPEX', units='MKS')
+    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
     lat_40HZ, elev_40HZ = pyTMD.spatial.convert_ellipsoid(
         lat_TPX, elev_TPX,
@@ -207,9 +216,10 @@ def compute_OPT_ICESat(INPUT_FILE,
     K1 = 4.0*np.pi*wgs84.G*rho_w*Hp*wgs84.a_axis**3/(3.0*wgs84.GM)
 
     # calculate angular coordinates of mean/secular pole at time
-    mpx, mpy, fl = pyTMD.eop.iers_mean_pole(time_decimal, convention=CONVENTION)
+    mpx, mpy, fl = timescale.eop.iers_mean_pole(time_decimal,
+        convention=CONVENTION)
     # read and interpolate IERS daily polar motion values
-    px, py = pyTMD.eop.iers_polar_motion(MJD, k=3, s=0)
+    px, py = timescale.eop.iers_polar_motion(MJD, k=3, s=0)
     # calculate differentials from mean/secular pole positions
     mx = px - mpx
     my = -(py - mpy)
@@ -435,7 +445,7 @@ def get_available_conventions():
     """Create a list of available EOP conventions
     """
     try:
-        return pyTMD.eop._conventions
+        return timescale.eop._conventions
     except (NameError, AttributeError):
         return ('2003', '2010', '2015', '2018')
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (11/2023)
+Written by Tyler Sutterley (04/2024)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -45,12 +45,15 @@ PYTHON DEPENDENCIES:
     pyTMD: Python-based tidal prediction software
         https://pypi.org/project/pyTMD/
         https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
-    time.py: utilities for calculating time operations
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
+    Updated 12/2023: don't have a default tide model in arguments
     Updated 11/2023: filter absolute heights in reference to geoid
         include input mask for grounding zone in output HDF5 file
     Updated 08/2023: create s3 filesystem when using s3 urls as input
@@ -94,6 +97,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: Find indices of common reference points between two lists
 # Determines which across-track points correspond with the along-track
@@ -102,10 +109,7 @@ def common_reference_points(XT, AT):
     return ind2
 
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
-# calculate mean elevation between all dates in file
-# calculate inflexion point using elevation surface slopes
-# use mean elevation to calculate elevation anomalies
-# use anomalies to calculate inward and seaward limits of tidal flexure
+# use an initial tide model as a prior for estimating ice flexure
 def fit_tides_ICESat2(tide_dir, INPUT_FILE,
     OUTPUT_DIRECTORY=None,
     TIDE_MODEL=None,
@@ -352,13 +356,13 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             val.data[val.mask] = val.fill_value
 
         # allocate for output timescales
-        timescale = {}
+        ts = {}
         # calculate tides for along-track and across-track data
         for track in ['AT','XT']:
             # create timescale from ATLAS Standard Epoch time
             # GPS seconds since 2018-01-01 00:00:00 UTC
-            timescale[track] = pyTMD.time.timescale().from_deltatime(
-                delta_time[track], epoch=pyTMD.time._atlas_sdp_epoch,
+            ts[track] = timescale.time.Timescale().from_deltatime(
+                delta_time[track], epoch=timescale.time._atlas_sdp_epoch,
                 standard='GPS')
 
         # for each ATL11 segment
@@ -382,8 +386,8 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             h1 = h_corr['AT'].data[s,i1] - geoid_h[s]
             h2 = np.atleast_1d(h_corr['XT'].data[i2]) - geoid_h[s]
             # tide times
-            t1 = timescale['AT'].tide[s,i1]
-            t2 = np.atleast_1d(timescale['XT'].tide[i2])
+            t1 = ts['AT'].tide[s,i1]
+            t2 = np.atleast_1d(ts['XT'].tide[i2])
             # combined tide and dac height
             ot1 = tide_ocean['AT'].data[s,i1] + IB['AT'].data[s,i1]
             ot2 = np.atleast_1d(tide_ocean['XT'].data[i2] + IB['XT'].data[i2])
@@ -960,9 +964,9 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['geospatial_ellipsoid'] = "WGS84"
     fileID.attrs['date_type'] = 'UTC'
     # convert start and end time from ATLAS SDP seconds into timescale
-    timescale = pyTMD.time.timescale().from_deltatime(np.array([tmn,tmx]),
-        epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
+    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
     fileID.attrs['time_coverage_start'] = str(dt[0])
     fileID.attrs['time_coverage_end'] = str(dt[1])
@@ -994,7 +998,7 @@ def arguments():
     # command line parameters
     parser.add_argument('infile',
         type=pathlib.Path, nargs='+',
-        help='ICESat GLA12 file to run')
+        help='ICESat-2 ATL11 file to run')
     # directory with tide data
     parser.add_argument('--directory','-D',
         type=pathlib.Path, default=pathlib.Path.cwd(),
@@ -1006,7 +1010,7 @@ def arguments():
     # tide model to use
     parser.add_argument('--tide','-T',
         metavar='TIDE', type=str,
-        choices=get_available_models(), default='CATS2022',
+        choices=get_available_models(),
         help='Tide model to use in correction')
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,

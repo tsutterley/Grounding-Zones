@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPET_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (04/2024)
 Calculates long-period equilibrium tidal elevations for correcting ICESat-2
     annual land ice height data
 Will calculate the long-period tides for all ATL11 segments and not just ocean
@@ -22,14 +22,19 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
-    time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
     predict.py: calculates long-period equilibrium ocean tides
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
         using pathlib to define and operate on paths
@@ -72,6 +77,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
 # compute long-period equilibrium tides at points and times
@@ -193,8 +202,8 @@ def compute_LPET_ICESat2(INPUT_FILE,
         for track in ['AT','XT']:
             # create timescale from ATLAS Standard Epoch time
             # GPS seconds since 2018-01-01 00:00:00 UTC
-            timescale = pyTMD.time.timescale().from_deltatime(delta_time[track],
-                epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
+            ts = timescale.time.Timescale().from_deltatime(delta_time[track],
+                epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
 
             # calculate  long-period equilibrium tides for track type
             if (track == 'AT'):
@@ -203,14 +212,14 @@ def compute_LPET_ICESat2(INPUT_FILE,
                     # find valid time and spatial points for cycle
                     valid, = np.nonzero(~tide_lpe[track].mask[:,cycle])
                     # predict long-period equilibrium tides at latitudes and time
-                    t = timescale.tide[valid,cycle] + timescale.tt_ut1[valid,cycle]
+                    t = ts.tide[valid,cycle] + ts.tt_ut1[valid,cycle]
                     tide_lpe[track].data[valid,cycle] = pyTMD.predict.equilibrium_tide(t,
                         latitude[track][valid])
             elif (track == 'XT'):
                 # find valid time and spatial points for cycle
                 valid, = np.nonzero(~tide_lpe[track].mask[:])
                 # predict long-period equilibrium tides at latitudes and time
-                t = timescale.tide[valid] + timescale.tt_ut1[valid]
+                t = ts.tide[valid] + ts.tt_ut1[valid]
                 tide_lpe[track].data[valid] = pyTMD.predict.equilibrium_tide(t,
                     latitude[track][valid])
 
@@ -606,9 +615,9 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    timescale = pyTMD.time.timescale().from_deltatime(np.array([tmn,tmx]),
-        epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
+    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
     fileID.attrs['time_coverage_start'] = str(dt[0])
     fileID.attrs['time_coverage_end'] = str(dt[1])

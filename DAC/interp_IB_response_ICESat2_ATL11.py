@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_IB_response_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (04/2024)
 Calculates and interpolates inverse-barometer responses to times and
     locations of ICESat-2 ATL11 annual land ice height data
     This data will be interpolated for all valid points
@@ -31,11 +31,15 @@ PYTHON DEPENDENCIES:
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://h5py.org
     netCDF4: Python interface to the netCDF C library
-         https://unidata.github.io/netcdf4-python/netCDF4/index.html
+        https://unidata.github.io/netcdf4-python/netCDF4/index.html
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
-    time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
 
 REFERENCES:
@@ -46,6 +50,7 @@ REFERENCES:
         Rev. A, 84 pp., (1994)
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from pyTMD.time
     Updated 05/2023: use timescale class for time conversion operations
@@ -98,6 +103,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: compress complete list values into a set of ranges
 def compress_list(i,n):
@@ -143,7 +152,7 @@ def find_pressure_files(ddir, MODEL, MJD):
         # append day prior, day of and day after
         JD = mjd + np.arange(-1,2) + 2400000.5
         # convert from Julian Days to calendar dates
-        Y,M,D,_,_,_ = pyTMD.time.convert_julian(JD,
+        Y,M,D,_,_,_ = timescale.time.convert_julian(JD,
             ASTYPE=int, FORMAT='tuple')
         # append day as formatted strings
         for y,m,d in zip(Y,M,D):
@@ -183,9 +192,9 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,INDICES,AREA):
             # convert time to Modified Julian Days
             delta_time = np.copy(fileID.variables[TIMENAME][:])
             units = fileID.variables[TIMENAME].units
-            epoch,to_secs = pyTMD.time.parse_date_string(units)
+            epoch,to_secs = timescale.time.parse_date_string(units)
             for t,dt in enumerate(delta_time):
-                MJD[c] = pyTMD.time.convert_delta_time(dt*to_secs,
+                MJD[c] = timescale.time.convert_delta_time(dt*to_secs,
                     epoch1=epoch, epoch2=(1858,11,17,0,0,0), scale=1.0/86400.0)
                 # check dimensions for expver slice
                 if (fileID.variables[VARNAME].ndim == 4):
@@ -354,7 +363,7 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
     gridtheta = (90.0 - gridlat)*np.pi/180.0
 
     # ellipsoidal parameters of WGS84 ellipsoid
-    wgs84 = pyTMD.constants('WGS84')
+    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # semimajor and semiminor axes of the ellipsoid [m]
     a_axis = wgs84.a_axis
     b_axis = wgs84.b_axis
@@ -454,8 +463,8 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
         for track in groups:
             # create timescale from ATLAS Standard Epoch time
             # GPS seconds since 2018-01-01 00:00:00 UTC
-            timescale = pyTMD.time.timescale().from_deltatime(delta_time[track],
-                epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
+            ts = timescale.time.Timescale().from_deltatime(delta_time[track],
+                epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
 
             # calculate projected coordinates of input coordinates
             ix,iy = transformer.transform(longitude[track], latitude[track])
@@ -487,7 +496,7 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
                         continue
                     valid, = np.nonzero(np.logical_not(delta_time[track].mask[:,cycle]))
                     # find each reanalysis pressure field for cycle
-                    FILENAMES = find_pressure_files(ddir, MODEL, timescale.MJD[valid,cycle])
+                    FILENAMES = find_pressure_files(ddir, MODEL, ts.MJD[valid,cycle])
                     n_files = len(FILENAMES)
                     if (n_files == 0):
                         IB[track].mask[valid] = True
@@ -496,7 +505,7 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
                     islp,itpx,ilat,imjd = ncdf_pressure(FILENAMES,VARNAME,TIMENAME,
                         LATNAME,mean_pressure,MASK,indices,AREA)
                     # points for interpolation
-                    points = np.c_[timescale.MJD[valid,cycle],iy[valid],ix[valid]]
+                    points = np.c_[ts.MJD[valid,cycle],iy[valid],ix[valid]]
                     # create an interpolator for mean sea level pressure anomalies
                     R1 = scipy.interpolate.RegularGridInterpolator((imjd,ilat,lon),
                         islp, bounds_error=False)
@@ -516,12 +525,12 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
                 # compress list of Modified Julian Days into ranges
                 # limits the number of files to be read for a given date
                 # and the number of times a file needs to be read
-                MJD_list = compress_list(np.unique(np.floor(timescale.MJD)),10)
+                MJD_list = compress_list(np.unique(np.floor(ts.MJD)),10)
                 # for each date range
                 for imin,imax in MJD_list:
                     # find where valid and within the range of MJD
                     valid, = np.nonzero(np.logical_not(delta_time[track].mask) &
-                        (timescale.MJD >= imin) & (timescale.MJD <= (imax+1)))
+                        (ts.MJD >= imin) & (ts.MJD <= (imax+1)))
                     # find each reanalysis pressure field
                     FILENAMES = find_pressure_files(ddir,MODEL,np.arange(imin,imax+1))
                     n_files = len(FILENAMES)
@@ -532,7 +541,7 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
                     islp,itpx,ilat,imjd = ncdf_pressure(FILENAMES,VARNAME,TIMENAME,
                         LATNAME,mean_pressure,MASK,indices,AREA)
                     # points for interpolation
-                    points = np.c_[timescale.MJD[valid],iy[valid],ix[valid]]
+                    points = np.c_[ts.MJD[valid],iy[valid],ix[valid]]
                     # create an interpolator for mean sea level pressure anomalies
                     R1 = scipy.interpolate.RegularGridInterpolator((imjd,ilat,lon),
                         islp, bounds_error=False)
@@ -978,9 +987,9 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    timescale = pyTMD.time.timescale().from_deltatime(np.array([tmn,tmx]),
-        epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
+    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
     fileID.attrs['time_coverage_start'] = str(dt[0])
     fileID.attrs['time_coverage_end'] = str(dt[1])

@@ -6,7 +6,7 @@ Interpolates ATL14 elevations to ICESat-2 ATL11 segment locations
 
 COMMAND LINE OPTIONS:
     -O X, --output-directory X: input/output data directory
-    -m X, --model X: path to ATL14 model file
+    -m X, --dem-model X: path to ATL14 model file
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
 
@@ -19,14 +19,14 @@ PYTHON DEPENDENCIES:
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org
     netCDF4: Python interface to the netCDF C library
-         https://unidata.github.io/netcdf4-python/netCDF4/index.html
+        https://unidata.github.io/netcdf4-python/netCDF4/index.html
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
-    convert_delta_time.py: converts from delta time into Julian and year-decimal
-    time.py: Utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
@@ -71,7 +71,7 @@ try:
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyproj not available", ImportWarning)
 try:
-    import timescale
+    import timescale.time
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("timescale not available", ImportWarning)
 

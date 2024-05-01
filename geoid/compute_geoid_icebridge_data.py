@@ -22,6 +22,8 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
@@ -84,7 +86,7 @@ try:
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("icesat2_toolkit not available", ImportWarning)
 try:
-    import timescale
+    import timescale.time
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("timescale not available", ImportWarning)
 

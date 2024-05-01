@@ -15,10 +15,12 @@ General Methods
 
 .. autofunction:: grounding_zones.utilities.get_data_path
 
-.. autofunction:: IS2view.utilities._create_default_ssl_context
+.. autofunction:: grounding_zones.utilities._create_default_ssl_context
 
-.. autofunction:: IS2view.utilities._create_ssl_context_no_verify
+.. autofunction:: grounding_zones.utilities._create_ssl_context_no_verify
 
-.. autofunction:: IS2view.utilities._set_ssl_context_options
+.. autofunction:: grounding_zones.utilities._set_ssl_context_options
 
 .. autofunction:: grounding_zones.utilities.pgc_list
+
+.. autofunction:: grounding_zones.utilities.cmr

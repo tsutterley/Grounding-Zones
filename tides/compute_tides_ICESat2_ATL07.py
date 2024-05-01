@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL07.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (04/2024)
 Calculates tidal elevations for correcting ICESat-2 sea ice height data
 
 Uses OTIS format tidal solutions provided by Ohio State University and ESR
@@ -23,6 +23,7 @@ COMMAND LINE OPTIONS:
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
+    --infer-minor: Infer the height values for minor constituents
     -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
 
@@ -36,13 +37,17 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
+    pyTMD: Python-based tidal prediction software
+        https://pypi.org/project/pyTMD/
+        https://pytmd.readthedocs.io/en/latest/
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
     io/ATL07.py: reads ICESat-2 sea ice height data files
-    time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
     astro.py: computes the basic astronomical mean longitudes
-    convert_crs.py: convert points to and from Coordinates Reference Systems
+    crs.py: Coordinate Reference System (CRS) routines
     load_constituent.py: loads parameters for a given tidal constituent
     arguments.py: load the nodal corrections for tidal constituents
     io/model.py: retrieves tide model parameters for named tide models
@@ -54,6 +59,8 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
+    Updated 01/2024: made the inferrence of minor constituents an option
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         changed ESR netCDF4 format to TMD3 format
     Updated 05/2023: use timescale class for time conversion operations
@@ -123,6 +130,10 @@ try:
     import pyTMD
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # PURPOSE: read ICESat-2 sea ice height (ATL07) from NSIDC
 # compute tides at points and times using tidal model driver algorithms
@@ -135,6 +146,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
     METHOD='spline',
     EXTRAPOLATE=False,
     CUTOFF=None,
+    INFER_MINOR=False,
     VERBOSE=False,
     MODE=0o775):
 
@@ -242,8 +254,8 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
 
         # create timescale from ATLAS Standard Epoch time
         # GPS seconds since 2018-01-01 00:00:00 UTC
-        timescale = pyTMD.time.timescale().from_deltatime(val['delta_time'],
-            epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
+        ts = timescale.time.Timescale().from_deltatime(val['delta_time'],
+            epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
 
         # interpolate tidal constants to grid points
         if model.format in ('OTIS','ATLAS','TMD3'):
@@ -263,27 +275,29 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                 val['latitude'], constituents, method=METHOD,
                 extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
             # delta time (TT - UT1)
-            deltat = timescale.tt_ut1
+            deltat = ts.tt_ut1
         elif (model.format == 'FES'):
             amp,ph = pyTMD.io.FES.interpolate_constants(val['longitude'],
                 val['latitude'], constituents, method=METHOD,
                 extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
             # delta time (TT - UT1)
-            deltat = timescale.tt_ut1
+            deltat = ts.tt_ut1
 
         # calculate complex phase in radians for Euler's
         cph = -1j*ph*np.pi/180.0
         # calculate constituent oscillation
         hc = amp*np.exp(cph)
 
-        # predict tidal elevations at time and infer minor corrections
+        # predict tidal elevations at time
         tide = np.ma.empty((n_seg))
         tide.mask = np.any(hc.mask,axis=1)
-        tide.data[:] = pyTMD.predict.drift(timescale.tide, hc, c,
+        tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
             deltat=deltat, corrections=model.format)
-        minor = pyTMD.predict.infer_minor(timescale.tide, hc, c,
-            deltat=deltat, corrections=model.format)
-        tide.data[:] += minor.data[:]
+        # calculate values for minor constituents by inferrence
+        if INFER_MINOR:
+            minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
+                deltat=deltat, corrections=model.format)
+            tide.data[:] += minor.data[:]
         # replace masked and nan values with fill value
         invalid, = np.nonzero(np.isnan(tide.data) | tide.mask)
         tide.data[invalid] = tide.fill_value
@@ -587,9 +601,9 @@ def HDF5_ATL07_tide_write(IS2_atl07_tide, IS2_atl07_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    timescale = pyTMD.time.timescale().from_deltatime(np.array([tmn,tmx]),
-        epoch=pyTMD.time._atlas_sdp_epoch, standard='GPS')
-    dt = np.datetime_as_string(timescale.to_datetime(), unit='s')
+    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+        epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
+    dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration
     fileID.attrs['time_coverage_start'] = str(dt[0])
     fileID.attrs['time_coverage_end'] = str(dt[1])
@@ -661,6 +675,10 @@ def arguments():
     parser.add_argument('--cutoff','-c',
         type=np.float64, default=10.0,
         help='Extrapolation cutoff in kilometers')
+    # infer minor constituents from major
+    parser.add_argument('--infer-minor',
+        default=False, action='store_true',
+        help='Infer the height values for minor constituents')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -690,6 +708,7 @@ def main():
             METHOD=args.interpolate,
             EXTRAPOLATE=args.extrapolate,
             CUTOFF=args.cutoff,
+            INFER_MINOR=args.infer_minor,
             VERBOSE=args.verbose,
             MODE=args.mode)
 

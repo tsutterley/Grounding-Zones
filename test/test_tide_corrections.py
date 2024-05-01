@@ -1,21 +1,26 @@
 #!/usr/bin/env python
 u"""
-test_tide_corrections.py (08/2020)
+test_tide_corrections.py (01/2024)
 Download ATL03 and ATL07 files from NSIDC and compare tides values
 """
 import os
 import pytest
 import warnings
 import numpy as np
-import pyTMD.predict
-import pyTMD.time
-import pyTMD.utilities
 
 # attempt imports
 try:
     import icesat2_toolkit as is2tk
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("icesat2_toolkit not available", ImportWarning)
+try:
+    import pyTMD
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("pyTMD not available", ImportWarning)
+try:
+    import timescale.time
+except (AttributeError, ImportError, ModuleNotFoundError) as exc:
+    warnings.warn("timescale not available", ImportWarning)
 
 # path to an ATL03 file from NSIDC
 ATL03 = ['https://n5eil01u.ecs.nsidc.org','ATLAS','ATL03.005','2018.10.13',
@@ -60,12 +65,12 @@ def test_ATL03_equilibrium_tides():
         tide_equilibrium = IS2_atl03_mds[gtx]['geophys_corr']['tide_equilibrium']
         # calculate tide time for beam
         gps_seconds = atlas_sdp_gps_epoch + delta_time
-        leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
-        tide_time = pyTMD.time.convert_delta_time(gps_seconds-leap_seconds,
+        leap_seconds = timescale.time.count_leap_seconds(gps_seconds)
+        tide_time = timescale.time.convert_delta_time(gps_seconds-leap_seconds,
             epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
         # interpolate delta times from calendar dates to tide time
         delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-        deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
+        deltat = timescale.time.interpolate_delta_time(delta_file, tide_time)
         # calculate long-period equilibrium tides
         lpet = pyTMD.predict.equilibrium_tide(tide_time+deltat, latitude)
         ii, = np.nonzero(tide_equilibrium != fv)
@@ -99,7 +104,7 @@ def test_ATL03_load_pole_tide():
         fv = IS2_atl03_attrs[gtx]['geophys_corr']['tide_equilibrium']['_FillValue']
         tide_pole = IS2_atl03_mds[gtx]['geophys_corr']['tide_pole']
         # calculate load pole tides from correction function
-        Srad = pyTMD.compute_LPT_corrections(longitude, latitude,
+        Srad = pyTMD.compute.LPT_displacements(longitude, latitude,
             delta_time, EPSG=4326, EPOCH=(2018,1,1,0,0,0), TYPE='drift',
             TIME='GPS', ELLIPSOID='IERS', CONVENTION='2010')
         # calculate differences between computed and data versions
@@ -132,7 +137,7 @@ def test_ATL03_ocean_pole_tide():
         fv = IS2_atl03_attrs[gtx]['geophys_corr']['tide_equilibrium']['_FillValue']
         tide_oc_pole = IS2_atl03_mds[gtx]['geophys_corr']['tide_oc_pole']
         # calculate ocean pole tides from correction function
-        Urad = pyTMD.compute_OPT_corrections(longitude, latitude,
+        Urad = pyTMD.compute.OPT_displacements(longitude, latitude,
             delta_time, EPSG=4326, EPOCH=(2018,1,1,0,0,0), TYPE='drift',
             TIME='GPS', ELLIPSOID='IERS', CONVENTION='2010')
         # calculate differences between computed and data versions
@@ -190,12 +195,12 @@ def test_ATL07_equilibrium_tides():
         height_segment_lpe = val['geophysical']['height_segment_lpe'][:]
         # calculate tide time for beam
         gps_seconds = atlas_sdp_gps_epoch + delta_time
-        leap_seconds = pyTMD.time.count_leap_seconds(gps_seconds)
-        tide_time = pyTMD.time.convert_delta_time(gps_seconds-leap_seconds,
+        leap_seconds = timescale.time.count_leap_seconds(gps_seconds)
+        tide_time = timescale.time.convert_delta_time(gps_seconds-leap_seconds,
             epoch1=(1980,1,6,0,0,0), epoch2=(1992,1,1,0,0,0), scale=1.0/86400.0)
         # interpolate delta times from calendar dates to tide time
         delta_file = pyTMD.utilities.get_data_path(['data','merged_deltat.data'])
-        deltat = pyTMD.time.interpolate_delta_time(delta_file, tide_time)
+        deltat = timescale.time.interpolate_delta_time(delta_file, tide_time)
         # calculate long-period equilibrium tides
         lpet = pyTMD.predict.equilibrium_tide(tide_time+deltat, latitude)
         # calculate differences between computed and data versions
@@ -207,7 +212,7 @@ def test_ATL07_equilibrium_tides():
         if not np.all(difference.mask):
             assert np.all(np.abs(difference) < eps)
         # calculate long-period equilibrium tides from correction function
-        lpet = pyTMD.compute_LPET_corrections(longitude, latitude,
+        lpet = pyTMD.compute.LPET_displacements(longitude, latitude,
             delta_time, EPSG=4326, EPOCH=(2018,1,1,0,0,0), TYPE='drift',
             TIME='GPS')
         # calculate differences between computed and data versions

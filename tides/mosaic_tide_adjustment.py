@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 mosaic_tide_adjustment.py
-Written by Tyler Sutterley (11/2023)
+Written by Tyler Sutterley (12/2023)
 
 Creates a mosaic of interpolated tidal adjustment scale factors
 
@@ -18,6 +18,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the output mosaic
 
 UPDATE HISTORY:
+    Updated 12/2023: don't have a default tide model in arguments
     Updated 11/2023: mask individual tiles before building mosaic
     Updated 10/2023: use grounding zone mosaic and raster utilities
     Updated 05/2023: using pathlib to define and operate on paths
@@ -259,7 +260,7 @@ def arguments():
         help='geotiff mask file for valid points')
     # tide model to use
     parser.add_argument('--tide','-T',
-        metavar='TIDE', type=str, default='CATS2008-v2023',
+        metavar='TIDE', type=str,
         help='Tide model used in correction')
     # output filename
     parser.add_argument('--output-file','-O',

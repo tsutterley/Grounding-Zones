@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_sea_level_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (04/2024)
 Interpolates sea level anomalies (sla), absolute dynamic topography (adt) and
     mean dynamic topography (mdt) to times and locations of ICESat-2 ATL11 data
     This data will be extrapolated onto land points
@@ -33,14 +33,16 @@ PYTHON DEPENDENCIES:
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://h5py.org
     netCDF4: Python interface to the netCDF C library
-         https://unidata.github.io/netcdf4-python/netCDF4/index.html
+        https://unidata.github.io/netcdf4-python/netCDF4/index.html
+    timescale: Python tools for time and astronomical calculations
+        https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
-    time.py: utilities for calculating time operations
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from timescale.time
     Updated 05/2023: use timescale class for time conversion operations
@@ -89,7 +91,7 @@ try:
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("scikit-learn not available", ImportWarning)
 try:
-    import timescale
+    import timescale.time
 except (AttributeError, ImportError, ModuleNotFoundError) as exc:
     warnings.warn("timescale not available", ImportWarning)
 
@@ -171,7 +173,10 @@ def interpolate_sea_level(base_dir, xi, yi, MJD, HEM):
     for day in range(2):
         # convert from Modified Julian Days to calendar dates
         YY, MM, DD, HH, MN, SS = timescale.time.convert_julian(
-            MJD1 + day + 2400000.5, FORMAT='tuple', ASTYPE=int)
+            MJD1 + day + 2400000.5,
+            format='tuple',
+            astype=int
+        )
         # sea level directory
         ddir = base_dir.joinpath(f'{YY:4d}')
         # input file for day before the measurement
@@ -388,7 +393,7 @@ def interp_sea_level_ICESat2(base_dir, INPUT_FILE,
                         interpolate_sea_level(base_dir, X, Y, ts.MJD[:,cycle], HEM)
             elif (track == 'XT'):
                 # for each unique CNES day to interpolate in the crossovers
-                MJD,inverse = np.unique(np.floor(timescale.MJD),return_inverse=True)
+                MJD,inverse = np.unique(np.floor(ts.MJD),return_inverse=True)
                 for indice,_ in enumerate(MJD):
                     # indices in original arrays for the CNES day
                     i, = np.nonzero(inverse == indice)
