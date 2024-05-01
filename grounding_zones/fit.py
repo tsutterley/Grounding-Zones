@@ -6,7 +6,7 @@ Written by Tyler Sutterley (04/2024)
 Fits a polynomial surface to a set of points
 
 CALLING SEQUENCE:
-    tsbeta = fit.poly_surface(t, x, y, data, ORDER_TIME=3, 
+    tsbeta = fit.reduce_fit(t, x, y, data, ORDER_TIME=3, 
         ORDER_SPACE=3)
     reg_coef = tsbeta['beta']
     reg_error = tsbeta['error']
