@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 utilities.py
-Written by Tyler Sutterley (11/2023)
+Written by Tyler Sutterley (05/2024)
 Download and management utilities for syncing time and auxiliary files
 Adds additional modules to the icesat2_toolkit utilities
 
@@ -10,6 +10,7 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 05/2024: added generic querying functions for NASA CMR
     Updated 11/2023: updated ssl context to fix deprecation error
     Updated 05/2023: using pathlib to define and expand paths
     Updated 01/2023: add default ssl context attribute with protocol
@@ -22,11 +23,24 @@ from __future__ import annotations
 
 import sys
 import ssl
+import re
+import json
 import pathlib
 import inspect
+import logging
 import warnings
+import posixpath
 import lxml.etree
 import subprocess
+if sys.version_info[0] == 2:
+    from cookielib import CookieJar
+    from urllib import urlencode
+    import urllib2
+else:
+    from http.cookiejar import CookieJar
+    from urllib.parse import urlencode
+    import urllib.request as urllib2
+
 # extend icesat2_toolkit utilities
 try:
     from icesat2_toolkit.utilities import *
@@ -210,3 +224,126 @@ def pgc_list(
             lastmod = [lastmod[indice] for indice in i]
         # return the list of column names and last modified times
         return (colnames, lastmod, None)
+
+# PURPOSE: cmr queries for orbital parameters
+def cmr(
+        product: str | None = None,
+        release: str | None = None,
+        bbox: list | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        provider: str = 'NSIDC_ECS',
+        endpoint: str = 'data',
+        request_type: str = r"application/x-hdf(eos|5)",
+        opener = None,
+        verbose: bool = False,
+        fid = sys.stdout
+    ):
+    """
+    Query the NASA Common Metadata Repository (CMR)
+
+    Parameters
+    ----------
+    product: str or NoneType, default None
+        Data product to query
+    release: str or NoneType, default None
+        Data release to query
+    bbox: list or NoneType, default None
+        Spatial bounding box for CMR query in form
+        (``lon_min``, ``lat_min``, ``lon_max``, ``lat_max``)
+    start_date: str or NoneType, default None
+        starting date for CMR product query
+    end_date: str or NoneType, default None
+        ending date for CMR product query
+    provider: str, default 'NSIDC_ECS'
+        CMR data provider
+    endpoint: str, default 'data'
+        url endpoint type
+
+            - ``'data'``: NASA Earthdata https archive
+            - ``'opendap'``: NASA Earthdata OPeNDAP archive
+            - ``'s3'``: NASA Earthdata Cumulus AWS S3 bucket
+    request_type: str, default 'application/x-hdfeos'
+        data type for reducing CMR query
+    opener: obj or NoneType, default None
+        OpenerDirector instance
+    verbose: bool, default False
+        print file transfer information
+    fid: obj, default sys.stdout
+        open file object to print if verbose
+
+    Returns
+    -------
+    producer_granule_ids: list
+        Data granules
+    granule_urls: list
+        Data granule urls from NSIDC
+    """
+    # create logger
+    loglevel = logging.INFO if verbose else logging.CRITICAL
+    logging.basicConfig(stream=fid, level=loglevel)
+    # attempt to build urllib2 opener
+    if opener is None:
+        # build urllib2 opener with SSL context
+        # https://docs.python.org/3/howto/urllib2.html#id5
+        handler = []
+        # Create cookie jar for storing cookies
+        cookie_jar = CookieJar()
+        handler.append(urllib2.HTTPCookieProcessor(cookie_jar))
+        handler.append(urllib2.HTTPSHandler(context=_default_ssl_context))
+        # create "opener" (OpenerDirector instance)
+        opener = urllib2.build_opener(*handler)
+    # build CMR query
+    cmr_query_type = 'granules'
+    cmr_format = 'json'
+    cmr_page_size = 2000
+    CMR_HOST = ['https://cmr.earthdata.nasa.gov','search',
+        f'{cmr_query_type}.{cmr_format}']
+    # build list of CMR query parameters
+    CMR_KEYS = []
+    CMR_KEYS.append(f'?provider={provider}')
+    CMR_KEYS.append('&sort_key[]=start_date')
+    CMR_KEYS.append('&sort_key[]=producer_granule_id')
+    CMR_KEYS.append('&scroll=true')
+    CMR_KEYS.append(f'&page_size={cmr_page_size}')
+    # append product string
+    CMR_KEYS.append(f'&short_name={product}')
+    # append release strings
+    if release is not None:
+        CMR_KEYS.append(cmr_query_release(release))
+    # append keys for start and end time
+    # verify that start and end times are in ISO format
+    start_date = isoformat(start_date) if start_date else ''
+    end_date = isoformat(end_date) if end_date else ''
+    CMR_KEYS.append(f'&temporal={start_date},{end_date}')
+    # append keys for spatial bounding box
+    if bbox is not None:
+        bounding_box = ','.join([str(b) for b in bbox])
+        CMR_KEYS.append(f'&bounding_box={bounding_box}')
+    # full CMR query url
+    cmr_query_url = "".join([posixpath.join(*CMR_HOST),*CMR_KEYS])
+    logging.info(f'CMR request={cmr_query_url}')
+    # output list of granule names and urls
+    producer_granule_ids = []
+    granule_urls = []
+    cmr_scroll_id = None
+    while True:
+        req = urllib2.Request(cmr_query_url)
+        if cmr_scroll_id:
+            req.add_header('cmr-scroll-id', cmr_scroll_id)
+        response = opener.open(req)
+        # get scroll id for next iteration
+        if not cmr_scroll_id:
+            headers = {k.lower():v for k,v in dict(response.info()).items()}
+            cmr_scroll_id = headers['cmr-scroll-id']
+        # read the CMR search as JSON
+        search_page = json.loads(response.read().decode('utf-8'))
+        ids,urls = cmr_filter_json(search_page,
+            endpoint=endpoint, request_type=request_type)
+        if not urls:
+            break
+        # extend lists
+        producer_granule_ids.extend(ids)
+        granule_urls.extend(urls)
+    # return the list of granule ids and urls
+    return (producer_granule_ids, granule_urls)

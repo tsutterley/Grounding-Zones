@@ -19,4 +19,8 @@ General Methods
 
 .. autofunction:: grounding_zones.io.icebridge.read_ATM_icessn_file
 
+.. autofunction:: grounding_zones.io.icebridge.read_LVIS_ascii_file
+
 .. autofunction:: grounding_zones.io.icebridge.read_LVIS_HDF5_file
+
+.. autofunction:: grounding_zones.io.icebridge.write_LVIS_HDF5_file

@@ -312,7 +312,7 @@ def compute_LPT_icebridge_data(arg, CONVENTION='2018', VERBOSE=False, MODE=0o775
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     duration = ts.day*(np.max(ts.MJD) - np.min(ts.MJD))
     fid.attrs['time_coverage_start'] = str(dt[0])
-    fid.attrs['time_coverage_end'] = dt[-1]
+    fid.attrs['time_coverage_end'] = str(dt[-1])
     fid.attrs['time_coverage_duration'] = f'{duration:0.0f}'
     # add software information
     fid.attrs['software_reference'] = pyTMD.version.project_name

@@ -22,3 +22,5 @@ General Methods
 .. autofunction:: grounding_zones.utilities._set_ssl_context_options
 
 .. autofunction:: grounding_zones.utilities.pgc_list
+
+.. autofunction:: grounding_zones.utilities.cmr
