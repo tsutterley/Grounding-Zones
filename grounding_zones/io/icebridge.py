@@ -25,7 +25,7 @@ UPDATE HISTORY:
     Written 05/2023: moved icebridge data inputs to a separate module
 """
 
-from __future__ import print_function
+from __future__ import print_function, annotations
 
 import re
 import io

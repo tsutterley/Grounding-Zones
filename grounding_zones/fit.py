@@ -65,6 +65,8 @@ UPDATE HISTORY:
         use median statistics for reducing to valid points
     Written 03/2014
 """
+from __future__ import print_function, annotations
+
 import numpy as np
 import scipy.stats
 from scipy.interpolate import BSpline
