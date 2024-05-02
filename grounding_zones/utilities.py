@@ -225,6 +225,67 @@ def pgc_list(
         # return the list of column names and last modified times
         return (colnames, lastmod, None)
 
+# PURPOSE: filter the CMR json response for desired data files
+def cmr_filter_json(
+        search_results: dict,
+        endpoint: str = "data",
+        request_type: str = r"application/x-hdf(eos|5)",
+        readable_granule_pattern: str = r''
+    ):
+    """
+    Filter the CMR json response for desired data files
+
+    Parameters
+    ----------
+    search_results: dict
+        json response from CMR query
+    endpoint: str, default 'data'
+        url endpoint type
+
+            - ``'data'``: NASA Earthdata https archive
+            - ``'opendap'``: NASA Earthdata OPeNDAP archive
+            - ``'s3'``: NASA Earthdata Cumulus AWS S3 bucket
+    request_type: str, default 'application/x-hdfeos'
+        data type for reducing CMR query
+    readable_granule_pattern: str, default ''
+        regular expression pattern for reducing list
+
+    Returns
+    -------
+    producer_granule_ids: list
+        ICESat-2 granules
+    granule_urls: list
+        ICESat-2 granule urls from NSIDC
+    """
+    # output list of granule ids and urls
+    producer_granule_ids = []
+    granule_urls = []
+    # check that there are urls for request
+    if ('feed' not in search_results) or ('entry' not in search_results['feed']):
+        return (producer_granule_ids, granule_urls)
+    # descriptor links for each endpoint
+    rel = {}
+    rel['data'] = "http://esipfed.org/ns/fedsearch/1.1/data#"
+    rel['opendap'] = "http://esipfed.org/ns/fedsearch/1.1/service#"
+    rel['s3'] = "http://esipfed.org/ns/fedsearch/1.1/s3#"
+    # iterate over references and get cmr location
+    for entry in search_results['feed']['entry']:
+        producer_granule_ids.append(entry['producer_granule_id'])
+        for link in entry['links']:
+            # skip links without descriptors
+            if ('rel' not in link.keys()):
+                continue
+            if ('type' not in link.keys()):
+                continue
+            # append if selected endpoint and request type
+            if (link['rel'] == rel[endpoint]) and \
+                re.match(request_type, link['type']) and \
+                re.search(readable_granule_pattern, link['href']):
+                granule_urls.append(link['href'])
+                break
+    # return the list of urls and granule ids
+    return (producer_granule_ids, granule_urls)
+
 # PURPOSE: cmr queries for orbital parameters
 def cmr(
         product: str | None = None,
@@ -234,6 +295,8 @@ def cmr(
         end_date: str | None = None,
         provider: str = 'NSIDC_ECS',
         endpoint: str = 'data',
+        readable_granule_name: str | list = [],
+        readable_granule_pattern: str = r'',
         request_type: str = r"application/x-hdf(eos|5)",
         opener = None,
         verbose: bool = False,
@@ -263,6 +326,10 @@ def cmr(
             - ``'data'``: NASA Earthdata https archive
             - ``'opendap'``: NASA Earthdata OPeNDAP archive
             - ``'s3'``: NASA Earthdata Cumulus AWS S3 bucket
+    readable_granule_name: str or list, default []
+        readable granule name(s) to query from CMR
+    readable_granule_pattern: str, default ''
+        regular expression pattern for reducing list
     request_type: str, default 'application/x-hdfeos'
         data type for reducing CMR query
     opener: obj or NoneType, default None
@@ -320,6 +387,15 @@ def cmr(
     if bbox is not None:
         bounding_box = ','.join([str(b) for b in bbox])
         CMR_KEYS.append(f'&bounding_box={bounding_box}')
+    # verify that readable_granule_name is a list
+    if isinstance(readable_granule_name, str):
+        readable_granule_name = [readable_granule_name]
+    # append keys for querying specific granules
+    if any(readable_granule_name):
+        CMR_KEYS.append("&options[readable_granule_name][pattern]=true")
+        CMR_KEYS.append("&options[spatial][or]=true")
+        for gran in readable_granule_name:
+            CMR_KEYS.append(f"&readable_granule_name[]={gran}")
     # full CMR query url
     cmr_query_url = "".join([posixpath.join(*CMR_HOST),*CMR_KEYS])
     logging.info(f'CMR request={cmr_query_url}')
@@ -339,7 +415,8 @@ def cmr(
         # read the CMR search as JSON
         search_page = json.loads(response.read().decode('utf-8'))
         ids,urls = cmr_filter_json(search_page,
-            endpoint=endpoint, request_type=request_type)
+            endpoint=endpoint, request_type=request_type,
+            readable_granule_pattern=readable_granule_pattern)
         if not urls:
             break
         # extend lists
