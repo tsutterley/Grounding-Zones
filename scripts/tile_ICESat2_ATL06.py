@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_ICESat2_ATL06.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (05/2024)
 Creates tile index files of ICESat-2 land ice elevation data
 
 COMMAND LINE OPTIONS:
@@ -25,6 +25,7 @@ PROGRAM DEPENDENCIES:
     io/ATL06.py: reads ICESat-2 land ice along-track height data files
 
 UPDATE HISTORY:
+    Updated 05/2024: adjust default spacing of tiles to 80 km
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         single implicit import of grounding zone tools
@@ -111,10 +112,10 @@ def tile_ICESat2_ATL06(FILE,
     # index directory for hemisphere
     index_directory = 'north' if (HEM == 'N') else 'south'
     # output directory and index file
-    DIRECTORY = FILE.parent
-    output_file = DIRECTORY.joinpath(index_directory, FILE.name)
+    DIRECTORY = FILE.with_name(index_directory)
+    output_file = DIRECTORY.joinpath(FILE.name)
     # create index directory for hemisphere
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413,S=3031)
@@ -196,8 +197,7 @@ def tile_ICESat2_ATL06(FILE,
             g1.attrs['spacing'] = SPACING
 
             # create merged tile file if not existing
-            tile_file = DIRECTORY.joinpath(index_directory,
-                f'{tile_group}.h5')
+            tile_file = DIRECTORY.joinpath(f'{tile_group}.h5')
             clobber = 'a' if tile_file.exists() else 'w'
             # open output merged tile file
             f3 = multiprocess_h5py(tile_file, mode=clobber)
@@ -299,7 +299,7 @@ def arguments():
         help='ICESat-2 ATL06 file to run')
     # output grid spacing
     parser.add_argument('--spacing','-S',
-        type=float, default=10e3,
+        type=float, default=80e3,
         help='Output grid spacing')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',

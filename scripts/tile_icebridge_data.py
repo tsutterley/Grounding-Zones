@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_icebridge_data.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (05/2024)
 Creates tile index files of Operation IceBridge elevation data
 
 INPUTS:
@@ -27,6 +27,8 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 05/2024: adjust default spacing of tiles to 80 km
+        return if no valid points in hemisphere
     Updated 05/2023: using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
     Updated 12/2022: check that file exists within multiprocess HDF5 function
@@ -91,7 +93,7 @@ def tile_icebridge_data(arg,
     logging.basicConfig(level=loglevel)
 
     # extract file name and subsetter indices lists
-    match_object = re.match(r'(.*?)(\[(.*?)\])?$',arg)
+    match_object = re.match(r'(.*?)(\[(.*?)\])?$', str(arg))
     input_file = pathlib.Path(match_object.group(1)).expanduser().absolute()
     # subset input file to indices
     if match_object.group(2):
@@ -112,13 +114,14 @@ def tile_icebridge_data(arg,
     for key,val in regex.items():
         if re.match(val, input_file.name):
             OIB = key
+            rx = re.compile(val)
 
     # extract information from first input file
     # acquisition year, month and day
     # number of points
     # instrument (PRE-OIB ATM or LVIS, OIB ATM or LVIS)
     if OIB in ('ATM','ATM1b'):
-        M1,YYMMDD1,HHMMSS1,AX1,SF1 = re.findall(regex[OIB], input_file).pop()
+        M1,YYMMDD1,HHMMSS1,AX1,SF1 = rx.findall(input_file.name).pop()
         # early date strings omitted century and millennia (e.g. 93 for 1993)
         if (len(YYMMDD1) == 6):
             year_two_digit,MM1,DD1 = YYMMDD1[:2],YYMMDD1[2:4],YYMMDD1[4:]
@@ -130,7 +133,7 @@ def tile_icebridge_data(arg,
         elif (len(YYMMDD1) == 8):
             YY1,MM1,DD1 = YYMMDD1[:4],YYMMDD1[4:6],YYMMDD1[6:]
     elif OIB in ('LVIS','LVGH'):
-        M1,RG1,YY1,MMDD1,RLD1,SS1 = re.findall(regex[OIB], input_file).pop()
+        M1,RG1,YY1,MMDD1,RLD1,SS1 = rx.findall(input_file.name).pop()
         MM1,DD1 = MMDD1[:2],MMDD1[2:]
 
     # track file progress
@@ -185,14 +188,16 @@ def tile_icebridge_data(arg,
     # index directory for hemisphere
     index_directory = 'north' if (HEM == 'N') else 'south'
     # output directory and index file
-    DIRECTORY = input_file.parent
-    output_file = DIRECTORY.joinpath(index_directory,
-        f'{input_file.stem}.h5')
+    DIRECTORY = input_file.with_name(index_directory)
+    output_file = DIRECTORY.joinpath(f'{input_file.stem}.h5')
     # create index directory for hemisphere
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    DIRECTORY.mkdir(parents=True, exist_ok=True)
 
     # indices of points in hemisphere
     valid, = np.nonzero(np.sign(dinput['lat']) == SIGN[HEM])
+    if not valid.any():
+        logging.error('No valid points in hemisphere')
+        return
     # convert latitude and longitude to regional projection
     x,y = transformer.transform(dinput['lon'],dinput['lat'])
     # large-scale tiles
@@ -236,8 +241,7 @@ def tile_icebridge_data(arg,
         g2.attrs['spacing'] = SPACING
 
         # create merged tile file if not existing
-        tile_file = DIRECTORY.joinpath(index_directory,
-            f'{tile_group}.h5')
+        tile_file = DIRECTORY.joinpath(f'{tile_group}.h5')
         clobber = 'a' if tile_file.exists() else 'w'
         # open output merged tile file
         f3 = multiprocess_h5py(tile_file, mode=clobber)
@@ -323,7 +327,7 @@ def arguments():
         help='Input Operation IceBridge file')
     # output grid spacing
     parser.add_argument('--spacing','-S',
-        type=float, default=10e3,
+        type=float, default=80e3,
         help='Output grid spacing')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',

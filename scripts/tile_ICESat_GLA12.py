@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tile_ICESat_GLA12.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (05/2024)
 Creates tile index files of ICESat/GLAS L2 GLA12 Antarctic and
     Greenland Ice Sheet elevation data
 
@@ -28,6 +28,8 @@ PROGRAM DEPENDENCIES:
     spatial: utilities for reading, writing and operating on spatial data
 
 UPDATE HISTORY:
+    Updated 05/2024: adjust default spacing of tiles to 80 km
+        return if no valid points in hemisphere
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         use constants class from pyTMD for ellipsoidal parameters
@@ -97,6 +99,9 @@ def tile_ICESat_GLA12(input_file,
     input_file = pathlib.Path(input_file).expanduser().absolute()
     DIRECTORY = input_file.with_name(index_directory)
     output_file = DIRECTORY.joinpath(input_file.name)
+    # create index directory for hemisphere
+    DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
+
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
         r'(\d{4})_(\d{1})_(\d{2})_(\d{4})\.H5$'), re.VERBOSE)
@@ -140,10 +145,6 @@ def tile_ICESat_GLA12(input_file,
     attributes['index']['units'] = '1'
     attributes['index']['coordinates'] = 'x y'
 
-    # create index directory for hemisphere
-    if DIRECTORY.exists():
-        DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
-
     # track file progress
     logging.info(str(input_file))
 
@@ -185,6 +186,9 @@ def tile_ICESat_GLA12(input_file,
 
     # indices of points in hemisphere
     valid, = np.nonzero((np.sign(lat_40HZ) == SIGN[HEM]) & (elev_TPX != fv))
+    if not valid.any():
+        logging.error('No valid points in hemisphere')
+        return
     # convert latitude and longitude to regional projection
     x,y = transformer.transform(lon_40HZ,lat_40HZ)
     # large-scale tiles
@@ -321,7 +325,7 @@ def arguments():
         help='Hemisphere')
     # output grid spacing
     parser.add_argument('--spacing','-S',
-        type=float, default=10e3,
+        type=float, default=80e3,
         help='Output grid spacing')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',

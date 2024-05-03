@@ -257,7 +257,7 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         epoch=timescale.time._gps_epoch,
         scale=86400.0)
     # converting to J2000 seconds
-    ts = timescale.time.TimeScale().from_deltatime(gps_seconds,
+    ts = timescale.time.Timescale().from_deltatime(gps_seconds,
         epoch=timescale.time._gps_epoch, standard='GPS')
     ATM_L1b_input['time'] = ts.to_deltatime(
         epoch=timescale.time._j2000_epoch, scale=86400.0
@@ -354,11 +354,11 @@ def read_ATM_icessn_file(input_file, input_subsetter):
         scale=86400.0)
     if (MISSION == 'BLATM2') or (SFX != 'csv'):
         # converting to J2000 seconds from GPS seconds
-        ts = timescale.time.TimeScale().from_deltatime(gps_seconds,
+        ts = timescale.time.Timescale().from_deltatime(gps_seconds,
             epoch=timescale.time._gps_epoch, standard='GPS')
     else:
         # converting to J2000 seconds from UTC seconds
-        ts = timescale.time.TimeScale().from_deltatime(gps_seconds,
+        ts = timescale.time.Timescale().from_deltatime(gps_seconds,
             epoch=timescale.time._gps_epoch, standard='UTC')
         leap_seconds = 0.0
     # converting to J2000 seconds
