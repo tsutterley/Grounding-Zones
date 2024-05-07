@@ -157,7 +157,7 @@ def interpolate_tide_adjustment(tile_file,
         f1 = multiprocess_h5py(buffer_file, mode='r')
         # find ATL11 files within tile
         ATL11_files = [f for f in f1.keys() if R2.match(f)]
-        # read each ATL11 file and estimate errors
+        # read each ATL11 group
         for ATL11 in ATL11_files:
             # for each ATL11 beam pairs within the tile
             for ptx in f1[ATL11].keys():

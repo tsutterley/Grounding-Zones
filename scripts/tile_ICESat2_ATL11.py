@@ -26,6 +26,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2024: adjust default spacing of tiles to 80 km
+        output cycle_number variable from ATL11 file
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         single implicit import of grounding zone tools
@@ -169,6 +170,7 @@ def tile_ICESat2_ATL11(FILE,
     for ptx in sorted(IS2_atl11_pairs):
         # along-track (AT) reference point, latitude and longitude
         ref_pt = IS2_atl11_mds[ptx]['ref_pt'].copy()
+        cycle_number = IS2_atl11_mds[ptx]['cycle_number'].copy()
         latitude = np.ma.array(IS2_atl11_mds[ptx]['latitude'],
             fill_value=IS2_atl11_attrs[ptx]['latitude']['_FillValue'])
         longitude = np.ma.array(IS2_atl11_mds[ptx]['longitude'],
@@ -180,8 +182,8 @@ def tile_ICESat2_ATL11(FILE,
         ytile = (y-0.5*SPACING)//SPACING
         # find valid latitudes
         valid, = np.nonzero(latitude.data != latitude.fill_value)
-        # add ref_pt attributes
-        for key in ['ref_pt']:
+        # add ref_pt and cycle_number attributes
+        for key in ['ref_pt', 'cycle_number']:
             for att_name in ('DIMENSION_LIST','CLASS','NAME'):
                 IS2_atl11_attrs[ptx][key].pop(att_name,None)
             attributes[key] = IS2_atl11_attrs[ptx][key]
@@ -238,6 +240,7 @@ def tile_ICESat2_ATL11(FILE,
             # output variables for index file
             output = collections.OrderedDict()
             output['ref_pt'] = ref_pt[indices].copy()
+            output['cycle_number'] = cycle_number.copy()
             output['x'] = x[indices].copy()
             output['y'] = y[indices].copy()
             output['index'] = indices.copy()
@@ -275,7 +278,7 @@ def tile_ICESat2_ATL11(FILE,
                     for att_name,att_val in attributes[key].items():
                         h5[key].attrs[att_name] = att_val
                     # create or attach dimensions
-                    if key not in ('ref_pt',):
+                    if key not in ('ref_pt','cycle_number'):
                         for i,dim in enumerate(['ref_pt']):
                             h5[key].dims[i].attach_scale(h5[dim])
                     else:
