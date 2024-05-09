@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 nsidc_convert_GIMP_DEM.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (05/2024)
 
 Reads GIMP 30m DEM tiles from the OSU Greenland Ice Mapping Project
     https://nsidc.org/data/nsidc-0645/versions/1
@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
     Updated 07/2022: place GDAL import within try/except statement
@@ -71,10 +72,9 @@ import lxml.etree
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import osgeo.gdal, osgeo.osr, osgeo.ogr
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("GDAL not available", ImportWarning)
+gdal = gz.utilities.import_dependency('osgeo.gdal')
+osr = gz.utilities.import_dependency('osgeo.osr')
+ogr = gz.utilities.import_dependency('osgeo.ogr')
 
 # PURPOSE: read GIMP image mosaic and output as gzipped tar file
 def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
@@ -146,8 +146,8 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         fileID.seek(0)
         # use GDAL memory-mapped file to read dem
         mmap_name = f"/vsimem/{uuid.uuid4().hex}"
-        osgeo.gdal.FileFromMemBuffer(mmap_name, fileID.read())
-        dataset = osgeo.gdal.Open(mmap_name)
+        gdal.FileFromMemBuffer(mmap_name, fileID.read())
+        dataset = gdal.Open(mmap_name)
 
         # get dimensions of tile
         xsize = dataset.RasterXSize
@@ -171,10 +171,10 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         st_length_ = int(2*(xmax-xmin) + 2*(ymax-ymin))
         # close the dataset
         dataset = None
-        osgeo.gdal.Unlink(mmap_name)
+        gdal.Unlink(mmap_name)
 
         # save DEM tile outlines to ESRI shapefile
-        driver = osgeo.ogr.GetDriverByName('Esri Shapefile')
+        driver = ogr.GetDriverByName('Esri Shapefile')
         # use GDAL memory-mapped file
         mmap = {}
         for key in ('dbf','prj','shp','shx'):
@@ -183,25 +183,25 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         ds = driver.CreateDataSource(mmap['shp'])
         # set the spatial reference info
         # EPSG: 3413 (NSIDC Sea Ice Polar Stereographic North, WGS84)
-        SpatialReference = osgeo.osr.SpatialReference()
+        SpatialReference = osr.SpatialReference()
         SpatialReference.ImportFromEPSG(3413)
-        layer = ds.CreateLayer('', SpatialReference, osgeo.ogr.wkbPolygon)
+        layer = ds.CreateLayer('', SpatialReference, ogr.wkbPolygon)
         # Add shapefile attributes (following attributes from ArcticDEM and REMA)
-        layer.CreateField(osgeo.ogr.FieldDefn('DEM_ID', osgeo.ogr.OFTString))
-        layer.CreateField(osgeo.ogr.FieldDefn('DEM_NAME', osgeo.ogr.OFTString))
-        layer.CreateField(osgeo.ogr.FieldDefn('TILE', osgeo.ogr.OFTString))
-        layer.CreateField(osgeo.ogr.FieldDefn('ND_VALUE', osgeo.ogr.OFTReal))
-        layer.CreateField(osgeo.ogr.FieldDefn('DEM_RES', osgeo.ogr.OFTInteger))
-        layer.CreateField(osgeo.ogr.FieldDefn('REL_VER', osgeo.ogr.OFTReal))
-        layer.CreateField(osgeo.ogr.FieldDefn('REG_SRC', osgeo.ogr.OFTString))
-        field_area = osgeo.ogr.FieldDefn('ST_AREA', osgeo.ogr.OFTReal)
+        layer.CreateField(ogr.FieldDefn('DEM_ID', ogr.OFTString))
+        layer.CreateField(ogr.FieldDefn('DEM_NAME', ogr.OFTString))
+        layer.CreateField(ogr.FieldDefn('TILE', ogr.OFTString))
+        layer.CreateField(ogr.FieldDefn('ND_VALUE', ogr.OFTReal))
+        layer.CreateField(ogr.FieldDefn('DEM_RES', ogr.OFTInteger))
+        layer.CreateField(ogr.FieldDefn('REL_VER', ogr.OFTReal))
+        layer.CreateField(ogr.FieldDefn('REG_SRC', ogr.OFTString))
+        field_area = ogr.FieldDefn('ST_AREA', ogr.OFTReal)
         field_area.SetWidth(24)
         field_area.SetPrecision(10)
         layer.CreateField(field_area)
-        layer.CreateField(osgeo.ogr.FieldDefn('ST_LENGTH', osgeo.ogr.OFTInteger))
+        layer.CreateField(ogr.FieldDefn('ST_LENGTH', ogr.OFTInteger))
         defn = layer.GetLayerDefn()
         # Create a new feature (attribute and geometry)
-        feature = osgeo.ogr.Feature(defn)
+        feature = ogr.Feature(defn)
         # Add shapefile attributes
         feature.SetField('DEM_ID', f'{tile}_{res}')
         feature.SetField('DEM_NAME', colname)
@@ -213,11 +213,11 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         feature.SetField('ST_AREA', st_area_sh)
         feature.SetField('ST_LENGTH', st_length_)
         # create LineString object and add x/y points
-        ring_obj = osgeo.ogr.Geometry(osgeo.ogr.wkbLinearRing)
+        ring_obj = ogr.Geometry(ogr.wkbLinearRing)
         for x,y in zip(xbox,ybox):
             ring_obj.AddPoint(x,y)
         # create Polygon object for LineString of tile
-        poly_obj = osgeo.ogr.Geometry(osgeo.ogr.wkbPolygon)
+        poly_obj = ogr.Geometry(ogr.wkbPolygon)
         poly_obj.AddGeometry(ring_obj)
         feature.SetGeometry(poly_obj)
         layer.CreateFeature(feature)
@@ -234,16 +234,16 @@ def nsidc_convert_GIMP_DEM(base_dir, VERSION, MODE=0o775):
         for key in ('dbf','prj','shp','shx'):
             output = f'{tile}_{res}_index.{key}'
             info4 = tarfile.TarInfo(name=posixpath.join(subdir,'index',output))
-            info4.size = osgeo.gdal.VSIStatL(mmap[key]).size
+            info4.size = gdal.VSIStatL(mmap[key]).size
             info4.mtime = remote_mtime
             info4.mode = MODE
-            fp = osgeo.gdal.VSIFOpenL(mmap[key],'rb')
+            fp = gdal.VSIFOpenL(mmap[key],'rb')
             with io.BytesIO() as fileID:
-                fileID.write(osgeo.gdal.VSIFReadL(1, info4.size, fp))
+                fileID.write(gdal.VSIFReadL(1, info4.size, fp))
                 fileID.seek(0)
                 tar.addfile(tarinfo=info4,fileobj=fileID)
-            osgeo.gdal.VSIFCloseL(fp)
-            osgeo.gdal.Unlink(mmap[key])
+            gdal.VSIFCloseL(fp)
+            gdal.Unlink(mmap[key])
 
         # close tar file
         tar.close()

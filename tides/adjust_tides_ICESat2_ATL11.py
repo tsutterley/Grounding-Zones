@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 adjust_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (04/2024)
+Written by Tyler Sutterley (05/2024)
 Applies interpolated tidal adjustment scale factors to
     ICESat-2 ATL11 annual land ice height data within
     ice sheet grounding zones
@@ -34,6 +34,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: using pathlib to define and operate on paths
@@ -48,39 +49,24 @@ import logging
 import pathlib
 import argparse
 import datetime
-import warnings
 import collections
 import numpy as np
 import scipy.interpolate
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import pyTMD
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+pyproj = gz.utilities.import_dependency('pyproj')
+pyTMD = gz.utilities.import_dependency('pyTMD')
+timescale = gz.utilities.import_dependency('timescale')
 
 def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
-    OUTPUT_DIRECTORY=None,
-    TIDE_MODEL=None,
-    VERBOSE=False,
-    MODE=0o775):
+        OUTPUT_DIRECTORY=None,
+        TIDE_MODEL=None,
+        VERBOSE=False,
+        MODE=0o775
+    ):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL

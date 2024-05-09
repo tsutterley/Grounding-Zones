@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 raster.py
-Written by Tyler Sutterley (11/2023)
+Written by Tyler Sutterley (05/2024)
 
 Utilities for reading and operating on raster data
 
@@ -22,24 +22,20 @@ PROGRAM DEPENDENCIES:
     spatial.py: utilities for reading and writing spatial data
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 11/2023: cache interpolators for improving computational times
     Written 10/2023
 """
 from __future__ import print_function, annotations
 
-import warnings
 import collections
 import numpy as np
 import scipy.interpolate
+from grounding_zones.utilities import import_dependency
+
 # attempt imports
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import pyTMD.spatial
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
+pyproj = import_dependency('pyproj')
+pyTMD = import_dependency('pyTMD')
 
 class raster:
     """Utilities for using raster files

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 gee_pgc_strip_sync.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (05/2024)
 
 Processes and syncs Reference Elevation Map of Antarctica (REMA) DEM
     or ArcticDEM strip tar files from Google Earth Engine
@@ -40,6 +40,7 @@ PYTHON DEPENDENCIES:
         https://dateutil.readthedocs.io/en/stable/
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 07/2022: made COG output optional and not the default
         place some imports within try/except statements
@@ -58,18 +59,12 @@ import time
 import logging
 import pathlib
 import argparse
-import warnings
 import dateutil.parser
+import grounding_zones as gz
 
 # attempt imports
-try:
-    import fiona
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("mpi4py not available", ImportWarning)
-try:
-    import ee
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("ee not available", ImportWarning)
+fiona = gz.utilities.import_dependency('fiona')
+ee = gz.utilities.import_dependency('ee')
 
 # PURPOSE: keep track of threads
 def info(args):

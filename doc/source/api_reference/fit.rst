@@ -17,6 +17,12 @@ General Methods
 
 .. autofunction:: grounding_zones.fit.median_filter
 
+.. autofunction:: grounding_zones.fit._build_design_matrix
+
+.. autofunction:: grounding_zones.fit._temporal_terms
+
+.. autofunction:: grounding_zones.fit._spatial_terms
+
 .. autofunction:: grounding_zones.fit._polynomial
 
 .. autofunction:: grounding_zones.fit._chebyshev

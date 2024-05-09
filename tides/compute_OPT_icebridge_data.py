@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_OPT_icebridge_data.py
-Written by Tyler Sutterley (04/2024)
+Written by Tyler Sutterley (05/2024)
 Calculates radial ocean pole tide displacements for correcting Operation
     IceBridge elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
@@ -45,6 +45,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 05/2023: use timescale class for time conversion operations
         use defaults from eop module for pole tide and EOP files
@@ -85,30 +86,24 @@ import time
 import logging
 import pathlib
 import argparse
-import warnings
 import collections
 import numpy as np
 import scipy.interpolate
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import pyTMD
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+pyTMD = gz.utilities.import_dependency('pyTMD')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: read Operation IceBridge data from NSIDC
 # compute ocean pole tide radial displacements at data points and times
-def compute_OPT_icebridge_data(arg, CONVENTION='2018', METHOD=None,
-    VERBOSE=False, MODE=0o775):
+def compute_OPT_icebridge_data(arg,
+        CONVENTION='2018',
+        METHOD=None,
+        VERBOSE=False,
+        MODE=0o775
+    ):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL

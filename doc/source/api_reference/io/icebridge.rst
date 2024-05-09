@@ -11,9 +11,15 @@ Read altimetry data files from NASA Operation IceBridge (OIB)
 General Methods
 ===============
 
+.. autofunction:: grounding_zones.io.icebridge.from_file
+
 .. autofunction:: grounding_zones.io.icebridge.file_length
 
 .. autofunction:: grounding_zones.io.icebridge.read_ATM_ITRF_file
+
+.. autofunction:: grounding_zones.io.icebridge.get_ITRF
+
+.. autofunction:: grounding_zones.io.icebridge.convert_ITRF
 
 .. autofunction:: grounding_zones.io.icebridge.read_ATM_qfit_file
 

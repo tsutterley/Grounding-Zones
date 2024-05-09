@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interpolate_tide_adjustment.py
-Written by Tyler Sutterley (12/2023)
+Written by Tyler Sutterley (05/2024)
 Interpolates tidal adjustment scale factors to output grids
 
 COMMAND LINE OPTIONS:
@@ -29,6 +29,7 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 12/2023: don't have a default tide model in arguments
     Updated 11/2023: only mask out invalid points within fit domain
     Updated 10/2023: mask out invalid tide adjustment points before fit
@@ -48,25 +49,13 @@ import time
 import logging
 import pathlib
 import argparse
-import warnings
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import spatial_interpolators as spi
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("spatial_interpolators not available", ImportWarning)
-# filter warnings
-warnings.filterwarnings("ignore")
+h5py = gz.utilities.import_dependency('h5py')
+pyproj = gz.utilities.import_dependency('pyproj')
+spi = gz.utilities.import_dependency('spatial_interpolators')
 
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):
@@ -89,19 +78,20 @@ def reduce(val, method=np.min, axis=1):
     return method(val, axis=axis)
 
 def interpolate_tide_adjustment(tile_file,
-    OUTPUT_DIRECTORY=None,
-    HEM='S',
-    W=80e3,
-    SUBSET=10e3,
-    SPACING=None,
-    PAD=0,
-    TIDE_MODEL=None,
-    METHOD=None,
-    TENSION=0,
-    SMOOTH=0,
-    EPSILON=0,
-    POLYNOMIAL=0,
-    MODE=0o775):
+        OUTPUT_DIRECTORY=None,
+        HEM='S',
+        W=80e3,
+        SUBSET=10e3,
+        SPACING=None,
+        PAD=0,
+        TIDE_MODEL=None,
+        METHOD=None,
+        TENSION=0,
+        SMOOTH=0,
+        EPSILON=0,
+        POLYNOMIAL=0,
+        MODE=0o775
+    ):
 
     # input tile data file
     tile_file = pathlib.Path(tile_file).expanduser().absolute()

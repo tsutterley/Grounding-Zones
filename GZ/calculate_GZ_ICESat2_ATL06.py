@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL06.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (05/2024)
 
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
@@ -68,6 +68,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from timescale.time
     Updated 07/2023: using pathlib to define and operate on paths
@@ -97,7 +98,6 @@ import pathlib
 import argparse
 import datetime
 import operator
-import warnings
 import itertools
 import traceback
 import collections
@@ -107,34 +107,13 @@ import scipy.optimize
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import fiona
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("fiona not available", ImportWarning)
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import matplotlib.pyplot as plt
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("matplotlib not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import shapely.geometry
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("shapely not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+fiona = gz.utilities.import_dependency('fiona')
+h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+plt = gz.utilities.import_dependency('matplotlib.pyplot')
+pyproj = gz.utilities.import_dependency('pyproj')
+geometry = gz.utilities.import_dependency('shapely.geometry')
+timescale = gz.utilities.import_dependency('timescale')
 
 # grounded ice shapefiles
 grounded_shapefile = {}
@@ -174,10 +153,10 @@ def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # extract the entities and assign by tile name
     for i,ent in enumerate(shape_entities):
         # extract coordinates for entity
-        line_obj = shapely.geometry.LineString(ent['geometry']['coordinates'])
+        line_obj = geometry.LineString(ent['geometry']['coordinates'])
         lines.append(line_obj)
     # create shapely multilinestring object
-    mline_obj = shapely.geometry.MultiLineString(lines)
+    mline_obj = geometry.MultiLineString(lines)
     # close the shapefile
     shape.close()
     # return the line string object for the ice sheet
@@ -633,7 +612,7 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
             # extract lat/lon and convert to polar stereographic
             X,Y = transformer.transform(v['longitude'][i],v['latitude'][i])
             # shapely LineString object for altimetry segment
-            segment_line = shapely.geometry.LineString(np.c_[X, Y])
+            segment_line = geometry.LineString(np.c_[X, Y])
             # determine if line segment intersects previously known GZ
             if segment_line.intersects(mline_obj):
                 # extract intersected point (find minimum distance)

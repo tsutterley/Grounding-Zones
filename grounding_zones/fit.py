@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit.py
-Written by Tyler Sutterley (04/2024)
+Written by Tyler Sutterley (05/2024)
 
 Fits a polynomial surface to a set of points
 
@@ -24,7 +24,7 @@ OUTPUTS:
     error: regression fit error for each coefficient for an input deviation
         STDEV: standard deviation of output error
         CONF: confidence interval of output error
-    std_err: standard error for each coefficient
+    std_error: standard error for each coefficient
     R2: coefficient of determination (r**2).
         Proportion of variability accounted by the model
     R2Adj: adjusted r**2. adjusts the r**2 for the number of terms in the model
@@ -58,6 +58,8 @@ PYTHON DEPENDENCIES:
     scipy: Scientific Tools for Python (https://docs.scipy.org/doc/)
 
 UPDATE HISTORY:
+    Updated 05/2024: add function to build the complete design matrix
+        add functions to give the number of spatial and temporal terms
     Updated 04/2024: rewritten for python3 and added function docstrings
         add optional TERMS argument to augment the design matrix
         add spline design matrix option for time-variable fit
@@ -94,6 +96,8 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
         - ``'polynomial'``
         - ``'chebyshev'``
         - ``'spline'``
+    ITERATIONS: int, default 25
+        maximum number of iterations to use in fit
     ORDER_TIME: int
         maximum polynomial order in time-variable fit
     ORDER_SPACE: int
@@ -106,8 +110,6 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
         confidence interval of output error
     AICc: bool
         use second order AIC
-    ITERATE: int, default 25
-        maximum number of iterations to use in fit
     kwargs: dict
         keyword arguments for the fit type
 
@@ -130,15 +132,18 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
         41(23), 8421--8428, (2014). `doi:10.1002/2014GL061940 
         <https://doi.org/10.1002/2014GL061940>`_
     """
-    kwargs.setdefault('ITERATE', 25)
     kwargs.setdefault('FIT_TYPE', 'polynomial')
+    kwargs.setdefault('ITERATIONS', 25)
     kwargs.setdefault('ORDER_TIME', 3)
     kwargs.setdefault('ORDER_SPACE', 3)
-    # number of points for fit and number of terms in fit
+    kwargs.setdefault('KNOTS', [])
+    # number of points for fit
     n_max = len(d_in)
-    n_terms = (kwargs['ORDER_TIME'] + 1) + \
-        np.sum(np.arange(2, kwargs['ORDER_SPACE'] + 2)) + \
-        len(TERMS)
+    # total number of spatial and temporal terms
+    n_space = _spatial_terms(**kwargs)
+    n_time = _temporal_terms(**kwargs)
+    # total number of terms in fit
+    n_terms = n_space + n_time + len(TERMS)
     # run only if number of points is above number of terms
     FLAG1 = ((n_max - n_terms) > 10)
     # set initial window to the full data range
@@ -166,6 +171,11 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
         resid = s['residual']
         # standard deviation of the residuals
         resid_std = np.std(resid)
+        # standard error
+        std_error = np.copy(s['std_error'])
+        # coefficients of determination
+        rsquare = np.copy(s['R2'])
+        rsq_adj = np.copy(s['R2Adj'])
         # save MSE and DOF for error analysis
         MSE = np.copy(s['MSE'])
         DOF = np.copy(s['DOF'])
@@ -173,6 +183,10 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
         RMSE = np.sqrt(s['MSE'])
         # Normalized root mean square error
         NRMSE = RMSE/(np.max(d_in)-np.min(d_in))
+        # fit criterion
+        AIC = np.copy(s['AIC'])
+        BIC = np.copy(s['BIC'])
+        log_lik = np.copy(s['LOGLIK'])
         # IQR pass: residual-(median value) is within 75% of IQR
         # RDE pass: residual-(median value) is within 50% of P84-P16
         IQR,RDE,MEDIAN = median_filter(resid)
@@ -185,7 +199,7 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
         n_rem = np.count_nonzero(np.abs(resid-MEDIAN) <= (window/2.0))
         FLAG1 = ((n_rem - n_terms) > 10)
         # maximum number of iterations to prevent infinite loops
-        FLAG2 = (n_iter <= kwargs['ITERATE'])
+        FLAG2 = (n_iter <= kwargs['ITERATIONS'])
         # compare indices over two iterations to prevent false stoppages
         FLAG3 = (set(filt) != set(filt_p1)) | (set(filt_p1) != set(filt_p2)) 
         # iterate until there are no additional removed data points
@@ -208,6 +222,17 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
             error_mat = np.copy(s['error'])
             data = np.copy(s['data'])
             model = np.copy(s['model'])
+            # save number of points
+            n_max = len(d_filt)
+            # residuals of model fit
+            resid = s['residual']
+            # standard deviation of the residuals
+            resid_std = np.std(resid)
+            # standard error
+            std_error = np.copy(s['std_error'])
+            # coefficients of determination
+            rsquare = np.copy(s['R2'])
+            rsq_adj = np.copy(s['R2Adj'])
             # save MSE and DOF for error analysis
             MSE = np.copy(s['MSE'])
             DOF = np.copy(s['DOF'])
@@ -215,12 +240,10 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
             RMSE = np.sqrt(s['MSE'])
             # Normalized root mean square error
             NRMSE = RMSE/(np.max(d_filt)-np.min(d_filt))
-            # save number of points
-            n_max = len(d_filt)
-            # residuals of model fit
-            resid = s['residual']
-            # standard deviation of the residuals
-            resid_std = np.std(resid)
+            # fit criterion
+            AIC = np.copy(s['AIC'])
+            BIC = np.copy(s['BIC'])
+            log_lik = np.copy(s['LOGLIK'])
             # IQR pass: residual-(median value) is within 75% of IQR
             # RDE pass: residual-(median value) is within 50% of P84-P16
             IQR,RDE,MEDIAN = median_filter(resid)
@@ -236,7 +259,7 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
             n_rem = np.count_nonzero(np.abs(resid-MEDIAN) <= (window/2.0))
             FLAG1 = ((n_rem - n_terms) > 10)
             # maximum number of iterations to prevent infinite loops
-            FLAG2 = (n_iter <= kwargs['ITERATE'])
+            FLAG2 = (n_iter <= kwargs['ITERATIONS'])
             # compare indices over two iterations to prevent false stoppages
             FLAG3 = (set(filt) != set(filt_p1)) | (set(filt_p1) != set(filt_p2))
 
@@ -244,16 +267,16 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
     FLAG3 = (set(filt) == set(filt_p1))
     if FLAG1 & FLAG3:
         return {'beta':beta_mat, 'error':error_mat, 'data':data,
-            'model':model, 'MSE':MSE, 'NRMSE':NRMSE, 'DOF':DOF,
-            'count':n_max, 'indices':indices, 'iterations':n_iter,
+            'model':model, 'std_error':std_error, 'R2':rsquare,
+            'R2Adj':rsq_adj, 'MSE':MSE, 'NRMSE':NRMSE, 
+            'AIC':AIC, 'BIC':BIC, 'LOGLIK':log_lik,
+            'residual':resid, 'DOF':DOF, 'count':n_max,
+            'indices':indices, 'iterations':n_iter,
             'window':window, 'RDE':RDE, 'centroid':s['centroid']}
     else:
         raise ValueError(f'No valid data points found after {n_iter} iterations')
 
 def surface_fit(t_in, x_in, y_in, d_in,
-        FIT_TYPE='polynomial',
-        ORDER_SPACE=3,
-        TERMS=[],
         STDEV=0,
         CONF=0,
         AICc=True,
@@ -282,6 +305,8 @@ def surface_fit(t_in, x_in, y_in, d_in,
         maximum polynomial order in time-variable fit
     ORDER_SPACE: int
         maximum polynomial order in spatial fit
+    KNOTS: list or np.ndarray
+        Sorted 1D array of knots for time-variable spline fit
     TERMS: list
         list of extra terms
     STDEV: float
@@ -307,6 +332,11 @@ def surface_fit(t_in, x_in, y_in, d_in,
         41(23), 8421--8428, (2014). `doi:10.1002/2014GL061940 
         <https://doi.org/10.1002/2014GL061940>`_
     """
+    # set default keyword arguments
+    kwargs.setdefault('FIT_TYPE', 'polynomial')
+    kwargs.setdefault('ORDER_TIME', 3)
+    kwargs.setdefault('ORDER_SPACE', 3)
+    kwargs.setdefault('KNOTS', [])
 
     # remove singleton dimensions from input variables
     t_in = np.squeeze(t_in)
@@ -319,31 +349,9 @@ def surface_fit(t_in, x_in, y_in, d_in,
         (len(d_in) == nmax), 'Input dimensions do not match'
 
     # create design matrix for fit
-    DMAT = []
-
-    # time-variable design matrix
-    if (FIT_TYPE.lower() == 'polynomial'):
-        TMAT, t_rel = _polynomial(t_in, **kwargs)
-    elif (FIT_TYPE.lower() == 'chebyshev'):
-        TMAT = _chebyshev(t_in, **kwargs)
-    elif (FIT_TYPE.lower() == 'spline'):
-        TMAT = _spline(t_in, **kwargs)
-    else:
-        raise ValueError(f'Fit type {FIT_TYPE} not recognized')
-    # append the time-variable design matrix
-    DMAT.extend(TMAT)
-    n_time = len(TMAT)
-
-    # surface design matrix
-    SMAT, centroid = _surface(x_in, y_in,
-        ORDER_SPACE=ORDER_SPACE, **kwargs)
-    DMAT.extend(SMAT)
-
-    # add additional terms to the design matrix
-    for t in TERMS:
-        DMAT.append(t)
-    # take the transpose of the design matrix
-    DMAT = np.transpose(DMAT)
+    DMAT, centroid = _build_design_matrix(t_in, x_in, y_in, **kwargs)
+    # total number of temporal terms
+    n_time = _temporal_terms(**kwargs)
 
     # Standard Least-Squares fitting
     # (the [0] denotes coefficients output)
@@ -420,12 +428,12 @@ def surface_fit(t_in, x_in, y_in, d_in,
     tstar = scipy.stats.t.ppf(1.0-(alpha/2.0),nu)
     # beta_err is the error for each coefficient
     # beta_err = t(nu,1-alpha/2)*standard error
-    st_err = np.sqrt(MSE*hdiag)
-    beta_err = tstar*st_err
+    std_error = np.sqrt(MSE*hdiag)
+    beta_err = tstar*std_error
 
     # return the modeled surface time-series and the coefficients
     return {'beta':beta_mat, 'data':data, 'model':mod,
-        'error':beta_err, 'std_err':st_err, 'R2':rsquare,
+        'error':beta_err, 'std_error':std_error, 'R2':rsquare,
         'R2Adj':rsq_adj, 'MSE':MSE, 'NRMSE':NRMSE,
         'AIC':AIC, 'BIC':BIC, 'LOGLIK':log_lik,
         'residual':res, 'N':n_terms, 'DOF':nu,
@@ -476,6 +484,118 @@ def median_filter(r0):
     # RDE pass: residual-(median value) is within 50% of P84-P16
     return (0.75*IQR, 0.5*RDE, MEDIAN)
 
+def _build_design_matrix(t_in, x_in, y_in,
+        FIT_TYPE='polynomial',
+        ORDER_SPACE=3,
+        TERMS=[],
+        **kwargs,
+    ):
+    """
+    Builds the complete design matrix for the surface fit
+
+    Parameters
+    ----------
+    t_in: np.ndarray
+        input time array
+    x_in: np.ndarray    
+        x-coordinate array
+    y_in: np.ndarray
+        y-coordinate array
+    FIT_TYPE: str
+        type of time-variable polynomial fit to apply
+
+        - ``'polynomial'``
+        - ``'chebyshev'``
+        - ``'spline'``
+    ORDER_TIME: int
+        maximum polynomial order in time-variable fit
+    ORDER_SPACE: int
+        maximum polynomial order in spatial fit
+    KNOTS: list or np.ndarray
+        Sorted 1D array of knots for time-variable spline fit
+    TERMS: list
+        list of extra terms
+    kwargs: dict
+        keyword arguments for the fit type
+
+    Returns
+    -------
+    DMAT: np.ndarray
+        Design matrix for the fit type
+    centroid: dict
+        centroid point of input coordinates
+    """
+    # output design matrix
+    DMAT = []
+    # time-variable design matrix
+    if (FIT_TYPE.lower() == 'polynomial'):
+        TMAT, t_rel = _polynomial(t_in, **kwargs)
+    elif (FIT_TYPE.lower() == 'chebyshev'):
+        TMAT = _chebyshev(t_in, **kwargs)
+    elif (FIT_TYPE.lower() == 'spline'):
+        TMAT = _spline(t_in, **kwargs)
+    else:
+        raise ValueError(f'Fit type {FIT_TYPE} not recognized')
+    # append the time-variable design matrix
+    DMAT.extend(TMAT)
+    # surface design matrix
+    SMAT, centroid = _surface(x_in, y_in,
+        ORDER_SPACE=ORDER_SPACE, **kwargs)
+    DMAT.extend(SMAT)
+    # add additional terms to the design matrix
+    for t in TERMS:
+        DMAT.append(t)
+    # return the transpose of the design matrix and the centroid
+    return np.transpose(DMAT), centroid
+
+def _temporal_terms(**kwargs):
+    """
+    Calculates the number of temporal terms for a given fit
+
+    Parameters
+    ----------
+    FIT_TYPE: str
+        type of time-variable polynomial fit to apply
+
+        - ``'polynomial'``
+        - ``'chebyshev'``
+        - ``'spline'``
+    ORDER_TIME: int
+        maximum polynomial order in time-variable fit
+    KNOTS: list or np.ndarray
+        Sorted 1D array of knots for time-variable spline fit
+
+    Returns
+    -------
+    n_time: int
+        Number of time-variable terms in fit
+    """
+    # calculate the number of temporal terms for a given fit
+    if kwargs['FIT_TYPE'] in ('spline', ):
+        n_time = len(kwargs['KNOTS']) - 2
+    else:
+        n_time = (kwargs['ORDER_TIME'] + 1)
+    # return the number of temporal terms for fit
+    return n_time
+
+def _spatial_terms(**kwargs):
+    """
+    Calculates the number of spatial terms for a given fit
+
+    Parameters
+    ----------
+    ORDER_SPACE: int
+        maximum polynomial order in spatial fit
+
+    Returns
+    -------
+    n_space: int
+        Number of spatial terms in fit
+    """
+    n_space = np.sum(np.arange(2, kwargs['ORDER_SPACE'] + 2)) 
+    # return the number of temporal terms for fit
+    return n_space
+
 def _polynomial(t_in, RELATIVE=Ellipsis, ORDER_TIME=3, **kwargs):
     """
     Create a polynomial design matrix for a time-series
@@ -498,10 +618,10 @@ def _polynomial(t_in, RELATIVE=Ellipsis, ORDER_TIME=3, **kwargs):
     """
     # calculate epoch for calculating relative times
     if isinstance(RELATIVE, (list, np.ndarray)):
-        t_rel = t_in[RELATIVE].mean()
+        t_rel = np.mean(RELATIVE)
     elif isinstance(RELATIVE, (float, int, np.float_, np.int_)):
         t_rel = np.copy(RELATIVE)
-    elif (RELATIVE == Ellipsis):
+    elif RELATIVE in (Ellipsis, None):
         t_rel = t_in[RELATIVE].mean()
     # time-variable design matrix based on polynomial order
     TMAT = []

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_interpolate_DEM.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (05/2024)
 Determines which digital elevation model tiles for an input file
 Reads 3x3 array of tiles for points within bounding box of central mosaic tile
 Interpolates digital elevation model to coordinates
@@ -84,6 +84,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 07/2023: using pathlib to define and operate on paths
         use geoms attribute for shapely 2.0 compliance
     Updated 12/2022: single implicit import of grounding zone tools
@@ -102,40 +103,22 @@ from __future__ import print_function
 import sys
 import os
 import re
-import uuid
 import pathlib
 import tarfile
 import logging
 import argparse
-import warnings
 import numpy as np
 import scipy.interpolate
+import grounding_zones as gz
 
 # attempt imports
-try:
-    import fiona
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("mpi4py not available", ImportWarning)
-try:
-    from mpi4py import MPI
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("mpi4py not available", ImportWarning)
-try:
-    import osgeo.gdal
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("GDAL not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import pyTMD.spatial
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
-try:
-    import shapely.geometry
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("shapely not available", ImportWarning)
+fiona = gz.utilities.import_dependency('fiona')
+MPI = gz.utilities.import_dependency('mpi4py.MPI')
+gdal = gz.utilities.import_dependency('osgeo.gdal')
+pyproj = gz.utilities.import_dependency('pyproj')
+pyTMD = gz.utilities.import_dependency('pyTMD')
+geometry = gz.utilities.import_dependency('shapely.geometry')
+timescale = gz.utilities.import_dependency('timescale')
 
 # digital elevation models
 elevation_dir = {}
@@ -309,7 +292,7 @@ def read_DEM_index(index_file, DEM_MODEL):
         # extract Polar Stereographic coordinates for entity
         x = [ul[0],ur[0],lr[0],ll[0],ul2[0]]
         y = [ul[1],ur[1],lr[1],ll[1],ul2[1]]
-        poly_obj = shapely.geometry.Polygon(list(zip(x,y)))
+        poly_obj = geometry.Polygon(np.c_[x, y])
         # Valid Polygon may not possess overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
@@ -317,7 +300,7 @@ def read_DEM_index(index_file, DEM_MODEL):
     # close the file
     shape.close()
     # return the dictionaries of polygon objects and attributes
-    return (poly_dict,attrs_dict,epsg)
+    return (poly_dict, attrs_dict, epsg)
 
 # PURPOSE: read DEM tile file from gzipped tar files
 def read_DEM_file(elevation_file):
@@ -327,7 +310,7 @@ def read_DEM_file(elevation_file):
     member, = [m for m in tar.getmembers() if re.search(r'dem\.tif',m.name)]
     # use GDAL virtual file systems to read dem
     mmap_name = f"/vsitar/{elevation_file}/{member.name}"
-    ds = osgeo.gdal.Open(mmap_name)
+    ds = gdal.Open(mmap_name)
     # read data matrix
     im = ds.GetRasterBand(1).ReadAsArray()
     fill_value = ds.GetRasterBand(1).GetNoDataValue()
@@ -351,7 +334,7 @@ def read_DEM_file(elevation_file):
     ymin = ymax + (ysize-1)*info_geotiff[5]
     # close files
     ds = None
-    osgeo.gdal.Unlink(mmap_name)
+    gdal.Unlink(mmap_name)
     tar.close()
     # create image x and y arrays
     xi = np.arange(xmin,xmax+info_geotiff[1],info_geotiff[1])
@@ -367,7 +350,7 @@ def read_DEM_buffer(elevation_file, xlimits, ylimits):
     member, = [m for m in tar.getmembers() if re.search(r'dem\.tif',m.name)]
     # use GDAL virtual file systems to read dem
     mmap_name = f"/vsitar/{elevation_file}/{member.name}"
-    ds = osgeo.gdal.Open(mmap_name)
+    ds = gdal.Open(mmap_name)
     # get geotiff info
     info_geotiff = ds.GetGeoTransform()
     # original image extents
@@ -397,7 +380,7 @@ def read_DEM_buffer(elevation_file, xlimits, ylimits):
     ymin_reduced = ymax + yoffset*info_geotiff[5] + (ycount-1)*info_geotiff[5]
     # close files
     ds = None
-    osgeo.gdal.Unlink(mmap_name)
+    gdal.Unlink(mmap_name)
     tar.close()
     # create image x and y arrays
     xi = np.arange(xmin_reduced,xmax_reduced+info_geotiff[1],info_geotiff[1])
@@ -526,7 +509,7 @@ def main():
     dem_h.mask = np.ones((n_pts),dtype=bool)
 
     # convert reduced x and y to shapely multipoint object
-    xy_point = shapely.geometry.MultiPoint(np.c_[X[ind], Y[ind]])
+    xy_point = geometry.MultiPoint(np.c_[X[ind], Y[ind]])
 
     # create complete masks for each DEM tile
     associated_map = {}

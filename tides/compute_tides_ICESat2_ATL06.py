@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL06.py
-Written by Tyler Sutterley (04/2024)
+Written by Tyler Sutterley (05/2024)
 Calculates tidal elevations for correcting ICESat-2 land ice elevation data
 
 Uses OTIS format tidal solutions provided by Ohio State University and ESR
@@ -61,6 +61,7 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 01/2024: made the inferrence of minor constituents an option
     Updated 08/2023: create s3 filesystem when using s3 urls as input
@@ -117,43 +118,31 @@ import logging
 import pathlib
 import argparse
 import datetime
-import warnings
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import pyTMD
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+pyTMD = gz.utilities.import_dependency('pyTMD')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: read ICESat-2 land ice data (ATL06) from NSIDC
 # compute tides at points and times using tidal model driver algorithms
 def compute_tides_ICESat2(tide_dir, INPUT_FILE,
-    OUTPUT_DIRECTORY=None,
-    TIDE_MODEL=None,
-    ATLAS_FORMAT=None,
-    GZIP=True,
-    DEFINITION_FILE=None,
-    METHOD='spline',
-    EXTRAPOLATE=False,
-    CUTOFF=None,
-    INFER_MINOR=False,
-    APPLY_FLEXURE=False,
-    VERBOSE=False,
-    MODE=0o775):
+        OUTPUT_DIRECTORY=None,
+        TIDE_MODEL=None,
+        ATLAS_FORMAT=None,
+        GZIP=True,
+        DEFINITION_FILE=None,
+        METHOD='spline',
+        EXTRAPOLATE=False,
+        CUTOFF=None,
+        INFER_MINOR=False,
+        APPLY_FLEXURE=False,
+        VERBOSE=False,
+        MODE=0o775
+    ):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_geoid_icebridge_data.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (05/2024)
 Calculates geoid undulations for correcting Operation IceBridge elevation data
 
 INPUTS:
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 08/2023: use time functions from timescale.time
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 05/2023: move icebridge data inputs to a separate module in io
@@ -67,28 +68,16 @@ import time
 import logging
 import pathlib
 import argparse
-import warnings
 import collections
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import geoid_toolkit as geoidtk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("geoid_toolkit not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+geoidtk = gz.utilities.import_dependency('geoid_toolkit')
+h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+pyproj = gz.utilities.import_dependency('pyproj')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: read Operation IceBridge data from NSIDC
 # and computes geoid undulation at points

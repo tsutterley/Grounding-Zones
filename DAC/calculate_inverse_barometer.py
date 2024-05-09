@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_inverse_barometer.py
-Written by Tyler Sutterley (04/2023)
+Written by Tyler Sutterley (05/2024)
 Reads hourly mean sea level pressure fields from reanalysis and
     calculates the inverse-barometer response
 
@@ -38,6 +38,7 @@ REFERENCES:
         https://doi.org/10.1007/978-3-211-33545-1
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2023: using pathlib to define and expand paths
     Updated 12/2022: single implicit import of grounding zone tools
         use constants class from pyTMD for ellipsoidal parameters
@@ -55,19 +56,12 @@ import logging
 import pathlib
 import argparse
 import datetime
-import warnings
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("netCDF4 not available", ImportWarning)
-try:
-    import pyTMD
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
+netCDF4 = gz.utilities.import_dependency('netCDF4')
+pyTMD = gz.utilities.import_dependency('pyTMD')
 
 # PURPOSE: read land sea mask to get indices of oceanic values
 def ncdf_landmask(FILENAME,MASKNAME,OCEAN):

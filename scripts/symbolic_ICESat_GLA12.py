@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 symbolic_ICESat_GLA12.py
-Written by Tyler Sutterley (05/2023)
+Written by Tyler Sutterley (05/2024)
 Creates symbolic links for ICESat/GLAS L2 GLA12 Antarctic and Greenland
     Ice Sheet elevation files organized by date
 
@@ -17,6 +17,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: permission mode of directories
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 05/2022: use argparse descriptions within documentation
     Written 02/2022
@@ -29,13 +30,10 @@ import copy
 import logging
 import pathlib
 import argparse
-import warnings
+import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
 
 # PURPOSE: create argument parser
 def arguments():

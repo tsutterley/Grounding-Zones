@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_sea_level_ICESat2_ATL11.py
-Written by Tyler Sutterley (04/2024)
+Written by Tyler Sutterley (05/2024)
 Interpolates sea level anomalies (sla), absolute dynamic topography (adt) and
     mean dynamic topography (mdt) to times and locations of ICESat-2 ATL11 data
     This data will be extrapolated onto land points
@@ -42,6 +42,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from timescale.time
@@ -64,36 +65,18 @@ import logging
 import pathlib
 import argparse
 import datetime
-import warnings
 import numpy as np
 import collections
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("netCDF4 not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import sklearn.neighbors
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("scikit-learn not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+netCDF4 = gz.utilities.import_dependency('netCDF4')
+pyproj = gz.utilities.import_dependency('pyproj')
+neighbors = gz.utilities.import_dependency('sklearn.neighbors')
+timescale = gz.utilities.import_dependency('timescale')
+
 
 # PURPOSE: set the hemisphere of interest based on the granule
 def set_hemisphere(GRANULE):
@@ -109,9 +92,9 @@ def inverse_distance(x, y, z, xi, yi, SEARCH='BallTree', N=10, POWER=2.0):
     npts = len(xi)
     # create neighbors object for coordinates
     if (SEARCH == 'BallTree'):
-        tree = sklearn.neighbors.BallTree(np.c_[x,y])
+        tree = neighbors.BallTree(np.c_[x,y])
     elif (SEARCH == 'KDTree'):
-        tree = sklearn.neighbors.KDTree(np.c_[x,y])
+        tree = neighbors.KDTree(np.c_[x,y])
     # query the search tree to find the N closest points
     dist,indices = tree.query(np.c_[xi,yi], k=N, return_distance=True)
     # normalized weights if POWER > 0 (typically between 1 and 3)

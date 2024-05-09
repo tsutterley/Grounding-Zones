@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2024: adjust default spacing of tiles to 80 km
         return if no valid points in hemisphere
+        use wrapper to importlib for optional dependencies
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         use constants class from pyTMD for ellipsoidal parameters
@@ -46,24 +47,14 @@ import time
 import logging
 import pathlib
 import argparse
-import warnings
 import collections
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import pyTMD
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+pyproj = gz.utilities.import_dependency('pyproj')
+pyTMD = gz.utilities.import_dependency('pyTMD')
 
 # PURPOSE: attempt to open an HDF5 file and wait if already open
 def multiprocess_h5py(filename, *args, **kwargs):

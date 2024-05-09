@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_reduce_ICESat2_ATL06_grounding_zone.py
-Written by Tyler Sutterley (11/2023)
+Written by Tyler Sutterley (05/2024)
 
 Create masks for reducing ICESat-2 land ice height data to within
     a buffer region near the ice sheet grounding zone
@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 11/2023: add option to read a specific georeferenced file
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from timescale.time
@@ -76,35 +77,16 @@ import logging
 import pathlib
 import argparse
 import datetime
-import warnings
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import fiona
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("fiona not available", ImportWarning)
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    from mpi4py import MPI
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("mpi4py not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import shapely.geometry
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("shapely not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+fiona = gz.utilities.import_dependency('fiona')
+h5py = gz.utilities.import_dependency('h5py')
+MPI = gz.utilities.import_dependency('mpi4py.MPI')
+pyproj = gz.utilities.import_dependency('pyproj')
+geometry = gz.utilities.import_dependency('shapely.geometry')
+timescale = gz.utilities.import_dependency('timescale')
 
 # buffered shapefile
 buffer_shapefile = {}
@@ -202,13 +184,13 @@ def load_grounding_zone(base_dir, HEM, BUFFER, shapefile=None):
             x,y = np.transpose(coords)
             poly_list.append(list(zip(x,y)))
         # convert poly_list into Polygon object with holes
-        poly_obj = shapely.geometry.Polygon(poly_list[0], holes=poly_list[1:])
+        poly_obj = geometry.Polygon(poly_list[0], holes=poly_list[1:])
         # Valid Polygon cannot have overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
         polygons.append(poly_obj)
     # create shapely multipolygon object
-    mpoly_obj = shapely.geometry.MultiPolygon(polygons)
+    mpoly_obj = geometry.MultiPolygon(polygons)
     # close the shapefile
     shape.close()
     # return the polygon object for the ice sheet
@@ -332,7 +314,7 @@ def main():
         # convert lat/lon to polar stereographic
         X,Y = transformer.transform(longitude[ind], latitude[ind])
         # convert reduced x and y to shapely multipoint object
-        xy_point = shapely.geometry.MultiPoint(np.c_[X, Y])
+        xy_point = geometry.MultiPoint(np.c_[X, Y])
 
         # create distributed intersection map for calculation
         distributed_map = np.zeros((n_seg),dtype=bool)

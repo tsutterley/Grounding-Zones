@@ -19,6 +19,8 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2024: added reader for LVIS2 ascii files
         added output writer for LVIS HDF5 files
+        include functions for converting ITRF
+        use wrapper to importlib for optional dependencies
     Updated 10/2023: add reader for ATM ITRF convention lookup table
     Updated 08/2023: use time functions from timescale.time
     Updated 07/2023: add function docstrings in numpydoc format
@@ -32,23 +34,57 @@ import io
 import copy
 import time
 import pathlib
-import warnings
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import ATM1b_QFIT.read_ATM1b_QFIT_binary
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("ATM1b_QFIT not available", ImportWarning)
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+ATM1b_QFIT = gz.utilities.import_dependency('ATM1b_QFIT')
+h5py = gz.utilities.import_dependency('h5py')
+timescale = gz.utilities.import_dependency('timescale')
+
+# PURPOSE: read Operation IceBridge data
+def from_file(input_file, subset=None, format=None):
+    """
+    Wrapper function for reading Operation IceBridge data files
+
+    Parameters
+    ----------
+    input_file: str
+        Full path of input file to be read
+    subset: np.ndarray or None
+        Subsetting array of indices to be read from input file
+    format: str or None
+        Format of input file
+
+        - ``'ATM'``: Airborne Topographic Mapper Level-2 icessn
+        - ``'ATM1b'``: Airborne Topographic Mapper Level-1b QFIT
+        - ``'LVIS'``: Land, Vegetation and Ice Sensor Level-2
+        - ``'LVGH'``: Land, Vegetation and Ice Sensor Global Hawk Level-2
+
+    Returns
+    -------
+    dinput: dict
+        variables from input file
+
+        - ``lat``: latitude (degrees)
+        - ``lon``: longitude (degrees)
+        - ``data``: elevation (meters)
+        - ``time``: seconds since J2000 epoch
+    file_lines: int
+        Number of lines within the input file
+    HEM: str
+        Hemisphere of the input file (``'N'`` or ``'S'``)
+    """
+    # read data from input_file
+    if (format == 'ATM'):
+        # load IceBridge ATM data from input_file
+        return read_ATM_icessn_file(input_file, subset)
+    elif (format == 'ATM1b'):
+        # load IceBridge Level-1b ATM data from input_file
+        return read_ATM_qfit_file(input_file, subset)
+    elif format in ('LVIS','LVGH'):
+        # load IceBridge LVIS data from input_file
+        return read_LVIS_HDF5_file(input_file, subset)
 
 # PURPOSE: reading the number of file lines removing commented lines
 def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
@@ -130,6 +166,76 @@ def read_ATM_ITRF_file(header=True, delimiter=','):
     for col in header_text:
         data[col] = np.asarray(data[col])
     # return the parsed data
+    return data
+
+# PURPOSE: get the ITRF realization for an OIB dataset
+def get_ITRF(
+        short_name: str,
+        year: int,
+        month: int = 0,
+        HEM: str = 'N',
+    ):
+    """
+    Get the ITRF realization for an Operation IceBridge dataset
+
+    Parameters
+    ----------
+    short_name: str
+        Name of Operation IceBridge dataset
+    year: int
+        Year of acquisition of dataset
+    month: int, default 0
+        Month of acquisition of dataset
+    HEM: str, default 'N'
+        Region of dataset
+
+        - ``'N'``: Northern Hemisphere
+        - ``'S'``: Southern Hemisphere
+    """
+    if short_name in ('ATM','ATM1b'):
+        # get the ITRF of the ATM data
+        ITRF_table = gz.io.icebridge.read_ATM_ITRF_file()
+        region = dict(N='GR', S='AN')[HEM]
+        if (region == 'GR') and (int(month) < 7):
+            season = 'SP'
+        else:
+            season = 'FA'
+        # get the row of data from the table
+        row, = np.flatnonzero((ITRF_table['year'] == month) &
+            (ITRF_table['region'] == region) &
+            (ITRF_table['season'] == season))
+        # find the ITRF for the ATM data
+        ITRF = ITRF_table['ITRF'][row]
+    elif short_name in ('LVIS','LVGH') and (int(year) <= 2016):
+        ITRF = 'ITRF2000'
+    elif short_name in ('LVIS','LVGH') and (int(year) >= 2017):
+        ITRF = 'ITRF2008'
+    # return the reference frame for the OIB dataset
+    return ITRF
+
+# PURPOSE: convert the input data to the ITRF reference frame
+def convert_ITRF(data, ITRF):
+    """
+    Convert an Operation IceBridge dataset to a ITRF realization 
+
+    Parameters
+    ----------
+    data: dict
+        Operation IceBridge dataset
+    ITRF: str
+        ITRF Realization of input dataset
+    """
+    # get the transform for converting to the latest ITRF
+    transform = gz.crs.get_itrf_transform(ITRF)
+    # convert time to decimal years
+    ts = timescale.time.Timescale().from_deltatime(data['time'],
+        epoch=timescale.time._j2000_epoch, standard='UTC')
+    # transform the data to a common ITRF
+    lon, lat, data, tdec = transform.transform(
+        data['lon'], data['lat'], data['data'], ts.year
+    )
+    data.update(lon=lon, lat=lat, data=data)
+    # return the updated data dictionary
     return data
 
 ## PURPOSE: read the ATM Level-1b data file for variables of interest

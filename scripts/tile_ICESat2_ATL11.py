@@ -27,6 +27,7 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2024: adjust default spacing of tiles to 80 km
         output cycle_number variable from ATL11 file
+        use wrapper to importlib for optional dependencies
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         single implicit import of grounding zone tools
@@ -44,24 +45,14 @@ import time
 import logging
 import pathlib
 import argparse
-import warnings
 import collections
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+pyproj = gz.utilities.import_dependency('pyproj')
 
 # PURPOSE: set the hemisphere of interest based on the granule
 def set_hemisphere(GRANULE):
