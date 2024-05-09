@@ -30,6 +30,7 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     :caption: Utilities
 
     api_reference/filter_ICESat_GLA12.rst
+    api_reference/fit_surface_tiles.rst
     api_reference/MPI_median_elevation_filter.rst
     api_reference/MPI_triangulate_elevation.rst
     api_reference/symbolic_icebridge_files.rst
