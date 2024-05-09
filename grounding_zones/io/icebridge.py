@@ -12,7 +12,7 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
     timescale: Python tools for time and astronomical calculations
         https://pypi.org/project/timescale/
-
+f
 PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
@@ -110,7 +110,7 @@ def file_length(input_file, input_subsetter, HDF5=False, QFIT=False):
     # verify input file is path
     input_file = pathlib.Path(input_file).expanduser().absolute()
     # subset the data to indices if specified
-    if input_subsetter:
+    if input_subsetter is not None:
         file_lines = len(input_subsetter)
     elif HDF5:
         # read the size of an input variable within a HDF5 file
@@ -201,9 +201,11 @@ def get_ITRF(
         else:
             season = 'FA'
         # get the row of data from the table
-        row, = np.flatnonzero((ITRF_table['year'] == month) &
+        row, = np.flatnonzero(
+            (ITRF_table['year'].astype(int) == int(year)) &
             (ITRF_table['region'] == region) &
-            (ITRF_table['season'] == season))
+            (ITRF_table['season'] == season)
+        )
         # find the ITRF for the ATM data
         ITRF = ITRF_table['ITRF'][row]
     elif short_name in ('LVIS','LVGH') and (int(year) <= 2016):
@@ -231,10 +233,10 @@ def convert_ITRF(data, ITRF):
     ts = timescale.time.Timescale().from_deltatime(data['time'],
         epoch=timescale.time._j2000_epoch, standard='UTC')
     # transform the data to a common ITRF
-    lon, lat, data, tdec = transform.transform(
+    lon, lat, dat, tdec = transform.transform(
         data['lon'], data['lat'], data['data'], ts.year
     )
-    data.update(lon=lon, lat=lat, data=data)
+    data.update(lon=lon, lat=lat, data=dat)
     # return the updated data dictionary
     return data
 
@@ -369,7 +371,7 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         epoch=timescale.time._j2000_epoch, scale=86400.0
     )
     # subset the data to indices if specified
-    if input_subsetter:
+    if input_subsetter is not None:
         for key,val in ATM_L1b_input.items():
             ATM_L1b_input[key] = val[input_subsetter]
     # hemispheric shot count
@@ -474,7 +476,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     # convert RMS from centimeters to meters
     ATM_L2_input['error'] = ATM_L2_input['RMS']/100.0
     # subset the data to indices if specified
-    if input_subsetter:
+    if input_subsetter is not None:
         for key,val in ATM_L2_input.items():
             ATM_L2_input[key] = val[input_subsetter]
     # hemispheric shot count
@@ -685,7 +687,7 @@ def read_LVIS_HDF5_file(input_file, input_subsetter):
     LVIS_variance_high = (file_input['elev_high'] - file_input['elev'])**2
     LVIS_L2_input['error']=np.sqrt((LVIS_variance_low + LVIS_variance_high)/2.0)
     # subset the data to indices if specified
-    if input_subsetter:
+    if input_subsetter is not None:
         for key,val in LVIS_L2_input.items():
             LVIS_L2_input[key] = val[input_subsetter]
     # return the output variables

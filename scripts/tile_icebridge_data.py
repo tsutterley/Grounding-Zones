@@ -29,6 +29,7 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2024: adjust default spacing of tiles to 80 km
         return if no valid points in hemisphere
+        save icebridge filename with suffix as groups in tile files
         use wrapper to importlib for optional dependencies
     Updated 05/2023: using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
@@ -236,10 +237,10 @@ def tile_icebridge_data(arg,
         clobber = 'a' if tile_file.exists() else 'w'
         # open output merged tile file
         f3 = multiprocess_h5py(tile_file, mode=clobber)
-        if input_file.stem not in f3:
-            g3 = f3.create_group(input_file.stem)
+        if input_file.name not in f3:
+            g3 = f3.create_group(input_file.name)
         else:
-            g3 = f3[input_file.stem]
+            g3 = f3[input_file.name]
         # add file-level variables and attributes
         if (clobber == 'w'):
             # create projection variable

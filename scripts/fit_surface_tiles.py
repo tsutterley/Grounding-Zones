@@ -68,6 +68,7 @@ UPDATE HISTORY:
         add spline design matrix option for time-variable fit
         add option to read from ATL06 or ATL11 datasets
         update inter-campaign bias corrections for G-C corrected data
+        use functions from timescale.time for temporal operations
     Updated 04/2017: changed no input file exception to IOError
     Updated 08/2015: new definition to create the output directories
         prior to running the main program in parallel
@@ -216,14 +217,14 @@ def fit_surface_tiles(tile_files,
     # identifier for dataset
     mission = dict(ATL06=0, ATL11=0, GLAS=1, ATM=2, ATM1b=2, LVIS=3, LVGH=3)
     mission_types = sorted(set(mission.values()))
-    # use first file as default output directory
-    if OUTPUT_DIRECTORY is None:
-        OUTPUT_DIRECTORY = tile_files[0].parents[1]
-    # create output directory if non-existent
-    OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
 
     # extract information from input tile file
     tile_file = pathlib.Path(tile_files[0]).expanduser().absolute()
+    # use first file as default output directory
+    if OUTPUT_DIRECTORY is None:
+        OUTPUT_DIRECTORY = tile_file.parents[1]
+    # create output directory if non-existent
+    OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
     # extract tile centers from filename
     tile_centers = R1.findall(tile_file.name).pop()
     xc, yc = 1000.0*np.array(tile_centers, dtype=np.float64)
@@ -470,27 +471,28 @@ def fit_surface_tiles(tile_files,
                     f2 = multiprocess_h5py(FILE2, mode='r')
                     # extract parameters from ICESat/GLAS HDF5 file name
                     PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
-                        R2.findall(f1[group]).pop()
+                        R2.findall(group).pop()
                     # quality summary HDF5 file for NSIDC granules
                     args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
-                    glasmask = f'GLAH{0}_{1}_MASK_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
+                    glasmask = 'GLAH{0}_{1}_MASK_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
                     FILE3 = d1.joinpath(glasmask.format(*args))
                     f3 = multiprocess_h5py(FILE3, mode='r')
                     # extract number of points from group
                     indices = f1[group]['index'][:].copy()
                     file_length = len(indices)
                     # copy ICESat campaign name from ancillary data
-                    campaign = copy.copy(f2['ANCILLARY_DATA'].attrs['Campaign'])
+                    ancillary_data = f2['ANCILLARY_DATA']
+                    campaign = ancillary_data.attrs['Campaign'].decode('utf-8')
                     # get 40HZ variables
                     group = 'Data_40HZ'
-                    J2000 = f2['Data_40HZ']['DS_UTCTime_40'][:].copy()
+                    J2000 = f2[group]['DS_UTCTime_40'][indices].copy()
                     ts = timescale.time.Timescale().from_deltatime(
                         J2000, epoch=timescale.time._j2000_epoch,
                         standard='UTC')
                     # campaign bias correction
                     bias_corr = campaign_bias_correction(campaign)
                     # saturation correction
-                    sat_corr = f2['Elevation_Corrections']['d_satElevCorr'][indices]
+                    sat_corr = f2[group]['Elevation_Corrections']['d_satElevCorr']
                     # get the transform for converting to the latest ITRF
                     transform = gz.crs.tp_itrf2008_to_wgs84_itrf2020()
                     # transform the data to a common ITRF
@@ -503,8 +505,8 @@ def fit_surface_tiles(tile_files,
                     lon, lat, data, tdec = transform.transform(
                         f2[group]['Geolocation']['d_lon'][indices],
                         f2[group]['Geolocation']['d_lat'][indices],
-                        d_elev[indices] + sat_corr + bias_corr,
-                        ts.year[:,k])
+                        d_elev[indices] + sat_corr[indices] + bias_corr,
+                        ts.year)
                     # copy variables
                     d['data'][c:c+file_length] = data.copy()
                     d['time'][c:c+file_length] = J2000.copy()
@@ -528,7 +530,7 @@ def fit_surface_tiles(tile_files,
                         FILE2, indices, format=short_name)
                     # convert the ITRF to a common reference frame
                     dt = timescale.time.Timescale().from_deltatime(
-                        mds['date'][0], epoch=timescale.time._j2000_epoch,
+                        mds['time'][0], epoch=timescale.time._j2000_epoch,
                         standard='UTC').to_calendar()
                     ITRF = gz.io.icebridge.get_ITRF(short_name,
                         dt.year, dt.month, HEM)
