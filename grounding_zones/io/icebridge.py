@@ -12,7 +12,7 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
     timescale: Python tools for time and astronomical calculations
         https://pypi.org/project/timescale/
-f
+
 PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
