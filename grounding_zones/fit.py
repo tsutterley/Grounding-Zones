@@ -60,6 +60,7 @@ PYTHON DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2024: add function to build the complete design matrix
         add functions to give the number of spatial and temporal terms
+        use a bounded least-squares fit for the model runs
     Updated 04/2024: rewritten for python3 and added function docstrings
         add optional TERMS argument to augment the design matrix
         add spline design matrix option for time-variable fit
@@ -71,6 +72,7 @@ from __future__ import print_function, annotations
 
 import numpy as np
 import scipy.stats
+import scipy.optimize
 from scipy.interpolate import BSpline
 
 # PURPOSE: iteratively fit a polynomial surface to the elevation data to
@@ -352,20 +354,30 @@ def surface_fit(t_in, x_in, y_in, d_in,
     x_in = np.squeeze(x_in)
     y_in = np.squeeze(y_in)
     d_in = np.squeeze(d_in)
-    nmax = len(t_in)
     # check that input dimensions match
-    assert (len(x_in) == nmax) and (len(y_in) == nmax) and \
-        (len(d_in) == nmax), 'Input dimensions do not match'
+    assert (len(x_in) == len(t_in)) and (len(y_in) == len(t_in)) and \
+        (len(d_in) == len(t_in)), 'Input dimensions do not match'
 
     # create design matrix for fit
     DMAT, centroid = _build_design_matrix(t_in, x_in, y_in, **kwargs)
     # total number of temporal terms
     n_time = _temporal_terms(**kwargs)
+    # total number of terms
+    n_max, n_terms = DMAT.shape
+    # nu = Degrees of Freedom
+    nu = n_max - n_terms
 
-    # Standard Least-Squares fitting
-    # (the [0] denotes coefficients output)
-    beta_mat = np.linalg.lstsq(DMAT, d_in, rcond=-1)[0]
-    n_terms = len(beta_mat)
+    # parameter bounds
+    lb = np.full((n_terms), -np.inf)
+    ub = np.full((n_terms), np.inf)
+    lb[0] = np.min(d_in) - np.std(d_in)
+    ub[0] = np.max(d_in) + np.std(d_in)
+    # use linear least-squares with bounds on the variables
+    results = scipy.optimize.lsq_linear(DMAT, d_in, bounds=(lb,ub))
+    beta_mat = np.copy(results['x'])
+    # estimated mean square error
+    MSE = np.sum(results['fun']**2)/np.float64(nu)
+
     # Weights are equal
     wi = 1.0
     # modeled surface time-series
@@ -375,27 +387,24 @@ def surface_fit(t_in, x_in, y_in, d_in,
     # residual of fit
     res = d_in - np.dot(DMAT,beta_mat)
 
-    # nu = Degrees of Freedom
-    nu = nmax - n_terms
-
     # calculating R^2 values
     # SStotal = sum((Y-mean(Y))**2)
-    SStotal = np.dot(np.transpose(d_in[0:nmax] - np.mean(d_in[0:nmax])),
-        (d_in[0:nmax] - np.mean(d_in[0:nmax])))
+    SStotal = np.dot(np.transpose(d_in[0:n_max] - np.mean(d_in[0:n_max])),
+        (d_in[0:n_max] - np.mean(d_in[0:n_max])))
     # SSerror = sum((Y-X*B)**2)
-    SSerror = np.dot(np.transpose(d_in[0:nmax] - np.dot(DMAT,beta_mat)),
-        (d_in[0:nmax] - np.dot(DMAT,beta_mat)))
+    SSerror = np.dot(np.transpose(d_in[0:n_max] - np.dot(DMAT,beta_mat)),
+        (d_in[0:n_max] - np.dot(DMAT,beta_mat)))
     # R**2 term = 1- SSerror/SStotal
     rsquare = 1.0 - (SSerror/SStotal)
     # Adjusted R**2 term: weighted by degrees of freedom
-    rsq_adj = 1.0 - (SSerror/SStotal)*np.float64((nmax-1.0)/nu)
+    rsq_adj = 1.0 - (SSerror/SStotal)*np.float64((n_max-1.0)/nu)
     # Fit Criterion
     # number of parameters including the intercept and the variance
     K = np.float64(n_terms + 1)
     # Log-Likelihood with weights (if unweighted, weight portions == 0)
     # log(L) = -0.5*n*log(sigma^2) - 0.5*n*log(2*pi) - 0.5*n
-    log_lik = 0.5*(np.sum(np.log(wi)) - nmax*(np.log(2.0 * np.pi) + 1.0 -
-        np.log(nmax) + np.log(np.sum(wi * (res**2)))))
+    log_lik = 0.5*(np.sum(np.log(wi)) - n_max*(np.log(2.0 * np.pi) + 1.0 -
+        np.log(n_max) + np.log(np.sum(wi * (res**2)))))
 
     # Aikaike's Information Criterion
     AIC = -2.0*log_lik + 2.0*K
@@ -404,19 +413,14 @@ def surface_fit(t_in, x_in, y_in, d_in,
         # Burnham and Anderson (2002) advocate use of AICc where
         # ratio num/K is small
         # A small ratio is defined in the definition at approximately < 40
-        AIC += (2.0*K*(K+1.0))/(nmax - K - 1.0)
+        AIC += (2.0*K*(K+1.0))/(n_max - K - 1.0)
     # Bayesian Information Criterion (Schwarz Criterion)
-    BIC = -2.0*log_lik + np.log(nmax)*K
+    BIC = -2.0*log_lik + np.log(n_max)*K
 
-    # Regression with Errors with Unknown Standard Deviations
-    # MSE = (1/nu)*sum((Y-X*B)**2)
-    # Mean square error
-    MSE = np.dot(np.transpose(d_in[0:nmax] - np.dot(DMAT,beta_mat)),
-        (d_in[0:nmax] - np.dot(DMAT,beta_mat)))/np.float64(nu)
     # Root mean square error
     RMSE = np.sqrt(MSE)
     # Normalized root mean square error
-    NRMSE = RMSE/(np.max(d_in[0:nmax]) - np.min(d_in[0:nmax]))
+    NRMSE = RMSE/(np.max(d_in[0:n_max]) - np.min(d_in[0:n_max]))
     # Covariance Matrix
     # Multiplying the design matrix by itself
     Hinv = np.linalg.inv(np.dot(np.transpose(DMAT), DMAT))
