@@ -134,9 +134,12 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
     """
     kwargs.setdefault('FIT_TYPE', 'polynomial')
     kwargs.setdefault('ITERATIONS', 25)
+    kwargs.setdefault('MINIMUM_WINDOW', 1.0)
+    kwargs.setdefault('MAXIMUM_RDE', 20.0)
     kwargs.setdefault('ORDER_TIME', 3)
     kwargs.setdefault('ORDER_SPACE', 3)
     kwargs.setdefault('KNOTS', [])
+    kwargs.setdefault('THRESHOLD', 10)
     # number of points for fit
     n_max = len(d_in)
     # total number of spatial and temporal terms
@@ -144,11 +147,13 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
     n_time = _temporal_terms(**kwargs)
     # total number of terms in fit
     n_terms = n_space + n_time + len(TERMS)
+    # threshold for minimum number of points for fit
     # run only if number of points is above number of terms
-    FLAG1 = ((n_max - n_terms) > 10)
+    FLAG1 = ((n_max - n_terms) > kwargs['THRESHOLD'])
     # set initial window to the full data range
     window = d_in.max() - d_in.min()
     window_p1 = np.copy(window)
+    h_min_win = np.copy(kwargs['MINIMUM_WINDOW'])
     # initial indices for reducing to window
     filt = np.arange(n_max)
     filt_p1 = np.copy(filt)
@@ -189,21 +194,23 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
         log_lik = np.copy(s['LOGLIK'])
         # IQR pass: residual-(median value) is within 75% of IQR
         # RDE pass: residual-(median value) is within 50% of P84-P16
-        IQR,RDE,MEDIAN = median_filter(resid)
+        IQR, RDE, MEDIAN = median_filter(resid)
         # checking if any residuals are outside of the window
-        window = np.max([6.0*RDE, 0.5*window_p1])
-        filt, = np.nonzero(np.abs(resid-MEDIAN) <= (window/2.0))
+        window = np.max([h_min_win, 6.0*RDE, 0.75*window_p1])
+        filt, = np.nonzero(np.abs(resid - MEDIAN) <= (window/2.0))
         # save iteration of window
         window_p1 = np.copy(window)
         # run only if number of points is above number of terms
-        n_rem = np.count_nonzero(np.abs(resid-MEDIAN) <= (window/2.0))
-        FLAG1 = ((n_rem - n_terms) > 10)
+        n_rem = np.count_nonzero(np.abs(resid - MEDIAN) <= (window/2.0))
+        FLAG1 = ((n_rem - n_terms) > kwargs['THRESHOLD'])
         # maximum number of iterations to prevent infinite loops
         FLAG2 = (n_iter <= kwargs['ITERATIONS'])
         # compare indices over two iterations to prevent false stoppages
-        FLAG3 = (set(filt) != set(filt_p1)) | (set(filt_p1) != set(filt_p2)) 
+        FLAG3 = (set(filt) != set(filt_p1)) | (set(filt_p1) != set(filt_p2))
+        # compare robust dispersion estimate with maximum allowable
+        FLAG4 = (RDE >= kwargs['MAXIMUM_RDE'])
         # iterate until there are no additional removed data points
-        while FLAG1 & FLAG2 & FLAG3:
+        while FLAG1 & FLAG2 & FLAG3 & FLAG4:
             # fit selected data for window
             t_filt = t_in[filt]
             x_filt = x_in[filt]
@@ -246,26 +253,28 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
             log_lik = np.copy(s['LOGLIK'])
             # IQR pass: residual-(median value) is within 75% of IQR
             # RDE pass: residual-(median value) is within 50% of P84-P16
-            IQR,RDE,MEDIAN = median_filter(resid)
+            IQR, RDE, MEDIAN = median_filter(resid)
             # checking if any residuals are outside of the window
-            window = np.max([6.0*RDE, 0.5*window_p1])
+            window = np.max([h_min_win, 6.0*RDE, 0.75*window_p1])
             # filter out using median statistics and refit
             filt_p2 = np.copy(filt_p1)
             filt_p1 = np.copy(filt)
-            filt, = np.nonzero(np.abs(resid-MEDIAN) <= (window/2.0))
+            filt, = np.nonzero(np.abs(resid - MEDIAN) <= (window/2.0))
             # save iteration of window
             window_p1 = np.copy(window)
             # run only if number of points is above number of terms
-            n_rem = np.count_nonzero(np.abs(resid-MEDIAN) <= (window/2.0))
-            FLAG1 = ((n_rem - n_terms) > 10)
+            n_rem = np.count_nonzero(np.abs(resid - MEDIAN) <= (window/2.0))
+            FLAG1 = ((n_rem - n_terms) > kwargs['THRESHOLD'])
             # maximum number of iterations to prevent infinite loops
             FLAG2 = (n_iter <= kwargs['ITERATIONS'])
             # compare indices over two iterations to prevent false stoppages
             FLAG3 = (set(filt) != set(filt_p1)) | (set(filt_p1) != set(filt_p2))
+            # compare robust dispersion estimate with maximum allowable
+            FLAG4 = (RDE >= kwargs['MAXIMUM_RDE'])
 
     # return reduced model fit
     FLAG3 = (set(filt) == set(filt_p1))
-    if FLAG1 & FLAG3:
+    if FLAG1 & FLAG3 & np.logical_not(FLAG4):
         return {'beta':beta_mat, 'error':error_mat, 'data':data,
             'model':model, 'std_error':std_error, 'R2':rsquare,
             'R2Adj':rsq_adj, 'MSE':MSE, 'NRMSE':NRMSE, 
@@ -274,7 +283,7 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
             'indices':indices, 'iterations':n_iter,
             'window':window, 'RDE':RDE, 'centroid':s['centroid']}
     else:
-        raise ValueError(f'No valid data points found after {n_iter} iterations')
+        raise Exception(f'No valid fit found after {n_iter} iterations')
 
 def surface_fit(t_in, x_in, y_in, d_in,
         STDEV=0,

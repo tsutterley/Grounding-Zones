@@ -647,6 +647,13 @@ def fit_surface_tiles(tile_files,
     attributes['window']['coordinates'] = 'y x'
     attributes['window']['grid_mapping'] = 'crs'
     fill_value['window'] = FILL_VALUE
+    # iterations
+    attributes['iterations'] = {}
+    attributes['iterations']['long_name'] = 'Number of fit iterations'
+    attributes['iterations']['units'] = '1'
+    attributes['iterations']['coordinates'] = 'y x'
+    attributes['iterations']['grid_mapping'] = 'crs'
+    fill_value['iterations'] = 0
     # data count
     attributes['count'] = {}
     attributes['count']['long_name'] = 'Number of data points'
@@ -691,6 +698,7 @@ def fit_surface_tiles(tile_files,
     output['R2'] = np.zeros((ny, nx))
     output['RDE'] = np.zeros((ny, nx))
     output['window'] = np.zeros((ny, nx))
+    output['iterations'] = np.zeros((ny, nx), dtype=np.int64)
     output['count'] = np.zeros((ny, nx), dtype=np.int64)
     output['mission'] = np.zeros((ny, nx, nm), dtype=np.int64)
 
@@ -742,6 +750,7 @@ def fit_surface_tiles(tile_files,
             output['MSE'][indy, indx] = fit['MSE']
             output['R2'][indy, indx] = fit['R2']
             output['RDE'][indy, indx] = fit['RDE']
+            output['iterations'][indy, indx] = fit['iterations']
             output['window'][indy, indx] = fit['window']
             output['count'][indy, indx] = fit['count']
             # save mission counts
@@ -765,33 +774,39 @@ def fit_surface_tiles(tile_files,
     output_file = OUTPUT_DIRECTORY.joinpath(tile_file_formatted)
     logging.info(output_file)
     fileID = multiprocess_h5py(output_file, mode='a')
+    # create fit_statistics group if non-existent
+    group = 'fit_statistics'
+    if group not in fileID:
+        g1 = fileID.create_group(group)
+    else:
+        g1 = fileID[group]
     # add root attributes
     for att_name, att_val in attributes['ROOT'].items():
-        fileID.attrs[att_name] = att_val
+        g1.attrs[att_name] = att_val
     # for each output variable
     h5 = {}
     for key,val in output.items():
         # create or overwrite HDF5 variables
-        if key not in fileID:
+        if key not in fileID[group]:
             # create HDF5 variables
             if fill_value[key] is not None:
-                h5[key] = fileID.create_dataset(key, val.shape, data=val,
+                h5[key] = g1.create_dataset(key, val.shape, data=val,
                     dtype=val.dtype, fillvalue=fill_value[key],
                     compression='gzip')
             elif val.shape:
-                h5[key] = fileID.create_dataset(key, val.shape, data=val,
+                h5[key] = g1.create_dataset(key, val.shape, data=val,
                     dtype=val.dtype, compression='gzip')
             else:
-                h5[key] = fileID.create_dataset(key, val.shape,
+                h5[key] = g1.create_dataset(key, val.shape,
                     dtype=val.dtype)
             # add variable attributes
             for att_name,att_val in attributes[key].items():
                 h5[key].attrs[att_name] = att_val
         else:
             # overwrite HDF5 variables
-            fileID[key][...] = val.copy()
+            g1[key][...] = val.copy()
     # close the output file
-    logging.info(fileID.keys())
+    logging.info(fileID[group].keys())
     fileID.close()
     # change the permissions mode
     output_file.chmod(mode=MODE)
