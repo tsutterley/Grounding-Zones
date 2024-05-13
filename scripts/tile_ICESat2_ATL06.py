@@ -268,6 +268,8 @@ def tile_ICESat2_ATL06(FILE,
                             h5[key].dims[i].attach_scale(h5[dim])
                     else:
                         h5[key].make_scale(key)
+            # close the merged tile file
+            f3.close()
 
     # Output HDF5 structure information
     logging.info(list(f2.keys()))
