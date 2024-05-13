@@ -50,6 +50,7 @@ L. S. Sorensen, S. B. Simonsen, K. Nielsen, P. Lucas-Picher,
 
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
+        add note for the reflectivities culled by Ben in pointCollection
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -208,10 +209,9 @@ def filter_ICESat_GLA12(INPUT_FILE,
     # The atmospheric corrected reflectivity may be calculated from
     # this uncorrected reflectivity by multiplying it by d_reflCor_atm
     reflective_flag = f['Data_40HZ']['Reflectivity']['d_reflctUC'][:]
-    # reflectivity Pritchard culls reflect < 0.1
+    # reflectivity Pritchard culls < 0.1, Smith culls <= 0.05 
     # valid surface reflectivity (received energy/transmit energy)
-    quality_mask |= (num_peaks_flag == reflective_flag)
-    quality_mask |= (num_peaks_flag < reflctUC)
+    quality_mask |= (reflective_flag < reflctUC)
 
     # copy attributes for time, geolocation and quality groups
     for var in ['Time','Geolocation','Quality']:
