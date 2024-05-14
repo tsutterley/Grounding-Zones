@@ -367,13 +367,9 @@ def surface_fit(t_in, x_in, y_in, d_in,
     # nu = Degrees of Freedom
     nu = n_max - n_terms
 
-    # parameter bounds
-    lb = np.full((n_terms), -np.inf)
-    ub = np.full((n_terms), np.inf)
-    lb[0] = np.min(d_in) - np.std(d_in)
-    ub[0] = np.max(d_in) + np.std(d_in)
     # use linear least-squares with bounds on the variables
-    results = scipy.optimize.lsq_linear(DMAT, d_in, bounds=(lb,ub))
+    bounds = _build_constraints(t_in, x_in, y_in, d_in, **kwargs)
+    results = scipy.optimize.lsq_linear(DMAT, d_in, bounds=bounds)
     beta_mat = np.copy(results['x'])
     # estimated mean square error
     MSE = np.sum(results['fun']**2)/np.float64(nu)
@@ -560,6 +556,80 @@ def _build_design_matrix(t_in, x_in, y_in,
         DMAT.append(t)
     # return the transpose of the design matrix and the centroid
     return np.transpose(DMAT), centroid
+
+def _build_constraints(t_in, x_in, y_in, d_in, **kwargs):
+    """
+    Builds the constraints for the surface fit
+
+    Parameters
+    ----------
+    t_in: np.ndarray
+        input time array
+    x_in: np.ndarray    
+        x-coordinate array
+    y_in: np.ndarray
+        y-coordinate array
+    d_in: np.ndarray
+        input data array
+    FIT_TYPE: str
+        type of time-variable polynomial fit to apply
+
+        - ``'polynomial'``
+        - ``'chebyshev'``
+        - ``'spline'``
+    ORDER_TIME: int
+        maximum polynomial order in time-variable fit
+    ORDER_SPACE: int
+        maximum polynomial order in spatial fit
+    KNOTS: list or np.ndarray
+        Sorted 1D array of knots for time-variable spline fit
+    TERMS: list
+        list of extra terms
+    kwargs: dict
+        keyword arguments for the fit type
+
+    Returns
+    -------
+    lb: np.ndarray
+        Lower bounds for the fit
+    ub: dict
+        Upper bounds for the fit
+    """
+    # default keyword arguments
+    kwargs.setdefault('TERMS', [])
+    # total number of spatial and temporal terms
+    n_space = _spatial_terms(**kwargs)
+    n_time = _temporal_terms(**kwargs)
+    # total number of terms in fit
+    n_terms = n_space + n_time + len(kwargs['TERMS'])
+    # parameter bounds
+    lb = np.full((n_terms), -np.inf)
+    ub = np.full((n_terms), np.inf)
+    # minimum and maximum values for data and time
+    dmin = np.min(d_in)
+    dmax = np.max(d_in)
+    dsigma = np.std(d_in)
+    tmin = np.min(t_in)
+    tmax = np.max(t_in)
+    # bounds for surface
+    lb[0] = dmin - dsigma
+    ub[0] = dmax + dsigma
+    # time-variable constraints
+    FIT_TYPE = kwargs['FIT_TYPE'].lower()
+    if (FIT_TYPE == 'polynomial') and (n_time > 1):
+        lb[1] = (dmin - dmax - 2.0*dsigma)/(tmax - tmin)
+        ub[1] = (dmax - dmin + 2.0*dsigma)/(tmax - tmin)
+    elif (FIT_TYPE == 'chebyshev'):
+        pass
+    elif (FIT_TYPE == 'spline'):
+        # bounds for spline fit
+        for i in range(1, n_time):
+            lb[i] = dmin - dsigma
+            ub[i] = dmax + dsigma
+    else:
+        raise ValueError(f'Fit type {FIT_TYPE} not recognized')
+    # return the constraints
+    return (lb, ub)
 
 def _temporal_terms(**kwargs):
     """

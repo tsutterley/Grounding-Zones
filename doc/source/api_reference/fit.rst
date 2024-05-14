@@ -19,6 +19,8 @@ General Methods
 
 .. autofunction:: grounding_zones.fit._build_design_matrix
 
+.. autofunction:: grounding_zones.fit._build_constraints
+
 .. autofunction:: grounding_zones.fit._temporal_terms
 
 .. autofunction:: grounding_zones.fit._spatial_terms

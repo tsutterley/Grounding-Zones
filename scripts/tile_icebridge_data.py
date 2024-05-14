@@ -31,6 +31,7 @@ UPDATE HISTORY:
         return if no valid points in hemisphere
         save icebridge filename with suffix as groups in tile files
         use wrapper to importlib for optional dependencies
+        change permissions mode of the output tile files
     Updated 05/2023: using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
     Updated 12/2022: check that file exists within multiprocess HDF5 function
@@ -145,7 +146,7 @@ def tile_icebridge_data(arg,
             input_file, input_subsetter)
 
     # pyproj transformer for converting to polar stereographic
-    EPSG = dict(N=3413,S=3031)
+    EPSG = dict(N=3413, S=3031)
     SIGN = dict(N=1.0,S=-1.0)
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
@@ -183,7 +184,7 @@ def tile_icebridge_data(arg,
     DIRECTORY = input_file.with_name(index_directory)
     output_file = DIRECTORY.joinpath(f'{input_file.stem}.h5')
     # create index directory for hemisphere
-    DIRECTORY.mkdir(parents=True, exist_ok=True)
+    DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
 
     # indices of points in hemisphere
     valid, = np.nonzero(np.sign(dinput['lat']) == SIGN[HEM])
@@ -297,6 +298,8 @@ def tile_icebridge_data(arg,
                     h5[key].make_scale(key)
         # close the merged tile file
         f3.close()
+        # change the permissions mode of the merged tile file
+        tile_file.chmod(mode=MODE)
 
     # Output HDF5 structure information
     logging.info(list(f2.keys()))

@@ -28,6 +28,7 @@ UPDATE HISTORY:
     Updated 05/2024: adjust default spacing of tiles to 80 km
         output cycle_number variable from ATL11 file
         use wrapper to importlib for optional dependencies
+        change permissions mode of the output tile files
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         single implicit import of grounding zone tools
@@ -110,7 +111,7 @@ def tile_ICESat2_ATL11(FILE,
     DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
 
     # pyproj transformer for converting to polar stereographic
-    EPSG = dict(N=3413,S=3031)
+    EPSG = dict(N=3413, S=3031)
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
@@ -276,6 +277,8 @@ def tile_ICESat2_ATL11(FILE,
                         h5[key].make_scale(key)
             # close the merged tile file
             f3.close()
+            # change the permissions mode of the merged tile file
+            tile_file.chmod(mode=MODE)
 
     # Output HDF5 structure information
     logging.info(list(f2.keys()))

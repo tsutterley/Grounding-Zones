@@ -105,7 +105,7 @@ def inverse_distance(x, y, z, xi, yi, SEARCH='BallTree', N=10, POWER=2.0):
 # PURPOSE interpolate sea level anomalies to lat/lon and then to time
 def interpolate_sea_level(base_dir, xi, yi, MJD, HEM):
     # EPSG projections for converting lat/lon to polar stereographic
-    EPSG = dict(N=3413,S=3031)
+    EPSG = dict(N=3413, S=3031)
     # pyproj transformer for converting to polar stereographic
     crs1 = pyproj.CRS.from_string('epsg:4326')
     crs2 = pyproj.CRS.from_string(EPSG[HEM])

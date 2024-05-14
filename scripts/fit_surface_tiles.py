@@ -239,6 +239,10 @@ def fit_surface_tiles(tile_files,
     logging.info(f'Grid Dimensions {ny:d} {nx:d}')
     # invalid value
     FILL_VALUE = -9999.0
+    # minimum number of years for valid fit
+    TIME_THRESHOLD = 3.0
+    # minimum number of points for valid fit
+    POINT_THRESHOLD = 25
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413, S=3031)[HEM]
@@ -374,18 +378,20 @@ def fit_surface_tiles(tile_files,
                         # read dataset
                         mds, attrs = is2tk.io.ATL06.read_beam(f2, gtx,
                             ATTRIBUTES=True, KEEP=True)
+                        # land ice segments group
+                        g = 'land_ice_segments'
                         # invalid value for heights
-                        invalid = attrs[gtx]['h_li']['_FillValue']
+                        invalid = attrs[gtx][g]['h_li']['_FillValue']
                         # convert time to timescale
                         ts = timescale.time.Timescale().from_deltatime(
-                            mds[gtx]['delta_time'][indices],
+                            mds[gtx][g]['delta_time'][indices],
                             epoch=timescale.time._atlas_sdp_epoch,
                             standard='GPS')
                         # transform the data to a common ITRF
                         lon, lat, data, tdec = transform.transform(
-                            mds[gtx]['longitude'][indices],
-                            mds[gtx]['latitude'][indices],
-                            mds[gtx]['h_li'][indices],
+                            mds[gtx][g]['longitude'][indices],
+                            mds[gtx][g]['latitude'][indices],
+                            mds[gtx][g]['h_li'][indices],
                             ts.year)
                         # copy variables
                         d['data'][c:c+file_length] = data.copy()
@@ -393,18 +399,18 @@ def fit_surface_tiles(tile_files,
                         d['lat'][c:c+file_length] = lat.copy()
                         # combine errors
                         d['error'][c:c+file_length] = np.sqrt(
-                            mds[gtx]['h_li_sigma'][indices]**2 + 
-                            mds[gtx]['sigma_geo_h'][indices]**2)
+                            mds[gtx][g]['h_li_sigma'][indices]**2 + 
+                            mds[gtx][g]['sigma_geo_h'][indices]**2)
                         # convert timescale to J2000 seconds
                         d['time'][c:c+file_length] = ts.to_deltatime(
                             epoch=timescale.time._j2000_epoch,
                             scale=86400.0)
                         # mask for reducing to valid values
                         d['mask'][c:c+file_length] = \
-                            (mds[gtx]['h_li'][indices] != invalid) & \
-                            (mds[gtx]['h_li_sigma'][indices] != invalid) & \
-                            (mds[gtx]['sigma_geo_h'][indices] != invalid) & \
-                            (mds[gtx]['atl06_quality_summary'][indices] == 0.0)
+                            (mds[gtx][g]['h_li'][indices] != invalid) & \
+                            (mds[gtx][g]['h_li_sigma'][indices] != invalid) & \
+                            (mds[gtx][g]['sigma_geo_h'][indices] != invalid) & \
+                            (mds[gtx][g]['atl06_quality_summary'][indices] == 0)
                         # add to mission variable
                         d['mission'][c:c+file_length] = mission[short_name]
                         # add to counter
@@ -459,7 +465,7 @@ def fit_surface_tiles(tile_files,
                             d['mask'][c:c+file_length] = \
                                 (mds[ptx]['h_corr'][indices,k] != invalid) & \
                                 (mds[ptx]['h_corr_sigma'][indices,k] != invalid) & \
-                                (mds[ptx]['quality_summary'][indices,k] == 0.0)
+                                (mds[ptx]['quality_summary'][indices,k] == 0)
                             # add to mission variable
                             d['mission'][c:c+file_length] = mission[short_name]
                             # add to counter
@@ -513,8 +519,9 @@ def fit_surface_tiles(tile_files,
                     d['lon'][c:c+file_length] = lon.copy()
                     d['lat'][c:c+file_length] = lat.copy()
                     # mask for reducing to valid values
-                    quality_summary = f3[group]['Quality']['quality_summary']
-                    d['mask'][c:c+file_length] = quality_summary[indices]
+                    d['mask'][c:c+file_length] = \
+                        (f2[group][subgroup]['d_elev'][indices] != invalid) & \
+                        (f3[group]['Quality']['quality_summary'][indices] == 0)
                     # add to mission variable
                     d['mission'][c:c+file_length] = mission[short_name]
                     # add to counter
@@ -551,6 +558,18 @@ def fit_surface_tiles(tile_files,
         # close the tile file
         f1.close()
 
+    # convert time into year-decimal
+    ts = timescale.time.Timescale().from_deltatime(
+        d['time'], epoch=timescale.time._j2000_epoch,
+        standard='UTC')
+
+    # set default knots as range of time
+    if not np.any(KNOTS):
+        valid, = np.nonzero(d['mask'])
+        tmin = np.floor(ts.year[valid].min())
+        tmax = np.ceil(ts.year[valid].max())
+        KNOTS = np.arange(tmin, tmax + 1, 1)
+
     # output attributes
     attributes = dict(ROOT={}, x={}, y={})
     # invalid values for each variablce
@@ -565,7 +584,7 @@ def fit_surface_tiles(tile_files,
     attributes['ROOT']['order_space'] = ORDER_SPACE
     if FIT_TYPE in ('polynomial', 'chebyshev') and RELATIVE is not None:
         attributes['ROOT']['time_relative'] = np.squeeze(RELATIVE)
-    elif FIT_TYPE in ('spline', ) and KNOTS is not None:
+    elif FIT_TYPE in ('spline', ):
         attributes['ROOT']['time_knots'] = np.copy(KNOTS)
     # projection attributes
     attributes['crs'] = {}
@@ -586,6 +605,13 @@ def fit_surface_tiles(tile_files,
     for att_name in ['long_name', 'standard_name', 'units']:
         attributes['x'][att_name] = cs_to_cf[0][att_name]
         attributes['y'][att_name] = cs_to_cf[1][att_name]
+    # time
+    attributes['time'] = {}
+    attributes['time']['long_name'] = 'Time'
+    attributes['time']['standard_name'] = 'time'
+    attributes['time']['calendar'] = 'standard'
+    attributes['time']['units'] = 'Decimal Years'
+    fill_value['time'] = None
     # ice area
     attributes['cell_area'] = {}
     attributes['cell_area']['long_name'] = 'Cell area'
@@ -595,6 +621,13 @@ def fit_surface_tiles(tile_files,
     attributes['cell_area']['coordinates'] = 'y x'
     attributes['cell_area']['grid_mapping'] = 'crs'
     fill_value['cell_area'] = 0    
+    # modeled fit
+    attributes['h_fit'] = {}
+    attributes['h_fit']['long_name'] = 'Modeled height'
+    attributes['h_fit']['units'] = 'meters'
+    attributes['h_fit']['coordinates'] = 'y x'
+    attributes['h_fit']['grid_mapping'] = 'crs'
+    fill_value['h_fit'] = FILL_VALUE
     # beta
     attributes['beta'] = {}
     attributes['beta']['long_name'] = 'Fit coefficients'
@@ -676,9 +709,21 @@ def fit_surface_tiles(tile_files,
     if SPL is not None:
         d['mask'] &= (SPL.ev(d['x'], d['y']) >= TOLERANCE)
 
-    # number of time-variable terms
-    nt = gz.fit._temporal_terms(FIT_TYPE=FIT_TYPE,
+    # number of time points in output fit
+    nt = len(KNOTS)
+    # design matrix to calculate results at centroid
+    DMAT, _ = gz.fit._build_design_matrix(
+        KNOTS, np.zeros((nt)), np.zeros((nt)),
+        FIT_TYPE=FIT_TYPE,
+        ORDER_TIME=ORDER_TIME,
+        ORDER_SPACE=ORDER_SPACE,
+        RELATIVE=RELATIVE,
+        KNOTS=KNOTS)
+    # number of spatial and temporal terms
+    nb = gz.fit._temporal_terms(FIT_TYPE=FIT_TYPE,
         ORDER_TIME=ORDER_TIME, KNOTS=KNOTS)
+    nb += gz.fit._spatial_terms(FIT_TYPE=FIT_TYPE,
+        ORDER_SPACE=ORDER_SPACE)   
     # number of mission types
     nm = len(mission_types)
     # allocate for output variables
@@ -688,12 +733,14 @@ def fit_surface_tiles(tile_files,
     # coordinates
     output['x'] = np.copy(x)
     output['y'] = np.copy(y)
+    output['time'] = np.copy(KNOTS)
     # cell area (possibly masked for non-ice areas)
     output['cell_area'] = np.copy(cell_area)
     # allocate for fit variables
-    output['beta'] = np.zeros((ny, nx, nt))
-    output['error'] = np.zeros((ny, nx, nt))
-    output['std_error'] = np.zeros((ny, nx, nt))
+    output['h_fit'] = np.zeros((ny, nx, nt), dtype=np.float64)
+    output['beta'] = np.zeros((ny, nx, nb))
+    output['error'] = np.zeros((ny, nx, nb))
+    output['std_error'] = np.zeros((ny, nx, nb))
     output['MSE'] = np.zeros((ny, nx))
     output['R2'] = np.zeros((ny, nx))
     output['RDE'] = np.zeros((ny, nx))
@@ -718,24 +765,26 @@ def fit_surface_tiles(tile_files,
             # skip iteration if there are no points
             if not np.any(clipped):
                 continue
+            # trim time in year-decimal
+            tdec = ts.year[clipped]
+            # check that the spread of times is valid
+            if (np.ptp(tdec) < TIME_THRESHOLD):
+                continue
             # create clipped data
             u = {}
             for key,val in d.items():
                 u[key] = val[clipped]
-            # convert time into year-decimal
-            ts = timescale.time.Timescale().from_deltatime(
-                u['time'], epoch=timescale.time._j2000_epoch,
-                standard='UTC')
             # try to fit a surface to the data
             try:
                 fit = gz.fit.reduce_fit(
-                    ts.year, u['x'], u['y'], u['data'],
+                    tdec, u['x'], u['y'], u['data'],
                     FIT_TYPE=FIT_TYPE,
                     ITERATIONS=ITERATIONS,
                     ORDER_TIME=ORDER_TIME,
                     ORDER_SPACE=ORDER_SPACE,
                     RELATIVE=RELATIVE,
                     KNOTS=KNOTS,
+                    THRESHOLD=POINT_THRESHOLD,
                     CX=xi+dx/2.0,
                     CY=yi+dy/2.0,
                 )
@@ -744,9 +793,10 @@ def fit_surface_tiles(tile_files,
                 continue
             # save parameters for subset coordinate
             ifit = fit['indices']
-            output['beta'][indy, indx, :] = fit['beta'][:nt]
-            output['error'][indy, indx, :] = fit['error'][:nt]
-            output['std_error'][indy, indx, :] = fit['std_error'][:nt]
+            output['h_fit'][indy, indx, :] = np.dot(DMAT, fit['beta'])
+            output['beta'][indy, indx, :] = fit['beta'][:nb]
+            output['error'][indy, indx, :] = fit['error'][:nb]
+            output['std_error'][indy, indx, :] = fit['std_error'][:nb]
             output['MSE'][indy, indx] = fit['MSE']
             output['R2'][indy, indx] = fit['R2']
             output['RDE'][indy, indx] = fit['RDE']
@@ -762,6 +812,7 @@ def fit_surface_tiles(tile_files,
     # find and replace invalid values
     indy, indx = np.nonzero(output['count'] == 0)
     # update values for invalid points
+    output['h_fit'][indy, indx, :] = FILL_VALUE
     output['beta'][indy, indx, :] = FILL_VALUE
     output['error'][indy, indx, :] = FILL_VALUE
     output['std_error'][indy, indx, :] = FILL_VALUE
@@ -862,7 +913,7 @@ def arguments():
         help='Relative period for time-variable fit')
     parser.add_argument('--knots','-K',
         type=float, nargs='+',
-        help='Temporal knots for spline fit')
+        help='Temporal knots for spline fit and output time series')
     # verbose output of processing run
     # print information about processing run
     parser.add_argument('--verbose','-V',

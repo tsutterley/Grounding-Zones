@@ -298,7 +298,7 @@ def main():
         dinput1,att1 = read_HDF5_triangle_data(input_files[0],None)
 
         # pyproj transformer for converting lat/lon to polar stereographic
-        EPSG = dict(N=3413,S=3031)
+        EPSG = dict(N=3413, S=3031)
         crs1 = pyproj.CRS.from_epsg(4326)
         crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
         transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
