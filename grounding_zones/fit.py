@@ -386,9 +386,9 @@ def surface_fit(t_in, x_in, y_in, d_in,
     # modeled surface time-series
     mod = np.dot(DMAT, results['x'])
     # modeled data at centroid
-    data = np.dot(DMAT[:,:n_time], beta_mat[:n_time])
+    data = np.dot(M[:,:n_time], beta_mat[:n_time])
     # residual of fit
-    res = d_in - np.dot(DMAT,results['x'])
+    res = d_in - np.dot(DMAT, results['x'])
 
     # calculating R^2 values
     # SStotal = sum((Y-mean(Y))**2)
