@@ -29,6 +29,7 @@ UPDATE HISTORY:
         output cycle_number variable from ATL11 file
         use wrapper to importlib for optional dependencies
         change permissions mode of the output tile files
+        moved multiprocess h5py reader to io utilities module
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         single implicit import of grounding zone tools
@@ -63,22 +64,6 @@ def set_hemisphere(GRANULE):
         return 'N'
     else:
         raise Exception('Non-polar granule')
-
-# PURPOSE: attempt to open an HDF5 file and wait if already open
-def multiprocess_h5py(filename, *args, **kwargs):
-    # check that file exists if entering with read mode
-    filename = pathlib.Path(filename).expanduser().absolute()
-    if kwargs['mode'] in ('r','r+') and not filename.exists():
-        raise FileNotFoundError(str(filename))
-    # attempt to open HDF5 file
-    while True:
-        try:
-            fileID = h5py.File(filename, *args, **kwargs)
-            break
-        except (IOError, BlockingIOError, PermissionError) as exc:
-            time.sleep(1)
-    # return the file access object
-    return fileID
 
 # PURPOSE: create tile index files of ICESat-2 elevation data
 def tile_ICESat2_ATL11(FILE,
@@ -199,7 +184,7 @@ def tile_ICESat2_ATL11(FILE,
             tile_file = DIRECTORY.joinpath(f'{tile_group}.h5')
             clobber = 'a' if tile_file.exists() else 'w'
             # open output merged tile file
-            f3 = multiprocess_h5py(tile_file, mode=clobber)
+            f3 = gz.io.multiprocess_h5py(tile_file, mode=clobber)
             # create group for file
             if FILE.name not in f3:
                 g3 = f3.create_group(FILE.name)

@@ -64,6 +64,7 @@ REFERENCES:
 UPDATE HISTORY:
     Updated 05/2024: switched from individual mask files to a
         common raster mask option for non-ice points
+        moved multiprocess h5py reader to io utilities module
     Updated 04/2024: rewritten for python3 following new fit changes
         add spline design matrix option for time-variable fit
         add option to read from ATL06 or ATL11 datasets
@@ -122,27 +123,6 @@ def info(args):
     if hasattr(os, 'getppid'):
         logging.debug(f'parent process: {os.getppid():d}')
     logging.debug(f'process id: {os.getpid():d}')
-
-# PURPOSE: attempt to open an HDF5 file and wait if already open
-def multiprocess_h5py(filename, *args, **kwargs):
-    """
-    Open an HDF5 file with a hold for already open files
-    """
-    # set default keyword arguments
-    kwargs.setdefault('mode', 'r')
-    # check that file exists if entering with read mode
-    filename = pathlib.Path(filename).expanduser().absolute()
-    if kwargs['mode'] in ('r','r+') and not filename.exists():
-        raise FileNotFoundError(filename)
-    # attempt to open HDF5 file
-    while True:
-        try:
-            fileID = h5py.File(filename, *args, **kwargs)
-            break
-        except (IOError, BlockingIOError, PermissionError) as exc:
-            time.sleep(1)
-    # return the file access object
-    return fileID
 
 # PURPOSE: read a raster file and return the data
 def read_raster_file(raster_file, **kwargs):
@@ -302,7 +282,7 @@ def fit_surface_tiles(tile_files,
     for i, tile_file in enumerate(tile_files):
         # read the HDF5 tile file
         logging.info(f'Reading File: {str(tile_file)}')
-        f1 = multiprocess_h5py(tile_file, mode='r')
+        f1 = gz.io.multiprocess_h5py(tile_file, mode='r')
         for short_name, val in regex.items():
             # compile regular expression opereator
             R2 = re.compile(val, re.VERBOSE)
@@ -353,7 +333,7 @@ def fit_surface_tiles(tile_files,
     for i, tile_file in enumerate(tile_files):
         # read the HDF5 tile file
         logging.info(f'Reading File: {str(tile_file)}')
-        f1 = multiprocess_h5py(tile_file, mode='r')
+        f1 = gz.io.multiprocess_h5py(tile_file, mode='r')
         d1 = tile_file.parents[1]
         for short_name, val in regex.items():
             # compile regular expression opereator
@@ -367,7 +347,7 @@ def fit_surface_tiles(tile_files,
                 # check if data is multi-beam
                 if short_name in ('ATL06', ):
                     # multi-beam data at a single epoch
-                    f2 = multiprocess_h5py(FILE2, mode='r')
+                    f2 = gz.io.multiprocess_h5py(FILE2, mode='r')
                     # get the transform for converting to the latest ITRF
                     transform = gz.crs.get_itrf_transform('ITRF2014')
                     # for each beam within the tile
@@ -421,7 +401,7 @@ def fit_surface_tiles(tile_files,
                     f2.close()
                 elif short_name in ('ATL11', ):
                     # multi-beam data at multiple epochs
-                    f2 = multiprocess_h5py(FILE2, mode='r')
+                    f2 = gz.io.multiprocess_h5py(FILE2, mode='r')
                     # get the transform for converting to the latest ITRF
                     transform = gz.crs.get_itrf_transform('ITRF2014')
                     # for each beam pair within the tile
@@ -476,7 +456,7 @@ def fit_surface_tiles(tile_files,
                     f2.close()
                 elif short_name in ('GLAS', ):
                     # single beam dataset
-                    f2 = multiprocess_h5py(FILE2, mode='r')
+                    f2 = gz.io.multiprocess_h5py(FILE2, mode='r')
                     # extract parameters from ICESat/GLAS HDF5 file name
                     PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
                         R2.findall(group).pop()
@@ -484,7 +464,7 @@ def fit_surface_tiles(tile_files,
                     args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
                     glasmask = 'GLAH{0}_{1}_MASK_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
                     FILE3 = d1.joinpath(glasmask.format(*args))
-                    f3 = multiprocess_h5py(FILE3, mode='r')
+                    f3 = gz.io.multiprocess_h5py(FILE3, mode='r')
                     # extract number of points from group
                     indices = f1[group]['index'][:].copy()
                     file_length = len(indices)
@@ -826,7 +806,7 @@ def fit_surface_tiles(tile_files,
     # open output HDF5 file in append mode
     output_file = OUTPUT_DIRECTORY.joinpath(tile_file_formatted)
     logging.info(output_file)
-    fileID = multiprocess_h5py(output_file, mode='a')
+    fileID = gz.io.multiprocess_h5py(output_file, mode='a')
     # create fit_statistics group if non-existent
     group = 'fit_statistics'
     if group not in fileID:

@@ -32,6 +32,7 @@ UPDATE HISTORY:
         save icebridge filename with suffix as groups in tile files
         use wrapper to importlib for optional dependencies
         change permissions mode of the output tile files
+        moved multiprocess h5py reader to io utilities module
     Updated 05/2023: using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
     Updated 12/2022: check that file exists within multiprocess HDF5 function
@@ -58,22 +59,6 @@ import grounding_zones as gz
 h5py = gz.utilities.import_dependency('h5py')
 is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 pyproj = gz.utilities.import_dependency('pyproj')
-
-# PURPOSE: attempt to open an HDF5 file and wait if already open
-def multiprocess_h5py(filename, *args, **kwargs):
-    # check that file exists if entering with read mode
-    filename = pathlib.Path(filename).expanduser().absolute()
-    if kwargs['mode'] in ('r','r+') and not filename.exists():
-        raise FileNotFoundError(str(filename))
-    # attempt to open HDF5 file
-    while True:
-        try:
-            fileID = h5py.File(filename, *args, **kwargs)
-            break
-        except (IOError, BlockingIOError, PermissionError) as exc:
-            time.sleep(1)
-    # return the file access object
-    return fileID
 
 # PURPOSE: create tile index files of Operation IceBridge data
 def tile_icebridge_data(arg,
@@ -237,7 +222,7 @@ def tile_icebridge_data(arg,
         tile_file = DIRECTORY.joinpath(f'{tile_group}.h5')
         clobber = 'a' if tile_file.exists() else 'w'
         # open output merged tile file
-        f3 = multiprocess_h5py(tile_file, mode=clobber)
+        f3 = gz.io.multiprocess_h5py(tile_file, mode=clobber)
         if input_file.name not in f3:
             g3 = f3.create_group(input_file.name)
         else:

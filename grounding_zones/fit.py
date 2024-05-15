@@ -59,6 +59,8 @@ PYTHON DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2024: add function to build the complete design matrix
+        add function to build the constraints for the least-squares fit
+        add function to validate the columns in the design matrix
         add functions to give the number of spatial and temporal terms
         use a bounded least-squares fit for the model runs
     Updated 04/2024: rewritten for python3 and added function docstrings
@@ -359,37 +361,42 @@ def surface_fit(t_in, x_in, y_in, d_in,
         (len(d_in) == len(t_in)), 'Input dimensions do not match'
 
     # create design matrix for fit
-    DMAT, centroid = _build_design_matrix(t_in, x_in, y_in, **kwargs)
+    M, centroid = _build_design_matrix(t_in, x_in, y_in, **kwargs)
+    # validate the design matrix
+    DMAT, indices = _validate_design_matrix(M)
     # total number of temporal terms
     n_time = _temporal_terms(**kwargs)
     # total number of terms
+    n_max, n_total = M.shape
     n_max, n_terms = DMAT.shape
     # nu = Degrees of Freedom
     nu = n_max - n_terms
 
     # use linear least-squares with bounds on the variables
-    bounds = _build_constraints(t_in, x_in, y_in, d_in, **kwargs)
+    bounds = _build_constraints(t_in, x_in, y_in, d_in,
+        INDICES=indices, **kwargs)
     results = scipy.optimize.lsq_linear(DMAT, d_in, bounds=bounds)
-    beta_mat = np.copy(results['x'])
+    beta_mat = np.zeros((n_total))
+    beta_mat[indices] = np.copy(results['x'])
     # estimated mean square error
     MSE = np.sum(results['fun']**2)/np.float64(nu)
 
     # Weights are equal
     wi = 1.0
     # modeled surface time-series
-    mod = np.dot(DMAT, beta_mat)
+    mod = np.dot(DMAT, results['x'])
     # modeled data at centroid
     data = np.dot(DMAT[:,:n_time], beta_mat[:n_time])
     # residual of fit
-    res = d_in - np.dot(DMAT,beta_mat)
+    res = d_in - np.dot(DMAT,results['x'])
 
     # calculating R^2 values
     # SStotal = sum((Y-mean(Y))**2)
     SStotal = np.dot(np.transpose(d_in[0:n_max] - np.mean(d_in[0:n_max])),
         (d_in[0:n_max] - np.mean(d_in[0:n_max])))
     # SSerror = sum((Y-X*B)**2)
-    SSerror = np.dot(np.transpose(d_in[0:n_max] - np.dot(DMAT,beta_mat)),
-        (d_in[0:n_max] - np.dot(DMAT,beta_mat)))
+    SSerror = np.dot(np.transpose(d_in[0:n_max] - np.dot(DMAT,results['x'])),
+        (d_in[0:n_max] - np.dot(DMAT,results['x'])))
     # R**2 term = 1- SSerror/SStotal
     rsquare = 1.0 - (SSerror/SStotal)
     # Adjusted R**2 term: weighted by degrees of freedom
@@ -421,7 +428,8 @@ def surface_fit(t_in, x_in, y_in, d_in,
     # Multiplying the design matrix by itself
     Hinv = np.linalg.inv(np.dot(np.transpose(DMAT), DMAT))
     # Taking the diagonal components of the covariance matrix
-    hdiag = np.diag(Hinv)
+    hdiag = np.zeros((n_total))
+    hdiag[indices] = np.diag(Hinv)
     # set either the standard deviation or the confidence interval
     if (STDEV != 0):
         # Setting the standard deviation of the output error
@@ -557,6 +565,27 @@ def _build_design_matrix(t_in, x_in, y_in,
     # return the transpose of the design matrix and the centroid
     return np.transpose(DMAT), centroid
 
+def _validate_design_matrix(DMAT):
+    """
+    Validates the design matrix for the surface fit
+
+    Parameters
+    ----------
+    DMAT: np.ndarray
+        Design matrix for the fit type
+
+    Returns
+    -------
+    DMAT: np.ndarray
+        Design matrix for the fit type
+    indices: np.ndarray
+        indices of valid columns in the design matrix
+    """
+    # indices of valid columns in the design matrix
+    indices, = np.nonzero(np.any(DMAT != 0, axis=0))
+    # return the design matrix and the indices
+    return DMAT[:,indices], indices
+
 def _build_constraints(t_in, x_in, y_in, d_in, **kwargs):
     """
     Builds the constraints for the surface fit
@@ -585,6 +614,8 @@ def _build_constraints(t_in, x_in, y_in, d_in, **kwargs):
         Sorted 1D array of knots for time-variable spline fit
     TERMS: list
         list of extra terms
+    INDICES: np.ndarray
+        indices of valid columns in the design matrix
     kwargs: dict
         keyword arguments for the fit type
 
@@ -596,7 +627,10 @@ def _build_constraints(t_in, x_in, y_in, d_in, **kwargs):
         Upper bounds for the fit
     """
     # default keyword arguments
+    kwargs.setdefault('INDICES', Ellipsis)
     kwargs.setdefault('TERMS', [])
+    # indices of valid columns in the design matrix
+    indices = kwargs['INDICES'].copy()
     # total number of spatial and temporal terms
     n_space = _spatial_terms(**kwargs)
     n_time = _temporal_terms(**kwargs)
@@ -629,7 +663,7 @@ def _build_constraints(t_in, x_in, y_in, d_in, **kwargs):
     else:
         raise ValueError(f'Fit type {FIT_TYPE} not recognized')
     # return the constraints
-    return (lb, ub)
+    return (lb[indices], ub[indices])
 
 def _temporal_terms(**kwargs):
     """
