@@ -269,10 +269,13 @@ def fit_surface_tiles(tile_files,
         IMy = np.clip((GRIDy - ymin)//dy, 0, ny-1).astype(int)
         indy, indx = np.nonzero(m['data'])
         mask = np.zeros((ny, nx))
+        area = np.zeros((ny, nx))
         for i, j in zip(indy, indx):
             mask[IMy[i], IMx[j]] += DX*DY*m['data'][i,j]
+            area[IMy[I], IMx[j]] += DX*DY
         # convert to average
-        mask /= (dx*dy)
+        i, j = np.nonzero(area)
+        mask[i,j] /= area[i,j]
         # create an interpolator for input raster data
         SPL = scipy.interpolate.RectBivariateSpline(
             m['x'], m['y'], m['data'].T, kx=1, ky=1)
