@@ -265,14 +265,13 @@ def fit_surface_tiles(tile_files,
         # interpolate raster to output grid
         DX, DY = m['attributes']['spacing']
         GRIDx, GRIDy = np.meshgrid(m['x'], m['y'])
-        IMx = np.clip((GRIDx - xmin)//dx, 0, nx-1).astype(int)
-        IMy = np.clip((GRIDy - ymin)//dy, 0, ny-1).astype(int)
-        indy, indx = np.nonzero(m['data'])
+        IMx = np.clip((GRIDx.flatten() - xmin)//dx, 0, nx-1).astype(int)
+        IMy = np.clip((GRIDy.flatten() - ymin)//dy, 0, ny-1).astype(int)
         mask = np.zeros((ny, nx))
         area = np.zeros((ny, nx))
-        for i, j in zip(indy, indx):
-            mask[IMy[i], IMx[j]] += DX*DY*m['data'][i,j]
-            area[IMy[I], IMx[j]] += DX*DY
+        for i, msk in enumerate(m['data'].flatten()):
+            mask[IMy[i], IMx[i]] += DX*DY*msk
+            area[IMy[i], IMx[i]] += DX*DY
         # convert to average
         i, j = np.nonzero(area)
         mask[i,j] /= area[i,j]
