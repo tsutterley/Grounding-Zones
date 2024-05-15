@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_ATL14_DEM_ICESat2_ATL11.py
-Written by Tyler Sutterley (09/2023)
+Written by Tyler Sutterley (05/2024)
 Interpolates ATL14 elevations to ICESat-2 ATL11 segment locations
 
 COMMAND LINE OPTIONS:
@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 09/2023: check that subsetted DEM has a valid shape and mask
         set DEM data type as float32 to reduce memory usage
     Updated 08/2023: create s3 filesystem when using s3 urls as input
@@ -47,33 +48,17 @@ import logging
 import pathlib
 import argparse
 import datetime
-import warnings
 import collections
 import numpy as np
 import scipy.interpolate
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("netCDF4 not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+netCDF4 = gz.utilities.import_dependency('netCDF4')
+pyproj = gz.utilities.import_dependency('pyproj')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: set the hemisphere of interest based on the granule
 def set_hemisphere(GRANULE):

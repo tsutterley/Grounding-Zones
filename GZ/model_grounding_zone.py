@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 model_grounding_zone.py
-Written by Tyler Sutterley (07/2022)
+Written by Tyler Sutterley (05/2024)
 Creates a model of the tidal fluctuation of an ice shelf/sheet grounding zone
     using repeat period and error level of an input dataset (ATM/LVIS/ATL06)
 Delineates the grounding zone using both a piecewise fit and an elastic model
@@ -25,6 +25,7 @@ COMMAND LINE OPTIONS:
     -V, --verbose: Verbose output of processing run
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 07/2022: place some imports within try/except statements
     Updated 05/2022: use argparse descriptions within documentation
     Updated 10/2021: use argparse to set command line options
@@ -35,19 +36,15 @@ import sys
 import os
 import logging
 import argparse
-import warnings
 import numpy as np
 import scipy.stats
 import scipy.special
 import scipy.optimize
 import scipy.interpolate
+import grounding_zones as gz
 
 # attempt imports
-try:
-    import matplotlib.pyplot as plt
-    from matplotlib import gridspec
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("matplotlib not available", ImportWarning)
+plt = gz.utilities.import_dependency('matplotlib.pyplot')
 
 # PURPOSE: test extracting grounding zone properties with different datasets
 def model_grounding_zone(DATASET, n_years, dhdt, reorient, VERBOSE=False):

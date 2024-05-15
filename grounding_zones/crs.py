@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 crs.py
-Written by Tyler Sutterley (10/2023)
+Written by Tyler Sutterley (05/2024)
 
 Coordinates Reference System (CRS) utilities
 
@@ -11,14 +11,14 @@ PYTHON DEPENDENCIES:
         https://pyproj4.github.io/pyproj/
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Written 10/2023
 """
 import logging
+from grounding_zones.utilities import import_dependency
+
 # attempt imports
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    logging.debug("pyproj not available")
+pyproj = import_dependency('pyproj')
 
 # Topex/Poseidon Ellipsoid in ITRF2008 to WGS84 Ellipsoid in ITRF2014
 def tp_itrf2008_to_wgs84_itrf2014():

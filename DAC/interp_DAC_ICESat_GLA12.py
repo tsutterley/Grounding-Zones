@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_DAC_ICESat_GLA12.py
-Written by Tyler Sutterley (04/2024)
+Written by Tyler Sutterley (05/2024)
 Interpolates AVISO dynamic atmospheric corrections (DAC) for ICESat/GLAS
     L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
 
@@ -42,6 +42,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 12/2022: single implicit import of grounding zone tools
@@ -61,36 +62,17 @@ import bz2
 import logging
 import pathlib
 import argparse
-import warnings
 import numpy as np
 import scipy.interpolate
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import netCDF4
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("netCDF4 not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import pyTMD
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+netCDF4 = gz.utilities.import_dependency('netCDF4')
+pyproj = gz.utilities.import_dependency('pyproj')
+pyTMD = gz.utilities.import_dependency('pyTMD')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # calculate and interpolate the dynamic atmospheric correction

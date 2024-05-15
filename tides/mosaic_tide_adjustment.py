@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 mosaic_tide_adjustment.py
-Written by Tyler Sutterley (12/2023)
+Written by Tyler Sutterley (05/2024)
 
 Creates a mosaic of interpolated tidal adjustment scale factors
 
@@ -18,6 +18,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the output mosaic
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 12/2023: don't have a default tide model in arguments
     Updated 11/2023: mask individual tiles before building mosaic
     Updated 10/2023: use grounding zone mosaic and raster utilities
@@ -33,30 +34,22 @@ import re
 import logging
 import pathlib
 import argparse
-import warnings
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-# filter warnings
-warnings.filterwarnings("ignore")
+h5py = gz.utilities.import_dependency('h5py')
+pyproj = gz.utilities.import_dependency('pyproj')
 
 # PURPOSE: mosaic interpolated tiles to a complete grid
 def mosaic_tide_adjustment(base_dir, output_file,
-    HEM=None,
-    RANGE=None,
-    CROP=None,
-    MASK=None,
-    TIDE_MODEL=None,
-    MODE=0o775):
+        HEM=None,
+        RANGE=None,
+        CROP=None,
+        MASK=None,
+        TIDE_MODEL=None,
+        MODE=0o775
+    ):
 
     # directory setup
     base_dir = pathlib.Path(base_dir).expanduser().absolute()

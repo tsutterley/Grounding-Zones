@@ -11,6 +11,7 @@ PYTHON DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2024: added generic querying functions for NASA CMR
+        added wrapper to importlib for optional dependencies
     Updated 11/2023: updated ssl context to fix deprecation error
     Updated 05/2023: using pathlib to define and expand paths
     Updated 01/2023: add default ssl context attribute with protocol
@@ -29,6 +30,7 @@ import pathlib
 import inspect
 import logging
 import warnings
+import importlib
 import posixpath
 import lxml.etree
 import subprocess
@@ -65,6 +67,46 @@ def get_data_path(relpath: list | str | pathlib.Path):
         return filepath.joinpath(*relpath)
     elif isinstance(relpath, (str, pathlib.Path)):
         return filepath.joinpath(relpath)
+
+def import_dependency(
+        name: str,
+        extra: str = "",
+        raise_exception: bool = False
+    ):
+    """
+    Import an optional dependency
+    
+    Adapted from ``pandas.compat._optional::import_optional_dependency``
+
+    Parameters
+    ----------
+    name: str
+        Module name
+    extra: str, default ""
+        Additional text to include in the ``ImportError`` message
+    raise_exception: bool, default False
+        Raise an ``ImportError`` if the module is not found
+
+    Returns
+    -------
+    module: obj
+        Imported module
+    """
+    # check if the module name is a string
+    msg = f"Invalid module name: '{name}'; must be a string"
+    assert isinstance(name, str), msg
+    # try to import the module
+    err = f"Missing optional dependency '{name}'. {extra}"
+    module = None
+    try:
+        module = importlib.import_module(name)
+    except (ImportError, ModuleNotFoundError) as exc:
+        if raise_exception:
+            raise ImportError(err) from exc
+        else:
+            logging.debug(err)
+    # return the module
+    return module
 
 # PURPOSE: get the git hash value
 def get_git_revision_hash(

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_grounding_zone.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (05/2024)
 Calculates ice sheet grounding zones following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
         https://doi.org/10.3189/172756410791392790
@@ -50,6 +50,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 08/2023: read vector file as a multiline object
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 11/2022: verify coordinate reference system attribute from shapefile
@@ -76,24 +77,13 @@ import numpy as np
 import scipy.stats
 import scipy.optimize
 import matplotlib.pyplot as plt
+import grounding_zones as gz
 
 # attempt imports
-try:
-    import fiona
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("mpi4py not available", ImportWarning)
-try:
-    import pyTMD.spatial
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import shapely.geometry
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("shapely not available", ImportWarning)
+fiona = gz.utilities.import_dependency('fiona')
+pyTMD = gz.utilities.import_dependency('pyTMD')
+pyproj = gz.utilities.import_dependency('pyproj')
+geometry = gz.utilities.import_dependency('shapely.geometry')
 
 # grounded ice shapefiles
 grounded_shapefile = {}
@@ -133,10 +123,10 @@ def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # extract the entities and assign by tile name
     for i,ent in enumerate(shape_entities):
         # extract coordinates for entity
-        line_obj = shapely.geometry.LineString(ent['geometry']['coordinates'])
+        line_obj = geometry.LineString(ent['geometry']['coordinates'])
         lines.append(line_obj)
     # create shapely multilinestring object
-    mline_obj = shapely.geometry.MultiLineString(lines)
+    mline_obj = geometry.MultiLineString(lines)
     # close the shapefile
     shape.close()
     # return the line string object for the ice sheet
@@ -412,7 +402,7 @@ def calculate_grounding_zone(base_dir, input_file, output_file,
         # find valid indices within range
         i = sorted(set(np.arange(imin,imax+1)) & set(valid))
         # shapely LineString object for segment
-        segment_line = shapely.geometry.LineString(np.c_[X[i],Y[i]])
+        segment_line = geometry.LineString(np.c_[X[i], Y[i]])
         # determine if line segment intersects previously known GZ
         if segment_line.intersects(mline_obj):
             # horizontal eulerian distance from start of segment

@@ -29,6 +29,10 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2024: adjust default spacing of tiles to 80 km
         return if no valid points in hemisphere
+        save icebridge filename with suffix as groups in tile files
+        use wrapper to importlib for optional dependencies
+        change permissions mode of the output tile files
+        moved multiprocess h5py reader to io utilities module
     Updated 05/2023: using pathlib to define and operate on paths
         move icebridge data inputs to a separate module in io
     Updated 12/2022: check that file exists within multiprocess HDF5 function
@@ -47,40 +51,14 @@ import time
 import logging
 import pathlib
 import argparse
-import warnings
 import collections
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-
-# PURPOSE: attempt to open an HDF5 file and wait if already open
-def multiprocess_h5py(filename, *args, **kwargs):
-    # check that file exists if entering with read mode
-    filename = pathlib.Path(filename).expanduser().absolute()
-    if kwargs['mode'] in ('r','r+') and not filename.exists():
-        raise FileNotFoundError(str(filename))
-    # attempt to open HDF5 file
-    while True:
-        try:
-            fileID = h5py.File(filename, *args, **kwargs)
-            break
-        except (IOError, BlockingIOError, PermissionError) as exc:
-            time.sleep(1)
-    # return the file access object
-    return fileID
+h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+pyproj = gz.utilities.import_dependency('pyproj')
 
 # PURPOSE: create tile index files of Operation IceBridge data
 def tile_icebridge_data(arg,
@@ -153,7 +131,7 @@ def tile_icebridge_data(arg,
             input_file, input_subsetter)
 
     # pyproj transformer for converting to polar stereographic
-    EPSG = dict(N=3413,S=3031)
+    EPSG = dict(N=3413, S=3031)
     SIGN = dict(N=1.0,S=-1.0)
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
@@ -191,7 +169,7 @@ def tile_icebridge_data(arg,
     DIRECTORY = input_file.with_name(index_directory)
     output_file = DIRECTORY.joinpath(f'{input_file.stem}.h5')
     # create index directory for hemisphere
-    DIRECTORY.mkdir(parents=True, exist_ok=True)
+    DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
 
     # indices of points in hemisphere
     valid, = np.nonzero(np.sign(dinput['lat']) == SIGN[HEM])
@@ -244,11 +222,11 @@ def tile_icebridge_data(arg,
         tile_file = DIRECTORY.joinpath(f'{tile_group}.h5')
         clobber = 'a' if tile_file.exists() else 'w'
         # open output merged tile file
-        f3 = multiprocess_h5py(tile_file, mode=clobber)
-        if input_file.stem not in f3:
-            g3 = f3.create_group(input_file.stem)
+        f3 = gz.io.multiprocess_h5py(tile_file, mode=clobber)
+        if input_file.name not in f3:
+            g3 = f3.create_group(input_file.name)
         else:
-            g3 = f3[input_file.stem]
+            g3 = f3[input_file.name]
         # add file-level variables and attributes
         if (clobber == 'w'):
             # create projection variable
@@ -305,6 +283,8 @@ def tile_icebridge_data(arg,
                     h5[key].make_scale(key)
         # close the merged tile file
         f3.close()
+        # change the permissions mode of the merged tile file
+        tile_file.chmod(mode=MODE)
 
     # Output HDF5 structure information
     logging.info(list(f2.keys()))

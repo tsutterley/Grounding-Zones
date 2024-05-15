@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_icebridge_data.py
-Written by Tyler Sutterley (04/2024)
+Written by Tyler Sutterley (05/2024)
 Calculates tidal elevations for correcting Operation IceBridge elevation data
 
 Uses OTIS format tidal solutions provided by Ohio State University and ESR
@@ -68,6 +68,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 01/2024: made the inferrence of minor constituents an option
     Updated 08/2023: changed ESR netCDF4 format to TMD3 format
@@ -123,38 +124,29 @@ import time
 import logging
 import pathlib
 import argparse
-import warnings
 import collections
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import pyTMD
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+pyTMD = gz.utilities.import_dependency('pyTMD')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: read Operation IceBridge data from NSIDC
 # compute tides at points and times using tidal model driver algorithms
 def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
-    ATLAS_FORMAT=None,
-    GZIP=True,
-    DEFINITION_FILE=None,
-    METHOD='spline',
-    EXTRAPOLATE=False,
-    CUTOFF=None,
-    INFER_MINOR=False,
-    APPLY_FLEXURE=False,
-    VERBOSE=False,
-    MODE=0o775):
+        ATLAS_FORMAT=None,
+        GZIP=True,
+        DEFINITION_FILE=None,
+        METHOD='spline',
+        EXTRAPOLATE=False,
+        CUTOFF=None,
+        INFER_MINOR=False,
+        APPLY_FLEXURE=False,
+        VERBOSE=False,
+        MODE=0o775
+    ):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL

@@ -15,6 +15,8 @@ General Methods
 
 .. autofunction:: grounding_zones.utilities.get_data_path
 
+.. autofunction:: grounding_zones.utilities.import_dependency
+
 .. autofunction:: grounding_zones.utilities._create_default_ssl_context
 
 .. autofunction:: grounding_zones.utilities._create_ssl_context_no_verify

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_median_elevation_filter.py
-Written by Tyler Sutterley (10/2023)
+Written by Tyler Sutterley (05/2024)
 
 Filters elevation change rates from triangulated Operation IceBridge data
     using an interquartile range algorithm described by Pritchard (2009)
@@ -51,6 +51,7 @@ REFERENCE:
     pp. 451-467 (2017).  https://doi.org/10.5194/tc-11-451-2017
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 10/2023: include ITRF transformations for the altimetry data
     Updated 08/2023: use time functions from timescale.time
     Updated 05/2023: using pathlib to define and operate on paths
@@ -110,22 +111,10 @@ import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    from mpi4py import MPI
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("mpi4py not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+MPI = gz.utilities.import_dependency('mpi4py.MPI')
+pyproj = gz.utilities.import_dependency('pyproj')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: keep track of MPI threads
 def info(rank, size):
@@ -196,44 +185,6 @@ def read_HDF5_triangle_data(input_file, input_subsetter):
     fileID.close()
     # return data and attributes
     return HDF5_data, HDF5_attributes
-
-# PURPOSE: get the ITRF realization for an OIB dataset
-def get_ITRF(OIB, YY, MM, HEM):
-    if OIB in ('ATM','ATM1b'):
-        # get the ITRF of the ATM data
-        ITRF_table = gz.io.icebridge.read_ATM_ITRF_file()
-        region = dict(N='GR', S='AN')[HEM]
-        if (region == 'GR') and (int(MM) < 7):
-            season = 'SP'
-        else:
-            season = 'FA'
-        # get the row of data from the table
-        row, = np.flatnonzero((ITRF_table['year'] == YY) &
-            (ITRF_table['region'] == region) &
-            (ITRF_table['season'] == season))
-        # find the ITRF for the ATM data
-        ITRF = ITRF_table['ITRF'][row]
-    elif OIB in ('LVIS','LVGH') and (int(YY) <= 2016):
-        ITRF = 'ITRF2000'
-    elif OIB in ('LVIS','LVGH') and (int(YY) >= 2017):
-        ITRF = 'ITRF2008'
-    # return the reference frame for the OIB dataset
-    return ITRF
-
-# PURPOSE: convert the input data to the ITRF reference frame
-def convert_ITRF(data, ITRF):
-    # get the transform for converting to the latest ITRF
-    transform = gz.crs.get_itrf_transform(ITRF)
-    # convert time to decimal years
-    ts = timescale.time.Timescale().from_deltatime(data['time'],
-        epoch=timescale.time._j2000_epoch, standard='UTC')
-    # transform the data to a common ITRF
-    lon, lat, data, tdec = transform.transform(
-        data['lon'], data['lat'], data['data'], ts.year
-    )
-    data.update(lon=lon, lat=lat, data=data)
-    # return the updated data dictionary
-    return data
 
 # PURPOSE: check if dh/dt is valid by checking the interquartile range from
 # Pritchard (2009) and the robust dispersion estimator (RDE) from Smith (2017)
@@ -347,7 +298,7 @@ def main():
         dinput1,att1 = read_HDF5_triangle_data(input_files[0],None)
 
         # pyproj transformer for converting lat/lon to polar stereographic
-        EPSG = dict(N=3413,S=3031)
+        EPSG = dict(N=3413, S=3031)
         crs1 = pyproj.CRS.from_epsg(4326)
         crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
         transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
@@ -420,8 +371,8 @@ def main():
                 raise RuntimeError(f'Total Mismatch ({c:d} {n_2:d})')
 
             # convert the ITRF of the OIB datasets to a common realization
-            ITRF = get_ITRF(OIB1, YY1, MM1, HEM)
-            dinput3 = convert_ITRF(dinput3, ITRF)
+            ITRF = gz.io.icebridge.get_ITRF(OIB1, YY1, MM1, HEM)
+            dinput3 = gz.io.icebridge.convert_ITRF(dinput3, ITRF)
 
             # convert from latitude/longitude into polar stereographic
             X1,Y1 = transformer.transform(dinput1['lon'], dinput1['lat'])

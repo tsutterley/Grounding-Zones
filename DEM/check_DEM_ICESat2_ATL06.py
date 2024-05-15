@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 check_DEM_ICESat2_ATL06.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (05/2024)
 Determines which digital elevation model tiles to read for a given ATL06 file
 
 ArcticDEM 2m digital elevation model tiles
@@ -44,6 +44,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 07/2023: using pathlib to define and operate on paths
         use geoms attribute for shapely 2.0 compliance
@@ -62,26 +63,14 @@ import re
 import logging
 import pathlib
 import argparse
-import warnings
 import numpy as np
+import grounding_zones as gz
 
 # attempt imports
-try:
-    import fiona
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("mpi4py not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import shapely.geometry
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("shapely not available", ImportWarning)
+fiona = gz.utilities.import_dependency('fiona')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+pyproj = gz.utilities.import_dependency('pyproj')
+geometry = gz.utilities.import_dependency('shapely.geometry')
 
 # digital elevation models
 elevation_dir = {}
@@ -196,7 +185,7 @@ def read_DEM_index(index_file, DEM_MODEL):
         # extract Polar Stereographic coordinates for entity
         x = [ul[0],ur[0],lr[0],ll[0],ul2[0]]
         y = [ul[1],ur[1],lr[1],ll[1],ul2[1]]
-        poly_obj = shapely.geometry.Polygon(list(zip(x,y)))
+        poly_obj = geometry.Polygon(np.c_[x, y])
         # Valid Polygon may not possess overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
@@ -269,7 +258,7 @@ def check_DEM_ICESat2_ATL06(INPUT_FILE,
         # convert projection from latitude/longitude to tile EPSG
         X,Y = transformer.transform(longitude, latitude)
         # convert reduced x and y to shapely multipoint object
-        xy_point = shapely.geometry.MultiPoint(np.c_[X, Y])
+        xy_point = geometry.MultiPoint(np.c_[X, Y])
 
         # create complete masks for each DEM tile
         intersection_map = {}

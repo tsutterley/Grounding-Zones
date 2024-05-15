@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (04/2024)
+Written by Tyler Sutterley (05/2024)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -52,6 +52,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 12/2023: don't have a default tide model in arguments
     Updated 11/2023: filter absolute heights in reference to geoid
@@ -77,7 +78,6 @@ import logging
 import pathlib
 import argparse
 import datetime
-import warnings
 import numpy as np
 import collections
 import scipy.stats
@@ -85,22 +85,10 @@ import scipy.optimize
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import pyTMD
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+pyTMD = gz.utilities.import_dependency('pyTMD')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: Find indices of common reference points between two lists
 # Determines which across-track points correspond with the along-track
@@ -111,11 +99,12 @@ def common_reference_points(XT, AT):
 # PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
 # use an initial tide model as a prior for estimating ice flexure
 def fit_tides_ICESat2(tide_dir, INPUT_FILE,
-    OUTPUT_DIRECTORY=None,
-    TIDE_MODEL=None,
-    REANALYSIS=None,
-    VERBOSE=False,
-    MODE=0o775):
+        OUTPUT_DIRECTORY=None,
+        TIDE_MODEL=None,
+        REANALYSIS=None,
+        VERBOSE=False,
+        MODE=0o775
+    ):
 
     # create logger
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL

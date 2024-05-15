@@ -7,20 +7,12 @@ import os
 import pytest
 import warnings
 import numpy as np
+import grounding_zones as gz
 
 # attempt imports
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import pyTMD
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+pyTMD = gz.utilities.import_dependency('pyTMD')
+timescale = gz.utilities.import_dependency('timescale')
 
 # path to an ATL03 file from NSIDC
 ATL03 = ['https://n5eil01u.ecs.nsidc.org','ATLAS','ATL03.005','2018.10.13',

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_OPT_ICESat_GLA12.py
-Written by Tyler Sutterley (04/2024)
+Written by Tyler Sutterley (05/2024)
 Calculates radial ocean pole tide displacements for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
     elevation data following IERS Convention (2010) guidelines
@@ -50,6 +50,7 @@ REFERENCES:
         doi: 10.1007/s00190-015-0848-7
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: use timescale class for time conversion operations
@@ -78,33 +79,24 @@ import re
 import logging
 import pathlib
 import argparse
-import warnings
 import numpy as np
 import scipy.interpolate
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import pyTMD
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
-try:
-    import timescale.time
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("timescale not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+pyTMD = gz.utilities.import_dependency('pyTMD')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
 # compute ocean pole tide radial displacements at points and times
 def compute_OPT_ICESat(INPUT_FILE,
-    OUTPUT_DIRECTORY=None,
-    CONVENTION=None,
-    METHOD=None,
-    VERBOSE=False,
-    MODE=0o775):
+        OUTPUT_DIRECTORY=None,
+        CONVENTION=None,
+        METHOD=None,
+        VERBOSE=False,
+        MODE=0o775
+    ):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL

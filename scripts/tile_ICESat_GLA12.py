@@ -30,6 +30,9 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2024: adjust default spacing of tiles to 80 km
         return if no valid points in hemisphere
+        use wrapper to importlib for optional dependencies
+        change permissions mode of the output tile files
+        moved multiprocess h5py reader to io utilities module
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         use constants class from pyTMD for ellipsoidal parameters
@@ -46,40 +49,14 @@ import time
 import logging
 import pathlib
 import argparse
-import warnings
 import collections
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
-try:
-    import pyTMD
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyTMD not available", ImportWarning)
-
-# PURPOSE: attempt to open an HDF5 file and wait if already open
-def multiprocess_h5py(filename, *args, **kwargs):
-    # check that file exists if entering with read mode
-    filename = pathlib.Path(filename).expanduser().absolute()
-    if kwargs['mode'] in ('r','r+') and not filename.exists():
-        raise FileNotFoundError(filename)
-    # attempt to open HDF5 file
-    while True:
-        try:
-            fileID = h5py.File(filename, *args, **kwargs)
-            break
-        except (IOError, BlockingIOError, PermissionError) as exc:
-            time.sleep(1)
-    # return the file access object
-    return fileID
+h5py = gz.utilities.import_dependency('h5py')
+pyproj = gz.utilities.import_dependency('pyproj')
+pyTMD = gz.utilities.import_dependency('pyTMD')
 
 # PURPOSE: create tile index files of ICESat ice sheet
 # HDF5 elevation data (GLAH12) from NSIDC
@@ -122,7 +99,7 @@ def tile_ICESat_GLA12(input_file,
         rx.findall(input_file.name).pop()
 
     # pyproj transformer for converting to polar stereographic
-    EPSG = dict(N=3413,S=3031)
+    EPSG = dict(N=3413, S=3031)
     SIGN = dict(N=1.0,S=-1.0)
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
@@ -236,7 +213,7 @@ def tile_ICESat_GLA12(input_file,
         tile_file = DIRECTORY.joinpath(f'{tile_group}.h5')
         clobber = 'a' if tile_file.exists() else 'w'
         # open output merged tile file
-        f3 = multiprocess_h5py(tile_file, mode=clobber)
+        f3 = gz.io.multiprocess_h5py(tile_file, mode=clobber)
         # create file group
         if input_file.name not in f3:
             g3 = f3.create_group(input_file.name)
@@ -299,6 +276,8 @@ def tile_ICESat_GLA12(input_file,
                     h5[key].make_scale(key)
         # close the merged tile file
         f3.close()
+        # change the permissions mode of the merged tile file
+        tile_file.chmod(mode=MODE)
 
     # Output HDF5 structure information
     logging.info(list(f2.keys()))

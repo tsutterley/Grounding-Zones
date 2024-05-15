@@ -27,6 +27,9 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2024: adjust default spacing of tiles to 80 km
         output cycle_number variable from ATL11 file
+        use wrapper to importlib for optional dependencies
+        change permissions mode of the output tile files
+        moved multiprocess h5py reader to io utilities module
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         single implicit import of grounding zone tools
@@ -44,24 +47,14 @@ import time
 import logging
 import pathlib
 import argparse
-import warnings
 import collections
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-try:
-    import h5py
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("h5py not available", ImportWarning)
-try:
-    import icesat2_toolkit as is2tk
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("icesat2_toolkit not available", ImportWarning)
-try:
-    import pyproj
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("pyproj not available", ImportWarning)
+h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
+pyproj = gz.utilities.import_dependency('pyproj')
 
 # PURPOSE: set the hemisphere of interest based on the granule
 def set_hemisphere(GRANULE):
@@ -71,22 +64,6 @@ def set_hemisphere(GRANULE):
         return 'N'
     else:
         raise Exception('Non-polar granule')
-
-# PURPOSE: attempt to open an HDF5 file and wait if already open
-def multiprocess_h5py(filename, *args, **kwargs):
-    # check that file exists if entering with read mode
-    filename = pathlib.Path(filename).expanduser().absolute()
-    if kwargs['mode'] in ('r','r+') and not filename.exists():
-        raise FileNotFoundError(str(filename))
-    # attempt to open HDF5 file
-    while True:
-        try:
-            fileID = h5py.File(filename, *args, **kwargs)
-            break
-        except (IOError, BlockingIOError, PermissionError) as exc:
-            time.sleep(1)
-    # return the file access object
-    return fileID
 
 # PURPOSE: create tile index files of ICESat-2 elevation data
 def tile_ICESat2_ATL11(FILE,
@@ -119,7 +96,7 @@ def tile_ICESat2_ATL11(FILE,
     DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
 
     # pyproj transformer for converting to polar stereographic
-    EPSG = dict(N=3413,S=3031)
+    EPSG = dict(N=3413, S=3031)
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
@@ -207,7 +184,7 @@ def tile_ICESat2_ATL11(FILE,
             tile_file = DIRECTORY.joinpath(f'{tile_group}.h5')
             clobber = 'a' if tile_file.exists() else 'w'
             # open output merged tile file
-            f3 = multiprocess_h5py(tile_file, mode=clobber)
+            f3 = gz.io.multiprocess_h5py(tile_file, mode=clobber)
             # create group for file
             if FILE.name not in f3:
                 g3 = f3.create_group(FILE.name)
@@ -283,6 +260,10 @@ def tile_ICESat2_ATL11(FILE,
                             h5[key].dims[i].attach_scale(h5[dim])
                     else:
                         h5[key].make_scale(key)
+            # close the merged tile file
+            f3.close()
+            # change the permissions mode of the merged tile file
+            tile_file.chmod(mode=MODE)
 
     # Output HDF5 structure information
     logging.info(list(f2.keys()))

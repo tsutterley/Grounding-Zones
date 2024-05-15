@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 scp_pgc_dem_strips.py
-Written by Tyler Sutterley (07/2023)
+Written by Tyler Sutterley (05/2024)
 Copies PGC REMA DEM and ArcticDEM strip data between a
     local host and a remote host
 
@@ -33,6 +33,7 @@ PYTHON DEPENDENCIES:
         https://github.com/jbardin/scp.py
 
 UPDATE HISTORY:
+    Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: place some imports behind try/except statements
     Written 06/2022
@@ -46,18 +47,12 @@ import logging
 import pathlib
 import argparse
 import builtins
-import warnings
 import posixpath
+import grounding_zones as gz
 
 # attempt imports
-try:
-    import paramiko
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("paramiko not available", ImportWarning)
-try:
-    import scp
-except (AttributeError, ImportError, ModuleNotFoundError) as exc:
-    warnings.warn("scp not available", ImportWarning)
+paramiko = gz.utilities.import_dependency('paramiko')
+scp = gz.utilities.import_dependency('scp')
 
 # PURPOSE: create argument parser
 def arguments():
