@@ -214,7 +214,7 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
         # compare robust dispersion estimate with maximum allowable
         FLAG4 = (RDE >= kwargs['MAXIMUM_RDE'])
         # iterate until there are no additional removed data points
-        while FLAG1 & FLAG2 & FLAG3 & FLAG4:
+        while FLAG1 & FLAG2 & (FLAG3 | FLAG4):
             # fit selected data for window
             t_filt = t_in[filt]
             x_filt = x_in[filt]
