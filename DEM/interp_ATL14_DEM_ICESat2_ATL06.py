@@ -248,7 +248,7 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         if not np.any(valid):
             continue
 
-        # output data dictionaries for beam pair
+        # output data dictionaries for beam
         IS2_atl06_dem[gtx] = dict(land_ice_segments={})
         IS2_atl06_fill[gtx] = dict(land_ice_segments={})
         IS2_atl06_dims[gtx] = dict(land_ice_segments={})
@@ -361,7 +361,7 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         dem_h.data[dem_h.mask] = dem_h.fill_value
         dem_h_sigma.data[dem_h_sigma.mask] = dem_h_sigma.fill_value
 
-        # save ATL14 DEM elevation for pair track
+        # save ATL14 DEM elevation for ground track
         IS2_atl06_dem[gtx]['land_ice_segments']['dem']['dem_h'] = dem_h
         IS2_atl06_fill[gtx]['land_ice_segments']['dem']['dem_h'] = dem_h.fill_value
         IS2_atl06_dims[gtx]['land_ice_segments']['dem']['dem_h'] = ['delta_time']
@@ -376,7 +376,7 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         IS2_atl06_dem_attrs[gtx]['land_ice_segments']['dem']['dem_h']['coordinates'] = \
             "../segment_id ../delta_time ../latitude ../longitude"
 
-        # save ATl14 DEM elevation uncertainty for pair track
+        # save ATL14 DEM elevation uncertainty for ground track
         IS2_atl06_dem[gtx]['land_ice_segments']['dem']['dem_h_sigma'] = dem_h_sigma
         IS2_atl06_fill[gtx]['land_ice_segments']['dem']['dem_h_sigma'] = dem_h_sigma.fill_value
         IS2_atl06_dims[gtx]['land_ice_segments']['dem']['dem_h_sigma'] = ['delta_time']

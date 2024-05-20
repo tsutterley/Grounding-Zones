@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
+        fix memory allocation for output 40HZ data
     Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 12/2022: single implicit import of grounding zone tools
@@ -137,6 +138,7 @@ def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE,
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE, mode='r')
     # get variables and attributes
+    n_40HZ, = fileID['Data_40HZ']['Time']['i_rec_ndx'].shape
     rec_ndx_40HZ = fileID['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
     # seconds since 2000-01-01 12:00:00 UTC (J2000)
     DS_UTCTime_40HZ = fileID['Data_40HZ']['DS_UTCTime_40'][:].copy()
@@ -197,7 +199,7 @@ def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE,
     RGI = scipy.interpolate.RegularGridInterpolator((icjd,ilat,ilon), idac,
         bounds_error=False)
     # interpolate dynamic atmospheric correction to points
-    DAC = np.ma.zeros((rec_ndx_40HZ), fill_value=fv)
+    DAC = np.ma.zeros((n_40HZ), fill_value=fv)
     DAC.data = RGI.__call__(np.c_[t, iy, ix])
     DAC.mask = np.isnan(DAC.data)
     DAC.data[DAC.mask] = DAC.fill_value

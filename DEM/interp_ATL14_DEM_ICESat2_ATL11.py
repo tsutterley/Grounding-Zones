@@ -390,7 +390,7 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h']['coordinates'] = \
             "../ref_pt ../delta_time ../latitude ../longitude"
 
-        # save ATl14 DEM elevation uncertainty for pair track
+        # save ATL14 DEM elevation uncertainty for pair track
         IS2_atl11_dem[ptx]['ref_surf']['dem_h_sigma'] = dem_h_sigma
         IS2_atl11_fill[ptx]['ref_surf']['dem_h_sigma'] = dem_h_sigma.fill_value
         IS2_atl11_dims[ptx]['ref_surf']['dem_h_sigma'] = ['ref_pt']

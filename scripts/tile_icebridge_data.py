@@ -132,7 +132,7 @@ def tile_icebridge_data(arg,
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413, S=3031)
-    SIGN = dict(N=1.0,S=-1.0)
+    SIGN = dict(N=1.0, S=-1.0)
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
