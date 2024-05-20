@@ -51,6 +51,7 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
+        fix memory allocation for output 40HZ data
     Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from pyTMD.time
@@ -320,6 +321,7 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL,
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE, mode='r')
     # get variables and attributes
+    n_40HZ, = fileID['Data_40HZ']['Time']['i_rec_ndx'].shape
     rec_ndx_40HZ = fileID['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
     # seconds since 2000-01-01 12:00:00 UTC (J2000)
     DS_UTCTime_40HZ = fileID['Data_40HZ']['DS_UTCTime_40'][:].copy()
@@ -397,10 +399,10 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL,
     # interpolate sea level pressure anomalies to points
     SLP = R1.__call__(np.c_[ts.MJD, iy, ix])
     # calculate inverse barometer response
-    IB = np.ma.zeros((rec_ndx_40HZ), fill_value=fv)
+    IB = np.ma.zeros((n_40HZ), fill_value=fv)
     IB.data = -SLP*(DENSITY*gs)**-1
     # interpolate conventional inverse barometer response to points
-    TPX = np.ma.zeros((rec_ndx_40HZ), fill_value=fv)
+    TPX = np.ma.zeros((n_40HZ), fill_value=fv)
     TPX.data = R2.__call__(np.c_[ts.MJD, iy, ix])
     # replace any nan values with fill value
     IB.mask = np.isnan(IB.data)

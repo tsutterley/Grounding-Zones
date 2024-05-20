@@ -31,6 +31,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
+        use regular grid interpolator for DEM data instead of spline
     Updated 09/2023: check that subsetted DEM has a valid shape and mask
         set DEM data type as float32 to reduce memory usage
     Updated 08/2023: create s3 filesystem when using s3 urls as input
@@ -207,10 +208,13 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         val.mask = (val.data == val.fill_value) | np.isnan(val.data)
         val.data[val.mask] = val.fill_value
 
-    # use spline interpolation to calculate DEM values at coordinates
-    S1 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.h.T,kx=1,ky=1)
-    S2 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.h_sigma2.T,kx=1,ky=1)
-    S3 = scipy.interpolate.RectBivariateSpline(DEM.x,DEM.y,DEM.ice_area.T,kx=1,ky=1)
+    # create 2D interpolation of DEM data
+    R1 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
+        DEM.h, bounds_error=False)
+    R2 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
+        DEM.h_sigma2, bounds_error=False)
+    R3 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
+        DEM.ice_area, bounds_error=False)
 
     # copy variables for outputting to HDF5 file
     IS2_atl11_dem = {}
@@ -366,9 +370,9 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
             "are stored at the average segment rate.")
 
         # interpolate DEM to segment location
-        dem_h.data[:] = S1.ev(X,Y)
-        dem_h_sigma.data[:] = np.sqrt(S2.ev(X,Y))
-        dem_ice_area = S3.ev(X,Y)
+        dem_h.data[:] = R1.__call__(np.c_[Y, X])
+        dem_h_sigma.data[:] = np.sqrt(R2.__call__(np.c_[Y, X]))
+        dem_ice_area = R3.__call__(np.c_[Y, X])
         # update masks and replace fill values
         dem_h.mask[:] = (dem_ice_area <= 0.0) | (np.abs(dem_h.data) >= 1e4)
         dem_h_sigma.mask[:] = (dem_ice_area <= 0.0) | (np.abs(dem_h.data) >= 1e4)
@@ -383,14 +387,13 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h']['units'] = "meters"
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h']['contentType'] = "referenceInformation"
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h']['long_name'] = "DEM Height"
-        IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h']['description'] = ("Height of the DEM, "
-            "interpolated by bivariate-spline interpolation in the DEM coordinate system "
-            "to the segment location.")
+        IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h']['description'] = \
+            "Surface height of the digital elevation model (DEM)"
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h']['source'] = 'ATL14'
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h']['coordinates'] = \
             "../ref_pt ../delta_time ../latitude ../longitude"
 
-        # save ATl14 DEM elevation uncertainty for pair track
+        # save ATL14 DEM elevation uncertainty for pair track
         IS2_atl11_dem[ptx]['ref_surf']['dem_h_sigma'] = dem_h_sigma
         IS2_atl11_fill[ptx]['ref_surf']['dem_h_sigma'] = dem_h_sigma.fill_value
         IS2_atl11_dims[ptx]['ref_surf']['dem_h_sigma'] = ['ref_pt']
@@ -398,9 +401,8 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h_sigma']['units'] = "meters"
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h_sigma']['contentType'] = "referenceInformation"
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h_sigma']['long_name'] = "DEM Uncertainty"
-        IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h_sigma']['description'] = ("Uncertainty in the "
-            "DEM surface height, interpolated by bivariate-spline interpolation in the DEM "
-            "coordinate system to the segment location.")
+        IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h_sigma']['description'] = \
+            "Uncertainty in the DEM surface height"
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h_sigma']['source'] = 'ATL14'
         IS2_atl11_dem_attrs[ptx]['ref_surf']['dem_h_sigma']['coordinates'] = \
             "../ref_pt ../delta_time ../latitude ../longitude"

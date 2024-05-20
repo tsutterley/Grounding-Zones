@@ -33,6 +33,7 @@ UPDATE HISTORY:
         use wrapper to importlib for optional dependencies
         change permissions mode of the output tile files
         moved multiprocess h5py reader to io utilities module
+        write 40HZ reference track number in output files
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: check that file exists within multiprocess HDF5 function
         use constants class from pyTMD for ellipsoidal parameters
@@ -100,7 +101,7 @@ def tile_ICESat_GLA12(input_file,
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413, S=3031)
-    SIGN = dict(N=1.0,S=-1.0)
+    SIGN = dict(N=1.0, S=-1.0)
     crs1 = pyproj.CRS.from_epsg(4326)
     crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
     transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
@@ -121,6 +122,13 @@ def tile_ICESat_GLA12(input_file,
     attributes['index']['grid_mapping'] = 'Polar_Stereographic'
     attributes['index']['units'] = '1'
     attributes['index']['coordinates'] = 'x y'
+    # track
+    attributes['i_track'] = {}
+    attributes['i_track']['long_name'] = 'Track'
+    attributes['i_track']['description'] = 'Reference track number'
+    attributes['i_track']['grid_mapping'] = 'Polar_Stereographic'
+    attributes['i_track']['units'] = '1'
+    attributes['i_track']['coordinates'] = 'x y'
 
     # track file progress
     logging.info(str(input_file))
@@ -133,6 +141,7 @@ def tile_ICESat_GLA12(input_file,
     campaign = copy.copy(fileID['ANCILLARY_DATA'].attrs['Campaign'])
     # ICESat record
     key = 'i_rec_ndx'
+    rec_ndx_1HZ = fileID['Data_1HZ']['Time'][key][:].copy()
     rec_ndx_40HZ = fileID['Data_40HZ']['Time'][key][:].copy()
     for att_name,att_val in fileID['Data_40HZ']['Time'][key].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
@@ -143,6 +152,9 @@ def tile_ICESat_GLA12(input_file,
     for att_name,att_val in fileID['Data_40HZ'][key].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
             attributes['DS_UTCTime_40'][att_name] = copy.copy(att_val)
+    # ICESat track number
+    i_track_1HZ = fileID['Data_1HZ']['Geolocation']['i_track'][:].copy()
+    i_track_40HZ = np.zeros((n_40HZ), dtype=i_track_1HZ.dtype)
     # Latitude (TOPEX/Poseidon ellipsoid degrees North)
     lat_TPX = fileID['Data_40HZ']['Geolocation']['d_lat'][:].copy()
     # Longitude (degrees East)
@@ -150,6 +162,11 @@ def tile_ICESat_GLA12(input_file,
     # Elevation (height above TOPEX/Poseidon ellipsoid in meters)
     elev_TPX = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'][:].copy()
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
+    # map 1HZ data to 40HZ data
+    for k,record in enumerate(rec_ndx_1HZ):
+        # indice mapping the 40HZ data to the 1HZ data
+        map_1HZ_40HZ, = np.nonzero(rec_ndx_40HZ == record)
+        i_track_40HZ[map_1HZ_40HZ] = i_track_1HZ[k]
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
     topex = pyTMD.datum(ellipsoid='TOPEX', units='MKS')
@@ -248,6 +265,7 @@ def tile_ICESat_GLA12(input_file,
         output = collections.OrderedDict()
         output['DS_UTCTime_40'] = DS_UTCTime_40HZ[indices].copy()
         output['i_rec_ndx'] = rec_ndx_40HZ[indices].copy()
+        output['i_track'] = i_track_40HZ[indices].copy()
         output['x'] = x[indices].copy()
         output['y'] = y[indices].copy()
         output['index'] = indices.copy()

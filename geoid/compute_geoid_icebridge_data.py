@@ -332,7 +332,7 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    # run for each input GLA12 file
+    # run for each input file
     for arg in args.infile:
         compute_geoid_icebridge_data(args.gravity, arg, LMAX=args.lmax,
             LOVE=args.love, VERBOSE=args.verbose, MODE=args.mode)

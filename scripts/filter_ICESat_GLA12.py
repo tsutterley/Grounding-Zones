@@ -51,6 +51,7 @@ L. S. Sorensen, S. B. Simonsen, K. Nielsen, P. Lucas-Picher,
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
         add note for the reflectivities culled by Ben in pointCollection
+        write 40HZ reference track number in output files
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 05/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -167,10 +168,17 @@ def filter_ICESat_GLA12(INPUT_FILE,
     IS_gla12_attrs['Campaign'] = f['ANCILLARY_DATA'].attrs['Campaign']
 
     # get variables and attributes
+    n_40HZ, = f['Data_40HZ']['Time']['i_rec_ndx'].shape
     fv = f['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
-    rec_ndx_40HZ = f['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
+    # ICESat record
+    key = 'i_rec_ndx'
+    rec_ndx_1HZ = f['Data_1HZ']['Time'][key][:].copy()
+    rec_ndx_40HZ = f['Data_40HZ']['Time'][key][:].copy()
     # seconds since 2000-01-01 12:00:00 UTC (J2000)
     DS_UTCTime_40HZ = f['Data_40HZ']['DS_UTCTime_40'][:].copy()
+    # ICESat track number
+    i_track_1HZ = f['Data_1HZ']['Geolocation']['i_track'][:].copy()
+    i_track_40HZ = np.zeros((n_40HZ), dtype=i_track_1HZ.dtype)
     # Latitude (degrees North)
     lat_40HZ = f['Data_40HZ']['Geolocation']['d_lat'][:].copy()
     # Longitude (degrees East)
@@ -212,6 +220,21 @@ def filter_ICESat_GLA12(INPUT_FILE,
     # reflectivity Pritchard culls < 0.1, Smith culls <= 0.05 
     # valid surface reflectivity (received energy/transmit energy)
     quality_mask |= (reflective_flag < reflctUC)
+    # additional flags
+    att_offnadir_1HZ = f['Data_1HZ']['Quality']['att_offnadir_flg'][:]
+    att_offnadir_40HZ = np.zeros((n_40HZ), dtype=att_offnadir_1HZ.dtype)
+    orbit_model_1HZ = f['Data_1HZ']['Quality']['orbit_model_flg'][:]
+    orbit_model_40HZ = np.zeros((n_40HZ), dtype=orbit_model_1HZ.dtype)
+    orbit_pred_1HZ = f['Data_1HZ']['Quality']['orbit_pred_flg'][:]
+    orbit_pred_40HZ = np.zeros((n_40HZ), dtype=orbit_pred_1HZ.dtype)
+    # map 1HZ data to 40HZ data
+    for k,record in enumerate(rec_ndx_1HZ):
+        # indice mapping the 40HZ data to the 1HZ data
+        map_1HZ_40HZ, = np.nonzero(rec_ndx_40HZ == record)
+        i_track_40HZ[map_1HZ_40HZ] = i_track_1HZ[k]
+        att_offnadir_40HZ[map_1HZ_40HZ] = att_offnadir_1HZ[k]
+        orbit_model_40HZ[map_1HZ_40HZ] = orbit_model_1HZ[k]
+        orbit_pred_40HZ[map_1HZ_40HZ] = orbit_pred_1HZ[k]
 
     # copy attributes for time, geolocation and quality groups
     for var in ['Time','Geolocation','Quality']:
@@ -232,6 +255,13 @@ def filter_ICESat_GLA12(INPUT_FILE,
     for att_name,att_val in f['Data_40HZ']['Time']['i_rec_ndx'].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
             IS_gla12_attrs['Data_40HZ']['Time']['i_rec_ndx'][att_name] = att_val
+    # track
+    IS_gla12_mask['Data_40HZ']['Geolocation']['i_track'] = i_track_40HZ
+    IS_gla12_attrs['Data_40HZ']['Geolocation']['i_track'] = {}
+    IS_gla12_attrs['Data_40HZ']['Geolocation']['i_track']['coordinates'] = "DS_UTCTime_40"
+    for att_name,att_val in f['Data_1HZ']['Geolocation']['i_track'].attrs.items():
+        if att_name not in ('DIMENSION_LIST','CLASS','NAME','coordinates','hertz'):
+            IS_gla12_attrs['Data_40HZ']['Geolocation']['i_track'][att_name] = att_val
     # latitude
     IS_gla12_mask['Data_40HZ']['Geolocation']['d_lat'] = lat_40HZ
     IS_gla12_attrs['Data_40HZ']['Geolocation']['d_lat'] = {}
@@ -244,7 +274,27 @@ def filter_ICESat_GLA12(INPUT_FILE,
     for att_name,att_val in f['Data_40HZ']['Geolocation']['d_lon'].attrs.items():
         if att_name not in ('DIMENSION_LIST','CLASS','NAME'):
             IS_gla12_attrs['Data_40HZ']['Geolocation']['d_lon'][att_name] = att_val
-
+    # attitude off-nadir flag
+    IS_gla12_mask['Data_40HZ']['Quality']['att_offnadir_flg'] = att_offnadir_40HZ
+    IS_gla12_attrs['Data_40HZ']['Quality']['att_offnadir_flg'] = {}
+    IS_gla12_attrs['Data_40HZ']['Quality']['att_offnadir_flg']['coordinates'] = "DS_UTCTime_40"
+    for att_name,att_val in f['Data_1HZ']['Quality']['att_offnadir_flg'].attrs.items():
+        if att_name not in ('DIMENSION_LIST','CLASS','NAME','coordinates','hertz'):
+            IS_gla12_attrs['Data_40HZ']['Quality']['att_offnadir_flg'][att_name] = att_val
+    # orbit model flag
+    IS_gla12_mask['Data_40HZ']['Quality']['orbit_model_flg'] = orbit_model_40HZ
+    IS_gla12_attrs['Data_40HZ']['Quality']['orbit_model_flg'] = {}
+    IS_gla12_attrs['Data_40HZ']['Quality']['orbit_model_flg']['coordinates'] = "DS_UTCTime_40"
+    for att_name,att_val in f['Data_1HZ']['Quality']['orbit_model_flg'].attrs.items():
+        if att_name not in ('DIMENSION_LIST','CLASS','NAME','coordinates','hertz'):
+            IS_gla12_attrs['Data_40HZ']['Quality']['orbit_model_flg'][att_name] = att_val
+    # orbit prediction flag
+    IS_gla12_mask['Data_40HZ']['Quality']['orbit_pred_flg'] = orbit_pred_40HZ
+    IS_gla12_attrs['Data_40HZ']['Quality']['orbit_pred_flg'] = {}
+    IS_gla12_attrs['Data_40HZ']['Quality']['orbit_pred_flg']['coordinates'] = "DS_UTCTime_40"
+    for att_name,att_val in f['Data_1HZ']['Quality']['orbit_pred_flg'].attrs.items():
+        if att_name not in ('DIMENSION_LIST','CLASS','NAME','coordinates','hertz'):
+            IS_gla12_attrs['Data_40HZ']['Quality']['orbit_pred_flg'][att_name] = att_val
     # close the input HDF5 file
     f.close()
 

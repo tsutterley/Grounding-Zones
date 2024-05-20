@@ -44,6 +44,7 @@ OPTIONS:
     RELATIVE: relative period
     FIT_TYPE: type of time-variable polynomial fit to apply
         ('polynomial', 'chebyshev', 'spline')
+    BOUNDED: use a bounded-least squares fit
     ORDER_TIME: maximum polynomial order in time-variable fit
         (0=constant, 1=linear, 2=quadratic)
     ORDER_SPACE:  maximum polynomial order in spatial fit
@@ -62,7 +63,7 @@ UPDATE HISTORY:
         add function to build the constraints for the least-squares fit
         add function to validate the columns in the design matrix
         add functions to give the number of spatial and temporal terms
-        use a bounded least-squares fit for the model runs
+        optionally use a bounded least-squares fit for the model runs
     Updated 04/2024: rewritten for python3 and added function docstrings
         add optional TERMS argument to augment the design matrix
         add spline design matrix option for time-variable fit
@@ -108,6 +109,8 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
         maximum polynomial order in spatial fit
     TERMS: list
         list of extra terms
+    BOUNDED: bool
+        use bounded least-squares fit
     STDEV: float
         standard deviation of output error
     CONF: float
@@ -322,6 +325,8 @@ def surface_fit(t_in, x_in, y_in, d_in,
         Sorted 1D array of knots for time-variable spline fit
     TERMS: list
         list of extra terms
+    BOUNDED: bool
+        use bounded least-squares fit
     STDEV: float
         standard deviation of output error
     CONF: float
@@ -350,6 +355,7 @@ def surface_fit(t_in, x_in, y_in, d_in,
     kwargs.setdefault('ORDER_TIME', 3)
     kwargs.setdefault('ORDER_SPACE', 3)
     kwargs.setdefault('KNOTS', [])
+    kwargs.setdefault('BOUNDED', True)
 
     # remove singleton dimensions from input variables
     t_in = np.squeeze(t_in)
@@ -372,10 +378,17 @@ def surface_fit(t_in, x_in, y_in, d_in,
     # nu = Degrees of Freedom
     nu = n_max - n_terms
 
-    # use linear least-squares with bounds on the variables
-    bounds = _build_constraints(t_in, x_in, y_in, d_in,
-        INDICES=indices, **kwargs)
-    results = scipy.optimize.lsq_linear(DMAT, d_in, bounds=bounds)
+    # build the constraints for the fit
+    if kwargs['BOUNDED']:
+        bounds = _build_constraints(t_in, x_in, y_in, d_in,
+            INDICES=indices, **kwargs)
+        max_iter = None
+    else:
+        bounds = (-np.inf, np.inf)
+        max_iter = 1
+    # use linear least-squares (with bounds on the variables)
+    results = scipy.optimize.lsq_linear(DMAT, d_in,
+        bounds=bounds, max_iter=max_iter)
     beta_mat = np.zeros((n_total))
     beta_mat[indices] = np.copy(results['x'])
     # estimated mean square error
