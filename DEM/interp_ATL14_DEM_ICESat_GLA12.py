@@ -54,7 +54,10 @@ pyproj = gz.utilities.import_dependency('pyproj')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-def read_ATL14_model(DEM_MODEL, BOUNDS=[-np.inf, np.inf, -np.inf, np.inf]):
+def read_ATL14_model(DEM_MODEL,
+        BOUNDS: list = [-np.inf, np.inf, -np.inf, np.inf],
+        BUFFER: int = 20
+    ):
     """
     Read ATL14 DEM model files within spatial bounds
 
@@ -62,6 +65,7 @@ def read_ATL14_model(DEM_MODEL, BOUNDS=[-np.inf, np.inf, -np.inf, np.inf]):
     ----------
     DEM_MODEL: list of ATL14 DEM model files
     BOUNDS: spatial bounds to crop DEM model files
+    BUFFER: buffer in pixels around the bounds
     """
     # subset ATL14 elevation field to bounds
     DEM = gz.mosaic()
@@ -91,10 +95,10 @@ def read_ATL14_model(DEM_MODEL, BOUNDS=[-np.inf, np.inf, -np.inf, np.inf]):
 
         # determine buffered bounds of data in image coordinates
         # (affine transform)
-        IMxmin = int((BOUNDS[0] - x[0])//DEM.spacing[0]) - 10
-        IMxmax = int((BOUNDS[1] - x[0])//DEM.spacing[0]) + 10
-        IMymin = int((BOUNDS[2] - y[0])//DEM.spacing[1]) - 10
-        IMymax = int((BOUNDS[3] - y[0])//DEM.spacing[1]) + 10
+        IMxmin = int((BOUNDS[0] - x[0])//DEM.spacing[0]) - BUFFER
+        IMxmax = int((BOUNDS[1] - x[0])//DEM.spacing[0]) + BUFFER
+        IMymin = int((BOUNDS[2] - y[0])//DEM.spacing[1]) - BUFFER
+        IMymax = int((BOUNDS[3] - y[0])//DEM.spacing[1]) + BUFFER
         # get buffered bounds of data
         # and convert invalid values to 0
         indx = slice(np.maximum(IMxmin,0), np.minimum(IMxmax,nx), 1)
@@ -130,10 +134,10 @@ def read_ATL14_model(DEM_MODEL, BOUNDS=[-np.inf, np.inf, -np.inf, np.inf]):
 
         # determine buffered bounds of data in image coordinates
         # (affine transform)
-        IMxmin = int((BOUNDS[0] - x[0])//DEM.spacing[0]) - 10
-        IMxmax = int((BOUNDS[1] - x[0])//DEM.spacing[0]) + 10
-        IMymin = int((BOUNDS[2] - y[0])//DEM.spacing[1]) - 10
-        IMymax = int((BOUNDS[3] - y[0])//DEM.spacing[1]) + 10
+        IMxmin = int((BOUNDS[0] - x[0])//DEM.spacing[0]) - BUFFER
+        IMxmax = int((BOUNDS[1] - x[0])//DEM.spacing[0]) + BUFFER
+        IMymin = int((BOUNDS[2] - y[0])//DEM.spacing[1]) - BUFFER
+        IMymax = int((BOUNDS[3] - y[0])//DEM.spacing[1]) + BUFFER
 
         # get buffered bounds of data
         # and convert invalid values to 0
@@ -280,13 +284,16 @@ def interp_ATL14_DEM_ICESat(INPUT_FILE,
         # read ATL14 model for the hemisphere
         DEM = read_ATL14_model(DEM_MODEL, BOUNDS=[xmin, xmax, ymin, ymax])
         # create 2D interpolation of DEM data
-        S1 = scipy.interpolate.RectBivariateSpline(DEM.y, DEM.x, DEM.h.data)
-        S2 = scipy.interpolate.RectBivariateSpline(DEM.y, DEM.x, DEM.h_sigma2.data)
-        S3 = scipy.interpolate.RectBivariateSpline(DEM.y, DEM.x, DEM.ice_area.data)
+        R1 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
+            DEM.h, bounds_error=False)
+        R2 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
+            DEM.h_sigma2, bounds_error=False)
+        R3 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
+            DEM.ice_area, bounds_error=False)
         # interpolate DEM to GLA12 locations
-        dem_h.data[valid] = S1.ev(X[valid], Y[valid])
-        dem_h_sigma.data[valid] = np.sqrt(S2.ev(X[valid], Y[valid]))
-        dem_ice_area[valid] = S3.ev(X[valid], Y[valid])
+        dem_h.data[valid] = R1.__call__(np.c_[Y[valid], X[valid]])
+        dem_h_sigma.data[valid] = np.sqrt(R2.__call__(np.c_[Y[valid], X[valid]]))
+        dem_ice_area[valid] = R3.__call__(np.c_[Y[valid], X[valid]])
         # clear DEM variable
         DEM = None
 
@@ -387,8 +394,7 @@ def interp_ATL14_DEM_ICESat(INPUT_FILE,
     IS_gla12_dem_attrs['Data_40HZ']['Geophysical']['d_DEM_elv']['long_name'] = \
         "DEM Height"
     IS_gla12_dem_attrs['Data_40HZ']['Geophysical']['d_DEM_elv']['description'] = \
-        ("Height of the DEM, interpolated by bivariate-spline interpolation in the DEM "
-        "coordinate system to the segment location.")
+        "Surface height of the digital elevation model (DEM)"
     IS_gla12_dem_attrs['Data_40HZ']['Geophysical']['d_DEM_elv']['source'] = 'ATL14'
     IS_gla12_dem_attrs['Data_40HZ']['Geophysical']['d_DEM_elv']['coordinates'] = \
         "../DS_UTCTime_40"
@@ -401,8 +407,7 @@ def interp_ATL14_DEM_ICESat(INPUT_FILE,
     IS_gla12_dem_attrs['Data_40HZ']['Geophysical']['d_DEM_sigma']['long_name'] = \
         "DEM Uncertainty"
     IS_gla12_dem_attrs['Data_40HZ']['Geophysical']['d_DEM_sigma']['description'] = \
-        ("Uncertainty in the DEM surface height, interpolated by bivariate-spline "
-        "interpolation in the DEM coordinate system to the segment location.")
+        "Uncertainty in the DEM surface height"
     IS_gla12_dem_attrs['Data_40HZ']['Geophysical']['d_DEM_sigma']['source'] = 'ATL14'
     IS_gla12_dem_attrs['Data_40HZ']['Geophysical']['d_DEM_sigma']['coordinates'] = \
         "../DS_UTCTime_40"
