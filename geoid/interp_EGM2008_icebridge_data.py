@@ -31,6 +31,10 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
     timescale: Python tools for time and astronomical calculations
         https://pypi.org/project/timescale/
+        
+PROGRAM DEPENDENCIES:
+    io/icebridge.py: reads NASA Operation IceBridge data files
+    ref_ellipsoid.py: Computes parameters for a reference ellipsoid
 
 UPDATE HISTORY:
     Written 05/2024
@@ -299,7 +303,7 @@ def arguments():
         help='Input Operation IceBridge file to run')
     # set gravity model file to use
     parser.add_argument('--gravity','-G',
-        type=pathlib.Path,
+        type=pathlib.Path, required=True,
         help='Gravity model file to use')
     # load love number of degree 2 (default EGM2008 value)
     parser.add_argument('--love','-n',

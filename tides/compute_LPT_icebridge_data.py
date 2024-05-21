@@ -34,6 +34,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
+    io/icebridge.py: reads NASA Operation IceBridge data files
     spatial.py: utilities for reading, writing and operating on spatial data
     utilities.py: download and management utilities for syncing files
     eop.py: utilities for calculating Earth Orientation Parameters (EOP)

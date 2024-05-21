@@ -26,6 +26,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
+    io/icebridge.py: reads NASA Operation IceBridge data files
     utilities.py: download and management utilities for syncing files
     geoid_undulation.py: geoidal undulation at a given latitude and longitude
     read_ICGEM_harmonics.py: reads the coefficients for a given gravity model file

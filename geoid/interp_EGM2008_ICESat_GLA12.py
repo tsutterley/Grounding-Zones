@@ -32,6 +32,9 @@ PYTHON DEPENDENCIES:
     timescale: Python tools for time and astronomical calculations
         https://pypi.org/project/timescale/
 
+PROGRAM DEPENDENCIES:
+    ref_ellipsoid.py: Computes parameters for a reference ellipsoid
+
 UPDATE HISTORY:
     Written 05/2024
 """
@@ -404,7 +407,7 @@ def arguments():
         help='Output data directory')
     # set gravity model file to use
     parser.add_argument('--gravity','-G',
-        type=pathlib.Path,
+        type=pathlib.Path, required=True,
         help='Gravity model file to use')
     # load love number of degree 2 (default EGM2008 value)
     parser.add_argument('--love','-n',

@@ -24,6 +24,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 PROGRAM DEPENDENCIES:
+    io/icebridge.py: reads NASA Operation IceBridge data files
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
