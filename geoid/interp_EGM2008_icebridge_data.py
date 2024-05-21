@@ -1,15 +1,20 @@
 #!/usr/bin/env python
 u"""
-compute_geoid_icebridge_data.py
+interp_EGM2008_icebridge_data.py
 Written by Tyler Sutterley (05/2024)
-Calculates geoid undulations for correcting Operation IceBridge elevation data
+Reads EGM2008 geoid height spatial grids from unformatted binary files
+provided by the National Geospatial-Intelligence Agency and interpolates
+to Operation IceBridge elevation data
+
+NGA Office of Geomatics
+    https://earth-info.nga.mil/
 
 INPUTS:
     ATM1B, ATM icessn or LVIS file from NSIDC
 
 COMMAND LINE OPTIONS:
-    -G X, --gravity X: Gravity model file to use (.gfc format)
-    -l X, --lmax X: maximum spherical harmonic degree (level of truncation)
+    -O X, --output-directory X: input/output data directory
+    -G X, --gravity X: 2.5x2.5 arcminute geoid height spatial grid
     -n X, --love X: Degree 2 load Love number (default EGM2008 value)
     -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
@@ -18,6 +23,8 @@ PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python
         https://numpy.org
         https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
+    scipy: Scientific Tools for Python
+        https://docs.scipy.org/doc/
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
     pyproj: Python interface to PROJ library
@@ -25,44 +32,11 @@ PYTHON DEPENDENCIES:
     timescale: Python tools for time and astronomical calculations
         https://pypi.org/project/timescale/
 
-PROGRAM DEPENDENCIES:
-    utilities.py: download and management utilities for syncing files
-    geoid_undulation.py: geoidal undulation at a given latitude and longitude
-    read_ICGEM_harmonics.py: reads the coefficients for a given gravity model file
-    real_potential.py: real potential at a latitude and height for gravity model
-    norm_potential.py: normal potential of an ellipsoid at a latitude and height
-    norm_gravity.py: normal gravity of an ellipsoid at a latitude and height
-    ref_ellipsoid.py: Computes parameters for a reference ellipsoid
-    gauss_weights.py: Computes Gaussian weights as a function of degree
-    read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
-
 UPDATE HISTORY:
-    Updated 05/2024: use wrapper to importlib for optional dependencies
-    Updated 08/2023: use time functions from timescale.time
-    Updated 07/2023: using pathlib to define and operate on paths
-    Updated 05/2023: move icebridge data inputs to a separate module in io
-    Updated 12/2022: single implicit import of grounding zone tools
-    Updated 07/2022: update imports of ATM1b QFIT functions to released version
-        place some imports within try/except statements
-    Updated 05/2022: use argparse descriptions within documentation
-    Updated 10/2021: using python logging for handling verbose output
-        using collections to store attributes in order of creation
-        additionally output conversion between tide free and mean tide values
-    Updated 07/2021: can use prefix files to define command line arguments
-    Updated 05/2021: modified import of ATM1b QFIT reader
-    Updated 03/2021: replaced numpy bool/int to prevent deprecation warnings
-    Updated 12/2020: merged time conversion routines into module
-    Updated 10/2020: using argparse to set command line parameters
-    Updated 08/2020: using builtin time operations.  python3 regular expressions
-    Updated 03/2020: use read_ATM1b_QFIT_binary from repository
-    Updated 02/2019: using range for python3 compatibility
-    Updated 10/2018: updated GPS time calculation for calculating leap seconds
-    Written 07/2017
+    Written 05/2024
 """
 from __future__ import print_function
 
-import sys
-import os
 import re
 import time
 import logging
@@ -70,19 +44,20 @@ import pathlib
 import argparse
 import collections
 import numpy as np
+import scipy.interpolate
 import grounding_zones as gz
 
 # attempt imports
 geoidtk = gz.utilities.import_dependency('geoid_toolkit')
 h5py = gz.utilities.import_dependency('h5py')
-is2tk = gz.utilities.import_dependency('icesat2_toolkit')
-pyproj = gz.utilities.import_dependency('pyproj')
 timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: read Operation IceBridge data from NSIDC
-# and computes geoid undulation at points
-def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
-    VERBOSE=False, MODE=0o775):
+# and interpolates EGM2008 geoid undulation at points
+def interp_EGM2008_icebridge_data(model_file, arg,
+    LOVE=0.3,
+    VERBOSE=False,
+    MODE=0o775):
 
     # create logger for verbosity level
     loglevel = logging.INFO if VERBOSE else logging.CRITICAL
@@ -101,16 +76,6 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     else:
         input_subsetter = None
 
-    # read gravity model Ylms and change tide to tide free
-    model_file = pathlib.Path(model_file).expanduser().absolute()
-    Ylms = geoidtk.read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
-    model = Ylms['modelname']
-    R = np.float64(Ylms['radius'])
-    GM = np.float64(Ylms['earth_gravity_constant'])
-    LMAX = np.int64(Ylms['max_degree'])
-    # reference to WGS84 ellipsoid
-    REFERENCE = 'WGS84'
-
     # calculate if input files are from ATM or LVIS (+GH)
     regex = {}
     regex['ATM'] = r'(BLATM2|ILATM2)_(\d+)_(\d+)_smooth_nadir(.*?)(csv|seg|pt)$'
@@ -120,51 +85,6 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     for key,val in regex.items():
         if re.match(val, input_file.name):
             OIB = key
-
-    # HDF5 file attributes
-    attrib = collections.OrderedDict()
-    # J2000 time
-    attrib['time'] = {}
-    attrib['time']['long_name'] = 'Transmit time in J2000 seconds'
-    attrib['time']['units'] = 'seconds since 2000-01-01 12:00:00 UTC'
-    attrib['time']['description'] = ('The transmit time of each shot in '
-        'the 1 second frame measured as UTC seconds elapsed since Jan 1 '
-        '2000 12:00:00 UTC.')
-    attrib['time']['standard_name'] = 'time'
-    attrib['time']['calendar'] = 'standard'
-    # latitude
-    attrib['lat'] = {}
-    attrib['lat']['long_name'] = 'Latitude_of_measurement'
-    attrib['lat']['description'] = ('Corresponding_to_the_measurement_'
-        'position_at_the_acquisition_time')
-    attrib['lat']['units'] = 'Degrees_North'
-    # longitude
-    attrib['lon'] = {}
-    attrib['lon']['long_name'] = 'Longitude_of_measurement'
-    attrib['lon']['description'] = ('Corresponding_to_the_measurement_'
-        'position_at_the_acquisition_time')
-    attrib['lon']['units'] = 'Degrees_East'
-    # geoid undulation
-    attrib['geoid_h'] = {}
-    attrib['geoid_h']['units'] = 'm'
-    attrib['geoid_h']['long_name'] = 'Geoidal_Undulation'
-    args = (Ylms['modelname'], Ylms['max_degree'])
-    attrib['geoid_h']['description'] = ('{0}_geoidal_undulation_'
-        'computed_from_degree_{1}_gravity_model.').format(*args)
-    attrib['geoid_h']['tide_system'] = Ylms['tide_system']
-    attrib['geoid_h']['earth_gravity_constant'] = GM
-    attrib['geoid_h']['radius'] = R
-    attrib['geoid_h']['degree_of_truncation'] = LMAX
-    attrib['geoid_h']['coordinates'] = 'lat lon'
-    # geoid conversion
-    attrib['geoid_free2mean'] = {}
-    attrib['geoid_free2mean']['units'] = 'm'
-    attrib['geoid_free2mean']['long_name'] = 'Geoid_Free-to-Mean_conversion'
-    attrib['geoid_free2mean']['description'] = ('Additive_value_to_convert_'
-        'geoid_heights_from_the_tide-free_system_to_the_mean-tide_system')
-    attrib['geoid_free2mean']['earth_gravity_constant'] = GM
-    attrib['geoid_free2mean']['radius'] = R
-    attrib['geoid_free2mean']['coordinates'] = 'lat lon'
 
     # extract information from first input file
     # acquisition year, month and day
@@ -201,6 +121,93 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
         dinput, file_lines, HEM = gz.io.icebridge.read_LVIS_HDF5_file(
             input_file, input_subsetter)
 
+    # set grid parameters
+    dlon,dlat = (2.5/60.0), (2.5/60.0)
+    latlimit_north, latlimit_south = (90.0, -90.0)
+    longlimit_west, longlimit_east = (0.0, 360.0)
+    # boundary parameters
+    nlat = np.abs((latlimit_north - latlimit_south)/dlat).astype('i') + 1
+    nlon = np.abs((longlimit_west - longlimit_east)/dlon).astype('i') + 1
+    # grid coordinates (degrees)
+    lon = longlimit_west + np.arange(nlon)*dlon
+    lat = latlimit_south + np.arange(nlat)*dlat
+
+    # check that EGM2008 data file is present in file system
+    model_file = pathlib.Path(model_file).expanduser().absolute()
+    if not model_file.exists():
+        raise FileNotFoundError(f'{str(model_file)} not found')
+    # open input file and read contents
+    GRAVITY = np.fromfile(model_file, dtype='<f4').reshape(nlat,nlon+1)
+    # Earth Gravitational Model 2008 parameters
+    GM = 0.3986004415E+15
+    R = 0.63781363E+07
+    LMAX = 2190
+    model = 'EGM2008'
+
+  # HDF5 file attributes
+    attrib = collections.OrderedDict()
+    # J2000 time
+    attrib['time'] = {}
+    attrib['time']['long_name'] = 'Transmit time in J2000 seconds'
+    attrib['time']['units'] = 'seconds since 2000-01-01 12:00:00 UTC'
+    attrib['time']['description'] = ('The transmit time of each shot in '
+        'the 1 second frame measured as UTC seconds elapsed since Jan 1 '
+        '2000 12:00:00 UTC.')
+    attrib['time']['standard_name'] = 'time'
+    attrib['time']['calendar'] = 'standard'
+    # latitude
+    attrib['lat'] = {}
+    attrib['lat']['long_name'] = 'Latitude_of_measurement'
+    attrib['lat']['description'] = ('Corresponding_to_the_measurement_'
+        'position_at_the_acquisition_time')
+    attrib['lat']['units'] = 'Degrees_North'
+    # longitude
+    attrib['lon'] = {}
+    attrib['lon']['long_name'] = 'Longitude_of_measurement'
+    attrib['lon']['description'] = ('Corresponding_to_the_measurement_'
+        'position_at_the_acquisition_time')
+    attrib['lon']['units'] = 'Degrees_East'
+    # geoid undulation
+    attrib['geoid_h'] = {}
+    attrib['geoid_h']['units'] = 'm'
+    attrib['geoid_h']['long_name'] = 'Geoidal_Undulation'
+    attrib['geoid_h']['description'] = ('Geoidal_undulation_with_'
+        'respect_to_WGS84_ellipsoid')
+    attrib['geoid_h']['source'] = 'EGM2008'
+    attrib['geoid_h']['tide_system'] = 'tide_free'
+    attrib['geoid_h']['earth_gravity_constant'] = GM
+    attrib['geoid_h']['radius'] = R
+    attrib['geoid_h']['degree_of_truncation'] = LMAX
+    attrib['geoid_h']['coordinates'] = 'lat lon'
+    # geoid conversion
+    attrib['geoid_free2mean'] = {}
+    attrib['geoid_free2mean']['units'] = 'm'
+    attrib['geoid_free2mean']['long_name'] = 'Geoid_Free-to-Mean_conversion'
+    attrib['geoid_free2mean']['description'] = ('Additive_value_to_convert_'
+        'geoid_heights_from_the_tide-free_system_to_the_mean-tide_system')
+    attrib['geoid_free2mean']['earth_gravity_constant'] = GM
+    attrib['geoid_free2mean']['radius'] = R
+    attrib['geoid_free2mean']['coordinates'] = 'lat lon'
+
+    # geoid undulation (wrapped to 360 degrees)
+    geoid_h = np.zeros((nlat, nlon), dtype=np.float32)
+    geoid_h[:,:-1] = GRAVITY[::-1,1:-1]
+    # repeat values for 360
+    geoid_h[:,-1] = geoid_h[:,0]
+    # create interpolator for geoid height
+    SPL = scipy.interpolate.RectBivariateSpline(lon, lat, geoid_h.T,
+        kx=1, ky=1)
+    # interpolate geoid height to ICESat/GLAS points
+    dinput['geoid_h'] = SPL.ev(dinput['lon'], dinput['lat'])
+
+    # colatitude in radians
+    theta = (90.0 - dinput['lat'])*np.pi/180.0
+    # calculate offset for converting from tide_free to mean_tide
+    # legendre polynomial of degree 2 (unnormalized)
+    P2 = 0.5*(3.0*np.cos(theta)**2 - 1.0)
+    # from Rapp 1991 (Consideration of Permanent Tidal Deformation)
+    dinput['geoid_free2mean'] = -0.198*P2*(1.0 + LOVE)
+
     # output geoid HDF5 file
     # form: rg_NASA_model_GEOID_WGS84_fl1yyyymmddjjjjj.H5
     # where rg is the hemisphere flag (GR or AN) for the region
@@ -220,17 +227,6 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
 
     # open output HDF5 file
     fid = h5py.File(output_file, mode='w')
-
-    # colatitude in radians
-    theta = (90.0 - dinput['lat'])*np.pi/180.0
-    # calculate geoid at coordinates
-    dinput['geoid_h'] = geoidtk.geoid_undulation(dinput['lat'], dinput['lon'],
-        REFERENCE, Ylms['clm'], Ylms['slm'], LMAX, R, GM).astype(np.float64)
-    # calculate offset for converting from tide_free to mean_tide
-    # legendre polynomial of degree 2 (unnormalized)
-    P2 = 0.5*(3.0*np.cos(theta)**2 - 1.0)
-    # from Rapp 1991 (Consideration of Permanent Tidal Deformation)
-    dinput['geoid_free2mean'] = -0.198*P2*(1.0 + LOVE)
 
     # output dictionary with HDF5 variables
     h5 = {}
@@ -252,13 +248,14 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     # HDF5 file attributes
     fid.attrs['featureType'] = 'trajectory'
     fid.attrs['title'] = 'Geoid_height_for_elevation_measurements'
-    fid.attrs['summary'] = 'Geoid_undulation_computed_at_elevation_measurements'
+    fid.attrs['summary'] = ('EGM2008_geoid_undulation_interpolated_to_'
+        'elevation_measurements')
     fid.attrs['project'] = 'NASA_Operation_IceBridge'
     fid.attrs['processing_level'] = '4'
     fid.attrs['date_created'] = time.strftime('%Y-%m-%d',time.localtime())
     # add attributes for input file
     fid.attrs['lineage'] = input_file.name
-    fid.attrs['gravity_model'] = Ylms['modelname']
+    fid.attrs['gravity_model'] = model
     # add geospatial and temporal attributes
     fid.attrs['geospatial_lat_min'] = dinput['lat'].min()
     fid.attrs['geospatial_lat_max'] = dinput['lat'].max()
@@ -289,8 +286,8 @@ def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
-        description="""Calculates geoid undulations for correcting Operation
-            IceBridge elevation data
+        description="""Reads EGM2008 geoid height spatial grids and
+            interpolates to Operation IceBridge elevation data
             """,
         fromfile_prefix_chars="@"
     )
@@ -304,9 +301,6 @@ def arguments():
     parser.add_argument('--gravity','-G',
         type=pathlib.Path,
         help='Gravity model file to use')
-    # maximum spherical harmonic degree (level of truncation)
-    parser.add_argument('--lmax','-l',
-        type=int, help='Maximum spherical harmonic degree')
     # load love number of degree 2 (default EGM2008 value)
     parser.add_argument('--love','-n',
         type=float, default=0.3,
@@ -329,11 +323,12 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    # run for each input file
-    for arg in args.infile:
-        compute_geoid_icebridge_data(args.gravity, arg, LMAX=args.lmax,
-            LOVE=args.love, VERBOSE=args.verbose, MODE=args.mode)
-
+    # run for each input GLAH12 file
+    for FILE in args.infile:
+        interp_EGM2008_icebridge_data(args.gravity, FILE,
+            LOVE=args.love,
+            VERBOSE=args.verbose,
+            MODE=args.mode)
 
 # run main program
 if __name__ == '__main__':
