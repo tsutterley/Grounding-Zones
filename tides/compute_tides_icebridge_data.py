@@ -53,6 +53,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
+    io/icebridge.py: reads NASA Operation IceBridge data files
     utilities.py: download and management utilities for syncing files
     astro.py: computes the basic astronomical mean longitudes
     crs.py: Coordinate Reference System (CRS) routines

@@ -48,8 +48,8 @@ def arguments():
     # Operation IceBridge product
     choices = ('BLATM1B','BLATM2','ILATM1B','ILATM2','ILVGH2','ILVIS2')
     parser.add_argument('--product','-p',
-        metavar='PRODUCTS', type=str,
-        choices=choices, default='ILATM2.002',
+        metavar='PRODUCT', type=str,
+        choices=choices, required=True,
         help='OIB data product to create symbolic links')
     # incoming directory with Operation IceBridge data
     parser.add_argument('--incoming',
