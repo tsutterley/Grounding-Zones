@@ -88,6 +88,8 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/geoid/compute_geoid_ICESat2_ATL10.rst
     api_reference/geoid/compute_geoid_ICESat2_ATL11.rst
     api_reference/geoid/compute_geoid_ICESat2_ATL12.rst
+    api_reference/geoid/interp_EGM2008_icebridge_data.rst
+    api_reference/geoid/interp_EGM2008_ICESat_GLA12.rst
 
 .. toctree::
     :maxdepth: 1

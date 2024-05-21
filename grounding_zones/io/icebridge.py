@@ -21,6 +21,7 @@ UPDATE HISTORY:
         added output writer for LVIS HDF5 files
         include functions for converting ITRF
         use wrapper to importlib for optional dependencies
+        fix cases in ATM level-2 data where a line is empty
     Updated 10/2023: add reader for ATM ITRF convention lookup table
     Updated 08/2023: use time functions from timescale.time
     Updated 07/2023: add function docstrings in numpydoc format
@@ -434,7 +435,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     # read the input file, split at lines and remove all commented lines
     with open(input_file, mode='r', encoding='utf8') as f:
         file_contents = [i for i in f.read().splitlines() if
-            re.match(r'^(?!\#|\n)',i)]
+            re.match(r'^(?!\#|\n)',i) and rx.search(i)]
     # number of lines of data within file
     file_lines = file_length(input_file, input_subsetter)
     # output python dictionary with variables

@@ -1,17 +1,20 @@
 #!/usr/bin/env python
 u"""
-compute_geoid_ICESat_GLA12.py
+interp_EGM2008_ICESat_GLA12.py
 Written by Tyler Sutterley (05/2024)
-Computes geoid undulations for correcting ICESat/GLAS L2 GLA12
-    Antarctic and Greenland Ice Sheet elevation data
+Reads EGM2008 geoid height spatial grids from unformatted binary files
+provided by the National Geospatial-Intelligence Agency and interpolates
+to ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
+
+NGA Office of Geomatics
+    https://earth-info.nga.mil/
 
 INPUTS:
     input_file: ICESat GLA12 data file
 
 COMMAND LINE OPTIONS:
     -O X, --output-directory X: input/output data directory
-    -G X, --gravity X: Gravity model file to use (.gfc format)
-    -l X, --lmax X: maximum spherical harmonic degree (level of truncation)
+    -G X, --gravity X: 2.5x2.5 arcminute geoid height spatial grid
     -n X, --love X: Degree 2 load Love number (default EGM2008 value)
     -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
@@ -29,34 +32,8 @@ PYTHON DEPENDENCIES:
     timescale: Python tools for time and astronomical calculations
         https://pypi.org/project/timescale/
 
-PROGRAM DEPENDENCIES:
-    utilities.py: download and management utilities for syncing files
-    geoid_undulation.py: geoidal undulation at a given latitude and longitude
-    read_ICGEM_harmonics.py: reads the coefficients for a given gravity model file
-    real_potential.py: real potential at a latitude and height for gravity model
-    norm_potential.py: normal potential of an ellipsoid at a latitude and height
-    norm_gravity.py: normal gravity of an ellipsoid at a latitude and height
-    ref_ellipsoid.py: Computes parameters for a reference ellipsoid
-    gauss_weights.py: Computes Gaussian weights as a function of degree
-
 UPDATE HISTORY:
-    Updated 05/2024: use wrapper to importlib for optional dependencies
-    Updated 08/2023: create s3 filesystem when using s3 urls as input
-    Updated 07/2023: using pathlib to define and operate on paths
-    Updated 12/2022: single implicit import of grounding zone tools
-        use reference ellipsoid function from geoid toolkit for parameters
-    Updated 07/2022: place some imports within try/except statements
-    Updated 05/2022: use argparse descriptions within documentation
-    Updated 10/2021: using python logging for handling verbose output
-        additionally output conversion between tide free and mean tide values
-    Updated 07/2021: can use prefix files to define command line arguments
-    Updated 04/2021: can use a generically named GLA12 file as input
-    Updated 03/2021: replaced numpy bool/int to prevent deprecation warnings
-    Updated 12/2020: H5py deprecation warning change to use make_scale
-    Updated 10/2020: using argparse to set command line parameters
-    Updated 08/2020: using python3 compatible regular expressions
-    Updated 10/2019: changing Y/N flags to True/False
-    Written 07/2017
+    Written 05/2024
 """
 from __future__ import print_function
 
@@ -65,18 +42,19 @@ import logging
 import pathlib
 import argparse
 import numpy as np
+import scipy.interpolate
 import grounding_zones as gz
 
 # attempt imports
 geoidtk = gz.utilities.import_dependency('geoid_toolkit')
 h5py = gz.utilities.import_dependency('h5py')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
-# and computes geoid undulation at points
-def compute_geoid_ICESat(model_file, INPUT_FILE,
+# and interpolates EGM2008 geoid undulation at points
+def interp_EGM2008_ICESat(model_file, INPUT_FILE,
     OUTPUT_DIRECTORY=None,
-    LMAX=None,
-    LOVE=None,
+    LOVE=0.3,
     VERBOSE=False,
     MODE=0o775):
 
@@ -88,16 +66,7 @@ def compute_geoid_ICESat(model_file, INPUT_FILE,
     logging.info(f'{str(INPUT_FILE)} -->')
     # input granule basename
     GRANULE = INPUT_FILE.name
-
-    # read gravity model Ylms and change tide to tide free
-    model_file = pathlib.Path(model_file).expanduser().absolute()
-    Ylms = geoidtk.read_ICGEM_harmonics(model_file, LMAX=LMAX, TIDE='tide_free')
-    model = Ylms['modelname']
-    R = np.float64(Ylms['radius'])
-    GM = np.float64(Ylms['earth_gravity_constant'])
-    LMAX = np.int64(Ylms['max_degree'])
-    # reference to WGS84 ellipsoid
-    REFERENCE = 'WGS84'
+    model = 'EGM2008'
 
     # compile regular expression operator for extracting information from file
     rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
@@ -164,9 +133,39 @@ def compute_geoid_ICESat(model_file, INPUT_FILE,
     # colatitude in radians
     theta_40HZ = (90.0 - lat_40HZ)*np.pi/180.0
 
-    # calculate geoid at coordinates
-    N = geoidtk.geoid_undulation(lat_40HZ, lon_40HZ, REFERENCE,
-        Ylms['clm'], Ylms['slm'], LMAX, R, GM, GAUSS=0)
+    # set grid parameters
+    dlon,dlat = (2.5/60.0), (2.5/60.0)
+    latlimit_north, latlimit_south = (90.0, -90.0)
+    longlimit_west, longlimit_east = (0.0, 360.0)
+    # boundary parameters
+    nlat = np.abs((latlimit_north - latlimit_south)/dlat).astype('i') + 1
+    nlon = np.abs((longlimit_west - longlimit_east)/dlon).astype('i') + 1
+    # grid coordinates (degrees)
+    lon = longlimit_west + np.arange(nlon)*dlon
+    lat = latlimit_south + np.arange(nlat)*dlat
+
+    # check that EGM2008 data file is present in file system
+    model_file = pathlib.Path(model_file).expanduser().absolute()
+    if not model_file.exists():
+        raise FileNotFoundError(f'{str(model_file)} not found')
+    # open input file and read contents
+    GRAVITY = np.fromfile(model_file, dtype='<f4').reshape(nlat,nlon+1)
+    # Earth Gravitational Model 2008 parameters
+    GM = 0.3986004415E+15
+    R = 0.63781363E+07
+    LMAX = 2190
+
+    # geoid undulation (wrapped to 360 degrees)
+    geoid_h = np.zeros((nlat, nlon), dtype=np.float32)
+    geoid_h[:,:-1] = GRAVITY[::-1,1:-1]
+    # repeat values for 360
+    geoid_h[:,-1] = geoid_h[:,0]
+    # create interpolator for geoid height
+    SPL = scipy.interpolate.RectBivariateSpline(lon, lat, geoid_h.T,
+        kx=1, ky=1)
+    # interpolate geoid height to ICESat/GLAS points
+    N = SPL.ev(lon_40HZ, lat_40HZ)
+
     # calculate offset for converting from tide_free to mean_tide
     # legendre polynomial of degree 2 (unnormalized)
     P2 = 0.5*(3.0*np.cos(theta_40HZ)**2 - 1.0)
@@ -268,14 +267,15 @@ def compute_geoid_ICESat(model_file, INPUT_FILE,
     IS_gla12_fill['Data_40HZ']['Geophysical']['d_gdHt'] = None
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt'] = {}
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['units'] = "meters"
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['long_name'] = 'Geoidal_Undulation'
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['description'] = ('Geoidal '
-        f'undulation above the {REFERENCE} ellipsoid')
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['tide_system'] = Ylms['tide_system']
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['source'] = Ylms['modelname']
+    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['long_name'] = \
+        'Geoidal_Undulation'
+    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['description'] = \
+        'Geoidal undulation with respect to WGS84 ellipsoid'
+    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['tide_system'] = 'tide_free'
+    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['source'] = 'EGM2008'
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['earth_gravity_constant'] = GM
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['radius'] = R
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['degree_of_truncation'] = LMAX
+    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['max_degree'] = LMAX
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdHt']['coordinates'] = \
         "../DS_UTCTime_40"
     # geoid conversion
@@ -283,8 +283,8 @@ def compute_geoid_ICESat(model_file, INPUT_FILE,
     IS_gla12_fill['Data_40HZ']['Geophysical']['d_gdfree2mean'] = None
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean'] = {}
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean']['units'] = "meters"
-    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean']['long_name'] = ('Geoid_'
-        'Free-to-Mean_conversion')
+    IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean']['long_name'] = \
+        'Geoid_Free-to-Mean_conversion'
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean']['description'] = ('Additive '
         'value to convert geoid heights from the tide-free system to the mean-tide system')
     IS_gla12_geoid_attrs['Data_40HZ']['Geophysical']['d_gdfree2mean']['earth_gravity_constant'] = GM
@@ -386,8 +386,9 @@ def HDF5_GLA12_geoid_write(IS_gla12_geoid, IS_gla12_attrs,
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
-        description="""Calculates geoid undulations for correcting ICESat/GLAS
-            L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
+        description="""Reads EGM2008 geoid height spatial grids and
+            interpolates to ICESat/GLAS L2 GLA12 Antarctic and Greenland
+            Ice Sheet elevation data
             """,
         fromfile_prefix_chars="@"
     )
@@ -405,9 +406,6 @@ def arguments():
     parser.add_argument('--gravity','-G',
         type=pathlib.Path,
         help='Gravity model file to use')
-    # maximum spherical harmonic degree (level of truncation)
-    parser.add_argument('--lmax','-l',
-        type=int, help='Maximum spherical harmonic degree')
     # load love number of degree 2 (default EGM2008 value)
     parser.add_argument('--love','-n',
         type=float, default=0.3,
@@ -432,9 +430,8 @@ def main():
 
     # run for each input GLAH12 file
     for FILE in args.infile:
-        compute_geoid_ICESat(args.gravity, FILE,
+        interp_EGM2008_ICESat(args.gravity, FILE,
             OUTPUT_DIRECTORY=args.output_directory,
-            LMAX=args.lmax,
             LOVE=args.love,
             VERBOSE=args.verbose,
             MODE=args.mode)
