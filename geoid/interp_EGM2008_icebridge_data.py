@@ -197,7 +197,7 @@ def interp_EGM2008_icebridge_data(model_file, arg,
     # create interpolator for geoid height
     SPL = scipy.interpolate.RectBivariateSpline(lon, lat, geoid_h.T,
         kx=1, ky=1)
-    # interpolate geoid height to ICESat/GLAS points
+    # interpolate geoid height to elevation coordinates
     dinput['geoid_h'] = SPL.ev(dinput['lon'], dinput['lat'])
 
     # colatitude in radians
