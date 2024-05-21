@@ -317,7 +317,7 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         # write to output HDF5 file
         HDF5_ATL06_dem_write(IS2_atl06_dem, IS2_atl06_dem_attrs,
             FILENAME=OUTPUT_FILE,
-            INPUT=GRANULE,
+            INPUT=[GRANULE, *DEM_MODEL],
             FILL_VALUE=IS2_atl06_fill,
             DIMENSIONS=IS2_atl06_dims,
             CLOBBER=True)
@@ -325,7 +325,7 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the interpolated DEM data for ICESat-2 data to HDF5
-def HDF5_ATL06_dem_write(IS2_atl06_dem, IS2_atl06_attrs, INPUT=None,
+def HDF5_ATL06_dem_write(IS2_atl06_dem, IS2_atl06_attrs, INPUT=[],
     FILENAME='', FILL_VALUE=None, DIMENSIONS=None, CLOBBER=True):
     # setting HDF5 clobber attribute
     if CLOBBER:
@@ -445,8 +445,8 @@ def HDF5_ATL06_dem_write(IS2_atl06_dem, IS2_atl06_attrs, INPUT=None,
     fileID.attrs['source'] = 'Spacecraft'
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
-    # add attributes for input ATL06 file
-    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
+    # add attributes for input files
+    fileID.attrs['lineage'] = [pathlib.Path(i).name for i in INPUT]
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for gtx in beams:

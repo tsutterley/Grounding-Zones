@@ -307,13 +307,14 @@ def interp_ATL14_DEM_ICESat(INPUT_FILE,
     HDF5_GLA12_dem_write(IS_gla12_dem, IS_gla12_dem_attrs,
         FILENAME=OUTPUT_FILE,
         FILL_VALUE=IS_gla12_fill,
+        INPUT=[GRANULE, *DEM_MODEL],
         CLOBBER=True)
     # change the permissions mode
     OUTPUT_FILE.chmod(mode=MODE)
 
 # PURPOSE: outputting the DEM values for ICESat data to HDF5
 def HDF5_GLA12_dem_write(IS_gla12_tide, IS_gla12_attrs,
-    FILENAME='', FILL_VALUE=None, CLOBBER=False):
+    FILENAME='', INPUT=[], FILL_VALUE=None, CLOBBER=False):
     # setting HDF5 clobber attribute
     if CLOBBER:
         clobber = 'w'
@@ -334,6 +335,8 @@ def HDF5_GLA12_dem_write(IS_gla12_tide, IS_gla12_attrs,
     # add software information
     fileID.attrs['software_reference'] = gz.version.project_name
     fileID.attrs['software_version'] = gz.version.full_version
+    # add attributes for input files
+    fileID.attrs['lineage'] = [pathlib.Path(i).name for i in INPUT]
 
     # create Data_40HZ group
     fileID.create_group('Data_40HZ')
