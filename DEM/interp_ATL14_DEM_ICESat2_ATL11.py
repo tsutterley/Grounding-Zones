@@ -32,6 +32,7 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
         use regular grid interpolator for DEM data instead of spline
+        refactor read ATL14 function to external module 
     Updated 09/2023: check that subsetted DEM has a valid shape and mask
         set DEM data type as float32 to reduce memory usage
     Updated 08/2023: create s3 filesystem when using s3 urls as input
@@ -122,7 +123,7 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
     R1 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
         DEM.h, bounds_error=False)
     R2 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
-        DEM.h_sigma2, bounds_error=False)
+        DEM.h_sigma**2, bounds_error=False)
     R3 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
         DEM.ice_area, bounds_error=False)
     # clear DEM variable

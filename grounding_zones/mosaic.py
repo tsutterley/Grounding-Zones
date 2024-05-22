@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 mosaic.py
-Written by Tyler Sutterley (08/2023)
+Written by Tyler Sutterley (05/2024)
 Utilities for creating spatial mosaics
 
 PYTHON DEPENDENCIES:
@@ -10,6 +10,7 @@ PYTHON DEPENDENCIES:
         https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
 
 UPDATE HISTORY:
+    Updated 05/2024: make subscriptable and allow item assignment
     Written 08/2023
 """
 from __future__ import print_function, annotations
@@ -23,6 +24,12 @@ class mosaic:
         self.extent = [np.inf,-np.inf,np.inf,-np.inf]
         self.spacing = [None,None]
         self.fill_value = np.nan
+
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
 
     def update_spacing(self, x, y):
         """

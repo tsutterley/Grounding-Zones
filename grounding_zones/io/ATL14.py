@@ -37,7 +37,8 @@ pyproj = import_dependency('pyproj')
 
 def ATL14(DEM_MODEL: str | list | IOBase,
         BOUNDS: list | np.ndarray | None = None,
-        BUFFER: int | float = 20
+        BUFFER: int | float = 20,
+        FIELDS: list = ['h', 'h_sigma', 'ice_area'],
     ):
     """
     Read and mosaic ATL14 DEM model files within spatial bounds
@@ -50,6 +51,8 @@ def ATL14(DEM_MODEL: str | list | IOBase,
         spatial bounds to crop DEM model files
     BUFFER: int | float, default 20
         buffer in pixels around the bounds
+    FIELDS: list, default ['h', 'h_sigma', 'ice_area']
+        fields to extract from ATL14 DEM model files
     """
     # verify ATL14 DEM file is iterable
     if isinstance(DEM_MODEL, (str, IOBase)):
@@ -86,7 +89,7 @@ def ATL14(DEM_MODEL: str | list | IOBase,
         # get size of DEM
         ny, nx = len(y), len(x)
         # set coordinate reference system
-        setattr(DEM, 'crs', pyproj.CRS.from_epsg(spatial_epsg))
+        DEM['crs'] = pyproj.CRS.from_epsg(spatial_epsg)
 
         # get maximum bounds of DEM
         if BOUNDS is None:
@@ -111,9 +114,9 @@ def ATL14(DEM_MODEL: str | list | IOBase,
         raise ValueError('Values outside of ATL14 range')
 
     # fill ATL14 to mosaic
-    DEM.h = np.ma.zeros(DEM.shape, dtype=np.float32, fill_value=fv)
-    DEM.h_sigma2 = np.ma.zeros(DEM.shape, dtype=np.float32, fill_value=fv)
-    DEM.ice_area = np.ma.zeros(DEM.shape, dtype=np.float32, fill_value=fv)
+    for field in FIELDS:
+        DEM[field] = np.ma.zeros(DEM.shape, dtype=np.float32, fill_value=fv)
+
     # iterate over each ATL14 DEM file
     for MODEL in DEM_MODEL:
         # check if DEM is an s3 presigned url
@@ -153,17 +156,17 @@ def ATL14(DEM_MODEL: str | list | IOBase,
 
         # create mosaic of DEM variables
         if np.any(iy) and np.any(ix):
-            DEM.h[iy, ix] = fileID['h'][indy, indx]
-            DEM.h_sigma2[iy, ix] = fileID['h_sigma'][indy, indx]**2
-            DEM.ice_area[iy, ix] = fileID['ice_area'][indy, indx]
+            # for each field
+            for field in FIELDS:
+                DEM[field][iy, ix] = fileID[field][indy, indx]
         # close the ATL14 file
         fileID.close()
 
     # update masks for DEM
-    for key in ['h', 'h_sigma2', 'ice_area']:
-        val = getattr(DEM, key)
-        val.mask = (val.data == val.fill_value) | np.isnan(val.data)
-        val.data[val.mask] = val.fill_value
+    for field in FIELDS:
+        DEM[field].mask = (DEM[field].data == DEM[field].fill_value) | \
+            np.isnan(DEM[field].data)
+        DEM[field].data[DEM[field].mask] = DEM[field].fill_value
 
     # return the DEM object
     return DEM

@@ -23,6 +23,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
+        make subscriptable and allow item assignment
     Updated 11/2023: cache interpolators for improving computational times
     Written 10/2023
 """
@@ -47,6 +48,12 @@ class raster:
         self.fields = []
         self.attributes = dict()
         self.interpolator = collections.OrderedDict()
+
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
 
     # PURPOSE: read a raster file
     def from_file(self, input_file, format=None, **kwargs):
@@ -76,7 +83,7 @@ class raster:
             else:
                 self.fields.append(key)
             # set attribute
-            setattr(self, key, val)
+            self[key] = val
         # return the raster object
         return self
 
@@ -110,7 +117,7 @@ class raster:
         # for each field in the input data
         for field in self.fields:
             # extract data for field
-            d_in = getattr(self, field)
+            d_in = self[field]
             # interpolate values
             if (order == 0):
                 # interpolate with nearest-neighbors
@@ -180,7 +187,7 @@ class raster:
         # for each field in the input data
         for field in self.fields:
             # extract data for field
-            d_in = getattr(self, field)
+            d_in = self[field]
             # interpolate values
             if (order == 0):
                 # interpolate with nearest-neighbors
@@ -196,7 +203,7 @@ class raster:
                     mask = reducer(d_in.mask[YI, XI])
                     d_out = np.ma.array(d_out, mask=mask.astype(bool))
                 # set interpolated data for field
-                setattr(temp, field, d_out)
+                temp[field] = d_out
             else:
                 # interpolate with bivariate spline approximations
                 # cache interpolator for faster interpolation
@@ -218,7 +225,7 @@ class raster:
                     mask = reducer(self.interpolator[field].mask.ev(xout, yout))
                     d_out = np.ma.array(d_out, mask=mask.astype(bool))
                 # set interpolated data for field
-                setattr(temp, field, d_out)
+                temp[field] = d_out
         # return the interpolated data on the output grid
         return temp
 
@@ -269,7 +276,7 @@ class raster:
         temp = raster()
         # copy attributes or update attributes dictionary
         if isinstance(self.attributes, list):
-            setattr(temp, 'attributes', self.attributes)
+            temp['attributes'] = self.attributes
         elif isinstance(self.attributes, dict):
             temp.attributes.update(self.attributes)
         # get dimensions and field names
@@ -278,7 +285,7 @@ class raster:
         # assign variables to self
         for key in [*self.dims, *self.fields]:
             try:
-                setattr(temp, key, getattr(self, key))
+                temp[key] = self[key].copy()
             except AttributeError:
                 pass
         return temp
@@ -302,7 +309,7 @@ class raster:
         # attempt to reverse possible data variables
         for key in self.fields:
             try:
-                setattr(temp, key, np.flip(getattr(self, key), axis=axis))
+                temp[key] = np.flip(self[key], axis=axis)
             except Exception as exc:
                 pass
         return temp

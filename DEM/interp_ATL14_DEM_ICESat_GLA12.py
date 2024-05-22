@@ -150,12 +150,6 @@ def interp_ATL14_DEM_ICESat(INPUT_FILE,
     # convert from latitude/longitude to polar stereographic
     X,Y = transformer.transform(lon_40HZ, lat_40HZ)
 
-    # output interpolated digital elevation model
-    dem_h = np.ma.zeros((n_40HZ), fill_value=fv, dtype=np.float32)
-    dem_h.mask = np.ma.zeros((n_40HZ), dtype=bool)
-    dem_h_sigma = np.ma.zeros((n_40HZ), fill_value=fv, dtype=np.float32)
-    dem_h_sigma.mask = np.ma.zeros((n_40HZ), dtype=bool)
-    dem_ice_area = np.zeros((n_40HZ))
     # extract valid GLA12 data
     valid, = np.nonzero((np.sign(lat_40HZ) == SIGN[HEM]) & (elev_TPX != fv))
     # check if there are valid points for the hemisphere
@@ -173,12 +167,18 @@ def interp_ATL14_DEM_ICESat(INPUT_FILE,
     R1 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
         DEM.h, bounds_error=False)
     R2 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
-        DEM.h_sigma2, bounds_error=False)
+        DEM.h_sigma**2, bounds_error=False)
     R3 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
         DEM.ice_area, bounds_error=False)
     # clear DEM variable
     DEM = None
 
+    # output interpolated digital elevation model
+    dem_h = np.ma.zeros((n_40HZ), fill_value=fv, dtype=np.float32)
+    dem_h.mask = np.ma.zeros((n_40HZ), dtype=bool)
+    dem_h_sigma = np.ma.zeros((n_40HZ), fill_value=fv, dtype=np.float32)
+    dem_h_sigma.mask = np.ma.zeros((n_40HZ), dtype=bool)
+    dem_ice_area = np.zeros((n_40HZ))
     # interpolate DEM to GLA12 locations
     dem_h.data[valid] = R1.__call__(np.c_[Y[valid], X[valid]])
     dem_h_sigma.data[valid] = np.sqrt(R2.__call__(np.c_[Y[valid], X[valid]]))
