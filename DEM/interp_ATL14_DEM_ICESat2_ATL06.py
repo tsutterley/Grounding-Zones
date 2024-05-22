@@ -126,8 +126,6 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
         DEM.h_sigma**2, bounds_error=False)
     R3 = scipy.interpolate.RegularGridInterpolator((DEM.y, DEM.x),
         DEM.ice_area, bounds_error=False)
-    # clear DEM variable
-    DEM = None
 
     # copy variables for outputting to HDF5 file
     IS2_atl06_dem = {}
