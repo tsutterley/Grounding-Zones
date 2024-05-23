@@ -758,7 +758,7 @@ def fit_surface_tiles(tile_files,
                 u[key] = val[clipped]
             # try to fit a surface to the data
             try:
-                fit = gz.fit.reduce_fit(
+                fit = gz.fit.iterative_surface(
                     tdec, u['x'], u['y'], u['data'],
                     FIT_TYPE=FIT_TYPE,
                     ITERATIONS=ITERATIONS,

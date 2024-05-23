@@ -2,7 +2,7 @@
 fit_surface_tiles.py
 ====================
 
-Fits a time-variable surface to altimetry data
+Fits a time-variable surface to altimetry data [Schenk2012]_ [Smith2009]_ [Smith2017]_ [Sutterley2014]_
 
 `Source code`__
 

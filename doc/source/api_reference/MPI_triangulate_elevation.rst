@@ -2,7 +2,7 @@
 MPI_triangulate_elevation.py
 ============================
 
-- Calculates interpolated elevations by triangulated irregular network meshing (TINs) to compare with an input file
+- Calculates interpolated elevations by triangulated irregular networks (TINs) [Pritchard2009]_ [Sutterley2018]_ [Sutterley2019]_
 
 `Source code`__
 

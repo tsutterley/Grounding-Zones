@@ -2,7 +2,7 @@
 fit
 ===
 
-Fits a polynomial surface to a set of points
+Utilities for creating models from surface elevation data
 
 `Source code`__
 
@@ -11,9 +11,13 @@ Fits a polynomial surface to a set of points
 General Methods
 ===============
 
-.. autofunction:: grounding_zones.fit.reduce_fit
+.. autofunction:: grounding_zones.fit.iterative_surface
 
-.. autofunction:: grounding_zones.fit.surface_fit
+.. autofunction:: grounding_zones.fit.polynomial_surface
+
+.. autofunction:: grounding_zones.fit.piecewise_bending
+
+.. autofunction:: grounding_zones.fit.elastic_bending
 
 .. autofunction:: grounding_zones.fit.median_filter
 
@@ -32,3 +36,7 @@ General Methods
 .. autofunction:: grounding_zones.fit._chebyshev
 
 .. autofunction:: grounding_zones.fit._surface
+
+.. autofunction:: grounding_zones.fit._elastic
+
+.. autofunction:: grounding_zones.fit._confidence_interval
