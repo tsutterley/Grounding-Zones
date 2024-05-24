@@ -50,9 +50,6 @@ PYTHON DEPENDENCIES:
     scipy: Scientific Tools for Python (Spatial algorithms and data structures)
         https://docs.scipy.org/doc/
         https://docs.scipy.org/doc/scipy/reference/spatial.html
-    matplotlib: Python 2D plotting library
-        http://matplotlib.org/
-        https://github.com/matplotlib/matplotlib
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
     fiona: Python wrapper for vector data access functions from the OGR library
@@ -88,8 +85,6 @@ import grounding_zones as gz
 # attempt imports
 fiona = gz.utilities.import_dependency('fiona')
 h5py = gz.utilities.import_dependency('h5py')
-is2tk = gz.utilities.import_dependency('icesat2_toolkit')
-plt = gz.utilities.import_dependency('matplotlib.pyplot')
 pyproj = gz.utilities.import_dependency('pyproj')
 geometry = gz.utilities.import_dependency('shapely.geometry')
 timescale = gz.utilities.import_dependency('timescale')
@@ -136,12 +131,12 @@ def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
 # PURPOSE: attempt to read the mask variables
 def read_grounding_zone_mask(mask_file):
     # check that mask file and variable exists
-    for mask in ['ice_gz', 'mask']:
+    for mask in ['d_ice_gz', 'mask']:
         try:
             # extract mask values to create grounding zone mask
             fileID = gz.io.multiprocess_h5py(mask_file, mode='r')
             # read buffered grounding zone mask
-            ice_gz = fileID['Data_40HZ']['subsetting'][mask][:].copy()
+            ice_gz = fileID['Data_40HZ']['Subsetting'][mask][:].copy()
         except Exception as exc:
             logging.debug(traceback.format_exc())
             pass
@@ -804,10 +799,6 @@ def arguments():
     parser.add_argument('--geoid','-G',
         metavar='GEOID', type=str,
         help='Geoid height model to use in correction')
-    # create test plots
-    parser.add_argument('--plot','-P',
-        default=False, action='store_true',
-        help='Create plots of flexural zone')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',

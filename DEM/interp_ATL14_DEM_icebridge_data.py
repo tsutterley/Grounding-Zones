@@ -56,7 +56,7 @@ pyproj = gz.utilities.import_dependency('pyproj')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12)
 # interpolate DEM data to x and y coordinates
 def interp_ATL14_DEM_icebridge_data(arg,
     DEM_MODEL=None,

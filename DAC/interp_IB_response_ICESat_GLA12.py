@@ -52,6 +52,7 @@ REFERENCES:
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
         fix memory allocation for output 40HZ data
+        use ellipsoid transformation function from pyTMD
     Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from pyTMD.time
@@ -79,7 +80,6 @@ import grounding_zones as gz
 
 # attempt imports
 h5py = gz.utilities.import_dependency('h5py')
-is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 netCDF4 = gz.utilities.import_dependency('netCDF4')
 pyproj = gz.utilities.import_dependency('pyproj')
 pyTMD = gz.utilities.import_dependency('pyTMD')
@@ -210,7 +210,7 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
     # return the sea level pressure anomalies and times
     return (SLP, TPX, latitude, MJD)
 
-# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12)
 # calculate and interpolate the instantaneous inverse barometer response
 def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL,
     OUTPUT_DIRECTORY=None,
@@ -341,8 +341,9 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL,
     topex = pyTMD.datum(ellipsoid='TOPEX', units='MKS')
     wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = is2tk.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
-        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
+    lat_40HZ,elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
+        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat,
+        eps=1e-12, itmax=10)
     # colatitude in radians
     theta_40HZ = (90.0 - lat_40HZ)*np.pi/180.0
 

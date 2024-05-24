@@ -53,7 +53,7 @@ geoidtk = gz.utilities.import_dependency('geoid_toolkit')
 h5py = gz.utilities.import_dependency('h5py')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12)
 # and interpolates EGM2008 geoid undulation at points
 def interp_EGM2008_ICESat(model_file, INPUT_FILE,
     OUTPUT_DIRECTORY=None,

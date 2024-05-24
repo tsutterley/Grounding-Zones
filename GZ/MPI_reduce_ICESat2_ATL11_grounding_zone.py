@@ -44,6 +44,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
+        simplify output attributes for mask variables
     Updated 11/2023: add option to read a specific georeferenced file
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from timescale.time
@@ -430,13 +431,16 @@ def main():
         IS2_atl11_fill[ptx]['subsetting']['ice_gz'] = None
         IS2_atl11_dims[ptx]['subsetting']['ice_gz'] = ['ref_pt']
         IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz'] = {}
-        IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['contentType'] = "referenceInformation"
-        IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['long_name'] = 'Grounding Zone Mask'
+        IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['contentType'] = \
+            "referenceInformation"
+        IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['long_name'] = \
+            'Grounding Zone Mask'
         IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['description'] = \
-            ("Grounding zone mask calculated using delineations from {0} buffered by "
-             "{1:0.0f} km.".format(grounded_description[HEM], args.buffer))
-        IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['reference'] = grounded_reference[HEM]
-        IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['source'] = args.buffer
+            f"Grounding zone mask buffered by {args.buffer:0.0f} km"
+        IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['reference'] = \
+            grounded_reference[HEM]
+        IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['source'] = \
+            grounded_description[HEM]
         IS2_atl11_mask_attrs[ptx]['subsetting']['ice_gz']['coordinates'] = \
             "../ref_pt ../delta_time ../latitude ../longitude"
         # wait for all processes to finish calculation

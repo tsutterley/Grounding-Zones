@@ -126,7 +126,7 @@ h5py = gz.utilities.import_dependency('h5py')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12)
 # compute tides at points and times using tidal model driver algorithms
 def compute_tides_ICESat(tide_dir, INPUT_FILE,
         OUTPUT_DIRECTORY=None,

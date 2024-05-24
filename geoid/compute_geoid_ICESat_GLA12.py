@@ -71,7 +71,7 @@ import grounding_zones as gz
 geoidtk = gz.utilities.import_dependency('geoid_toolkit')
 h5py = gz.utilities.import_dependency('h5py')
 
-# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12)
 # and computes geoid undulation at points
 def compute_geoid_ICESat(model_file, INPUT_FILE,
     OUTPUT_DIRECTORY=None,

@@ -72,7 +72,7 @@ import grounding_zones as gz
 # attempt imports
 h5py = gz.utilities.import_dependency('h5py')
 
-# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12)
 # Calculates quality summary flags for ice sheet elevation data
 def filter_ICESat_GLA12(INPUT_FILE,
     OUTPUT_DIRECTORY=None,

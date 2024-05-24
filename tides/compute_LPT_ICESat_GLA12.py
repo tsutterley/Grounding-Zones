@@ -82,7 +82,7 @@ h5py = gz.utilities.import_dependency('h5py')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12)
 # compute load pole tide radial displacements at points and times
 def compute_LPT_ICESat(INPUT_FILE,
         OUTPUT_DIRECTORY=None,
