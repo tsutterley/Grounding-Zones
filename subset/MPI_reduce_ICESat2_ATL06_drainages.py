@@ -1,17 +1,12 @@
 #!/usr/bin/env python
 u"""
-MPI_reduce_ICESat2_ATL06_grounding_zone.py
+MPI_reduce_ICESat2_ATL06_drainages.py
 Written by Tyler Sutterley (05/2024)
 
-Create masks for reducing ICESat-2 land ice height data to within
-    a buffer region near the ice sheet grounding zone
-Used to calculate a more definite grounding zone from the ICESat-2 data
+Create masks for reducing ICESat-2 data into IMBIE-2 drainage regions
 
 COMMAND LINE OPTIONS:
-    -D X, --directory X: Working data directory
-    -O X, --output-directory X: input/output data directory
-    -B X, --buffer X: Distance in kilometers to buffer from grounding line
-    -p X, --polygon X: Georeferenced file containing a set of polygons
+    -D X, --directory X: Working Data Directory
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
 
@@ -28,12 +23,12 @@ PYTHON DEPENDENCIES:
         http://pythonhosted.org/mpi4py/
         http://mpi4py.readthedocs.org/en/stable/
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
-        https://www.h5py.org/
+        https://h5py.org
         http://docs.h5py.org/en/stable/mpi.html
-    fiona: Python wrapper for vector data access functions from the OGR library
-        https://fiona.readthedocs.io/en/latest/manual.html
     shapely: PostGIS-ish operations outside a database context for Python
         http://toblerity.org/shapely/index.html
+    pyshp: Python read/write support for ESRI Shapefile format
+        https://github.com/GeospatialPython/pyshp
     pyproj: Python interface to PROJ library
         https://pypi.org/project/pyproj/
     timescale: Python tools for time and astronomical calculations
@@ -44,29 +39,28 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
-    Updated 11/2023: add option to read a specific georeferenced file
-    Updated 08/2023: create s3 filesystem when using s3 urls as input
-        use time functions from timescale.time
-    Updated 07/2023: using pathlib to define and operate on paths
-        use geoms attribute for shapely 2.0 compliance
-    Updated 12/2022: single implicit import of grounding zone tools
-    Updated 11/2022: verify coordinate reference system of shapefile
-    Updated 10/2022: simplified HDF5 file output to match other reduction programs
-    Updated 08/2022: use logging for verbose output of processing run
-    Updated 07/2022: place some imports within try/except statements
-    Updated 05/2022: use argparse descriptions within documentation
-    Updated 02/2021: replaced numpy bool/int to prevent deprecation warnings
+        moved from icesat2_toolkit to Grounding-Zones package
+    Updated 04/2024: use timescale for temporal operations
+    Updated 03/2024: use pathlib to define and operate on paths
+    Updated 12/2022: single implicit import of altimetry tools
+    Updated 07/2022: place some imports behind try/except statements
+    Updated 05/2022: use argparse descriptions within sphinx documentation
+    Updated 11/2021: use delta time as output dimension for HDF5 variables
+    Updated 10/2021: using python logging for handling verbose output
+        added parsing for converting file lines to arguments
+    Updated 05/2021: print full path of output filename
+    Updated 02/2021: use size of array to add to any valid check
+        replaced numpy bool/int to prevent deprecation warnings
     Updated 01/2021: time utilities for converting times from JD and to decimal
     Updated 12/2020: H5py deprecation warning change to use make_scale
     Updated 10/2020: using argparse to set parameters.  update pyproj transforms
     Updated 08/2020: using convert delta time function to convert to Julian days
-    Updated 09/2019: using fiona for shapefile read and pyproj for coordinates
+    Updated 10/2019: changing Y/N flags to True/False
+    Updated 09/2019: using pyproj for coordinate conversions
     Updated 05/2019: check if beam exists in a try except else clause
     Updated 04/2019: check if subsetted beam contains land ice data
-    Forked 04/2019 from MPI_reduce_triangulated_grounding_zone.py
     Updated 02/2019: shapely updates for python3 compatibility
-    Updated 07/2017: using parts from shapefile
-    Written 06/2017
+    Written 01/2018
 """
 from __future__ import print_function
 
@@ -75,31 +69,28 @@ import os
 import re
 import logging
 import pathlib
-import argparse
 import datetime
+import argparse
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-fiona = gz.utilities.import_dependency('fiona')
 h5py = gz.utilities.import_dependency('h5py')
 MPI = gz.utilities.import_dependency('mpi4py.MPI')
 pyproj = gz.utilities.import_dependency('pyproj')
+shapefile = gz.utilities.import_dependency('shapefile')
 geometry = gz.utilities.import_dependency('shapely.geometry')
 timescale = gz.utilities.import_dependency('timescale')
 
-# buffered shapefile
-buffer_shapefile = {}
-buffer_shapefile['N'] = 'grn_ice_sheet_buffer_{0:0.0f}km.shp'
-buffer_shapefile['S'] = 'ant_ice_sheet_islands_v2_buffer_{0:0.0f}km.shp'
-# description and reference for each grounded ice file
-grounded_description = {}
-grounded_description['N'] = 'Greenland Mapping Project (GIMP) Ice & Ocean Mask'
-grounded_description['S'] = ('MEaSUREs Antarctic Boundaries for IPY 2007-2009 '
-    'from Satellite_Radar, Version 2')
-grounded_reference = {}
-grounded_reference['N'] = 'https://doi.org/10.5194/tc-8-1509-2014'
-grounded_reference['S'] = 'https://doi.org/10.5067/IKBWW4RYHF1Q'
+# IMBIE-2 Drainage basins
+IMBIE_basin_file = {}
+IMBIE_basin_file['N'] = ['GRE_Basins_IMBIE2_v1.3','GRE_Basins_IMBIE2_v1.3.shp']
+IMBIE_basin_file['S'] = ['ANT_Basins_IMBIE2_v1.6','ANT_Basins_IMBIE2_v1.6.shp']
+# basin titles within shapefile to extract
+IMBIE_title = {}
+IMBIE_title['N']=('CW','NE','NO','NW','SE','SW')
+IMBIE_title['S']=('A-Ap','Ap-B','B-C','C-Cp','Cp-D','D-Dp','Dp-E','E-Ep','Ep-F',
+    'F-G','G-H','H-Hp','Hp-I','I-Ipp','Ipp-J','J-Jpp','Jpp-K','K-A')
 
 # PURPOSE: keep track of MPI threads
 def info(rank, size):
@@ -112,30 +103,21 @@ def info(rank, size):
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
-        description="""Create masks for reducing ICESat-2 land ice height
-            data to within a buffer region near the ice sheet grounding zone
-            """
+        description="""Create masks for reducing ICESat-2 data into IMBIE-2
+            drainage regions
+            """,
+        fromfile_prefix_chars="@"
     )
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('file',
         type=pathlib.Path,
         help='ICESat-2 ATL06 file to run')
-    # working data directory for shapefiles
+    # working data directory for drainage basins shapefiles
     parser.add_argument('--directory','-D',
-        type=pathlib.Path, default=gz.utilities.get_data_path('data'),
-        help='Working data directory')
-    # directory with input/output data
-    parser.add_argument('--output-directory','-O',
         type=pathlib.Path,
-        help='Output data directory')
-    # buffer in kilometers for extracting grounding zone
-    parser.add_argument('--buffer','-B',
-        type=float, default=20.0,
-        help='Distance in kilometers to buffer grounding zone')
-    # alternatively read a specific georeferenced file
-    parser.add_argument('--polygon','-p',
-        type=pathlib.Path, default=None,
-        help='Georeferenced file containing a set of polygons')
+        default=pathlib.Path.cwd(),
+        help='Working data directory for mask files')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -144,7 +126,7 @@ def arguments():
     # permissions mode of the local files (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
-        help='permissions mode of output files')
+        help='Permissions mode of output files')
     # return the parser
     return parser
 
@@ -156,48 +138,56 @@ def set_hemisphere(GRANULE):
         projection_flag = 'N'
     return projection_flag
 
-# PURPOSE: load the polygon object for the buffered estimated grounding zone
-def load_grounding_zone(base_dir, HEM, BUFFER, shapefile=None):
-    # buffered shapefile for region
-    if shapefile is None:
-        shapefile = buffer_shapefile[HEM].format(BUFFER)
-        input_shapefile = base_dir.joinpath(shapefile)
-    else:
-        input_shapefile = pathlib.Path(shapefile).expanduser().absolute()
-    # read buffered shapefile
-    logging.info(str(input_shapefile))
-    shape = fiona.open(str(input_shapefile))
-    # extract coordinate reference system
-    if ('init' in shape.crs.keys()):
-        epsg = pyproj.CRS(shape.crs['init']).to_epsg()
-    else:
-        epsg = pyproj.CRS(shape.crs).to_epsg()
-    # create list of polygons
-    polygons = []
-    # extract the entities and assign by tile name
-    for i,ent in enumerate(shape.values()):
-        # list of coordinates
-        poly_list = []
-        # extract coordinates for entity
-        for coords in ent['geometry']['coordinates']:
+# PURPOSE: load Greenland or Antarctic drainage basins from IMBIE-2 (Mouginot)
+def load_IMBIE2_basins(basin_dir, HEM, EPSG):
+    # read drainage basin polylines from shapefile (using splat operator)
+    basin_dir = pathlib.Path(basin_dir).expanduser().absolute()
+    basin_shapefile = basin_dir.joinpath(*IMBIE_basin_file[HEM])
+    shape_input = shapefile.Reader(str(basin_shapefile))
+    shape_entities = shape_input.shapes()
+    shape_attributes = shape_input.records()
+    # projections for converting lat/lon to polar stereographic
+    crs1 = pyproj.CRS.from_epsg(4326)
+    crs2 = pyproj.CRS.from_epsg(EPSG)
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+
+    # python dictionary with shapely polygon objects
+    poly_dict = {}
+    # for each region
+    for REGION in IMBIE_title[HEM]:
+        # find record index for region by iterating through shape attributes
+        if (HEM == 'S'):
+            i,=[i for i,a in enumerate(shape_attributes) if (a[1] == REGION)]
             # extract Polar-Stereographic coordinates for record
-            x,y = np.transpose(coords)
-            poly_list.append(list(zip(x,y)))
-        # convert poly_list into Polygon object with holes
-        poly_obj = geometry.Polygon(poly_list[0], holes=poly_list[1:])
-        # Valid Polygon cannot have overlapping exterior or interior rings
+            points = np.array(shape_entities[i].points)
+            # shapely polygon object for region outline
+            poly_obj = geometry.Polygon(np.c_[points[:,0],points[:,1]])
+        elif (HEM == 'N'):
+            # no glaciers or ice caps
+            i,=[i for i,a in enumerate(shape_attributes) if (a[0] == REGION)]
+            # extract Polar-Stereographic coordinates for record
+            points = np.array(shape_entities[i].points)
+            # Greenland IMBIE-2 basins can have multiple parts
+            parts = shape_entities[i].parts
+            parts.append(len(points))
+            # list object for x,y coordinates (exterior and holes)
+            poly_list = []
+            for p1,p2 in zip(parts[:-1],parts[1:]):
+                # converting basin lat/lon into Polar-Stereographic
+                X,Y = transformer.transform(points[p1:p2,0],points[p1:p2,1])
+                poly_list.append(np.c_[X,Y])
+            # convert poly_list into Polygon object with holes
+            poly_obj = geometry.Polygon(poly_list[0], poly_list[1:])
+        # check if polygon object is valid
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
-        polygons.append(poly_obj)
-    # create shapely multipolygon object
-    mpoly_obj = geometry.MultiPolygon(polygons)
-    # close the shapefile
-    shape.close()
-    # return the polygon object for the ice sheet
-    return (mpoly_obj, epsg)
+        # add to total polygon dictionary object
+        poly_dict[REGION] = poly_obj
+    # return the polygon object and the input file name
+    return poly_dict, [basin_shapefile]
 
 # PURPOSE: read ICESat-2 land ice height data (ATL06)
-# reduce data to within buffer of grounding zone
+# reduce to IMBIE-2 (Rignot) drainage basins
 def main():
     # start MPI communicator
     comm = MPI.COMM_WORLD
@@ -211,34 +201,47 @@ def main():
     logging.basicConfig(level=loglevel)
 
     # output module information for process
-    info(comm.rank, comm.size)
+    info(comm.rank,comm.size)
     if (comm.rank == 0):
         logging.info(f'{str(args.file)} -->')
-    # input granule basename
-    GRANULE = args.file.name
 
+    # Open the HDF5 file for reading
+    args.file = pathlib.Path(args.file).expanduser().absolute()
+    fileID = h5py.File(args.file, 'r', driver='mpio', comm=comm)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX = rx.findall(GRANULE).pop()
-    # get output directory from input file
-    if args.output_directory is None:
-        args.output_directory = args.file.parent
-
-    # check if data is an s3 presigned url
-    if str(args.file).startswith('s3:'):
-        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
-            authorization_header=True)
-        session = gz.utilities.s3_filesystem()
-        args.file = session.open(args.file, mode='rb')
-    else:
-        args.file = pathlib.Path(args.file).expanduser().absolute()
-
-    # Open the HDF5 file for reading
-    fileID = h5py.File(args.file, 'r', driver='mpio', comm=comm)
-
+    SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX = \
+        rx.findall(args.file.name).pop()
     # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRN)
+    # pyproj transformer for converting lat/lon to polar stereographic
+    EPSG = dict(N=3413, S=3031)
+    crs1 = pyproj.CRS.from_epsg(4326)
+    crs2 = pyproj.CRS.from_epsg(EPSG[HEM])
+    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+
+    # read each basin and create shapely polygon objects
+    # IMBIE-2 basin drainages
+    BASIN_TITLE = 'IMBIE-2_BASIN_MASKS'
+    DESCRIPTION = 'IMBIE-2_(Rignot_2016)'
+    REFERENCE=dict(N='http://imbie.org/imbie-2016/drainage-basins/',
+        S='http://imbie.org/imbie-2016/drainage-basins/')
+
+    # read data on rank 0
+    if (comm.rank == 0):
+        # read each basin and create shapely polygon objects
+        # load IMBIE-2 basin drainages
+        BASIN,basin_files = load_IMBIE2_basins(args.directory,HEM,EPSG[HEM])
+    else:
+        # create empty object for list of shapely objects
+        BASIN = None
+
+    # Broadcast Shapely basin objects
+    BASIN = comm.bcast(BASIN, root=0)
+    # combined validity check for all beams
+    valid_check = False
+
     # read each input beam within the file
     IS2_atl06_beams = []
     for gtx in [k for k in fileID.keys() if bool(re.match(r'gt\d[lr]',k))]:
@@ -250,32 +253,11 @@ def main():
         else:
             IS2_atl06_beams.append(gtx)
 
-    # read data on rank 0
-    if (comm.rank == 0):
-        # read shapefile and create shapely multipolygon objects
-        mpoly_obj, epsg = load_grounding_zone(args.directory, HEM,
-            args.buffer, shapefile=args.polygon)
-    else:
-        # create empty object for list of shapely objects
-        mpoly_obj = None
-        epsg = None
-
-    # Broadcast Shapely multipolygon objects and projection
-    mpoly_obj = comm.bcast(mpoly_obj, root=0)
-    epsg = comm.bcast(epsg, root=0)
-
-    # pyproj transformer for converting lat/lon to polar stereographic
-    crs1 = pyproj.CRS.from_epsg(4326)
-    crs2 = pyproj.CRS.from_epsg(epsg)
-    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
-
     # copy variables for outputting to HDF5 file
     IS2_atl06_mask = {}
     IS2_atl06_fill = {}
     IS2_atl06_dims = {}
     IS2_atl06_mask_attrs = {}
-    # combined validity check for all beams
-    valid_check = False
     # number of GPS seconds between the GPS epoch (1980-01-06T00:00:00Z UTC)
     # and ATLAS Standard Data Product (SDP) epoch (2018-01-01T00:00:00Z UTC)
     # Add this value to delta time parameters to compute full gps_seconds
@@ -302,6 +284,9 @@ def main():
         n_seg, = fileID[gtx]['land_ice_segments']['segment_id'].shape
         # invalid value for beam
         fv = fileID[gtx]['land_ice_segments']['h_li'].fillvalue
+        # check if there are less segments than processes
+        if (n_seg < comm.Get_size()):
+            continue
 
         # define indices to run for specific process
         ind = np.arange(comm.Get_rank(), n_seg, comm.Get_size(), dtype=int)
@@ -316,13 +301,14 @@ def main():
         # convert reduced x and y to shapely multipoint object
         xy_point = geometry.MultiPoint(np.c_[X, Y])
 
-        # create distributed intersection map for calculation
-        distributed_map = np.zeros((n_seg),dtype=bool)
-        # create empty intersection map array for receiving
-        associated_map = np.zeros((n_seg),dtype=bool)
-        # for each polygon
-        for poly_obj in mpoly_obj.geoms:
-            # finds if points are encapsulated (in grounding zone)
+        # calculate mask for each drainage basin in the dictionary
+        associated_map = {}
+        for key,poly_obj in BASIN.items():
+            # create distributed intersection map for calculation
+            distributed_map = np.zeros((n_seg),dtype=bool)
+            # create empty intersection map array for receiving
+            associated_map[key] = np.zeros((n_seg),dtype=bool)
+            # finds if points are encapsulated (within basin)
             int_test = poly_obj.intersects(xy_point)
             if int_test:
                 # extract intersected points
@@ -330,15 +316,13 @@ def main():
                 int_indices, = np.nonzero(int_map)
                 # set distributed_map indices to True for intersected points
                 distributed_map[ind[int_indices]] = True
-        # communicate output MPI matrices between ranks
-        # operation is a logical "or" across the elements.
-        comm.Allreduce(sendbuf=[distributed_map, MPI.BOOL], \
-            recvbuf=[associated_map, MPI.BOOL], op=MPI.LOR)
-        distributed_map = None
+            # communicate output MPI matrices between ranks
+            # operation is a logical "or" across the elements.
+            comm.Allreduce(sendbuf=[distributed_map, MPI.BOOL], \
+                recvbuf=[associated_map[key], MPI.BOOL], op=MPI.LOR)
+            distributed_map = None
         # wait for all processes to finish calculation
         comm.Barrier()
-        # add to validity check
-        valid_check |= np.any(associated_map)
 
         # group attributes for beam
         IS2_atl06_mask_attrs[gtx]['Description'] = fileID[gtx].attrs['Description']
@@ -431,38 +415,40 @@ def main():
         IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['data_rate'] = ("Data within this group "
             "are stored at the land_ice_segments segment rate.")
 
-        # output mask to HDF5
-        IS2_atl06_mask[gtx]['land_ice_segments']['subsetting']['ice_gz'] = associated_map
-        IS2_atl06_fill[gtx]['land_ice_segments']['subsetting']['ice_gz'] = None
-        IS2_atl06_dims[gtx]['land_ice_segments']['subsetting']['ice_gz'] = ['delta_time']
-        IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz'] = {}
-        IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['contentType'] = "referenceInformation"
-        IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['long_name'] = 'Grounding Zone Mask'
-        IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['description'] = \
-            ("Grounding zone mask calculated using delineations from {0} buffered by "
-             "{1:0.0f} km.".format(grounded_description[HEM],args.buffer))
-        IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['reference'] = grounded_reference[HEM]
-        IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['source'] = args.buffer
-        IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting']['ice_gz']['coordinates'] = \
-            "../segment_id ../delta_time ../latitude ../longitude"
+        # for each valid drainage
+        valid_keys = np.array([k for k,v in associated_map.items() if v.any()])
+        valid_check |= (np.size(valid_keys) > 0)
+        for key in valid_keys:
+            # output mask to HDF5
+            IS2_atl06_mask[gtx]['land_ice_segments']['subsetting'][key] = associated_map[key]
+            IS2_atl06_fill[gtx]['land_ice_segments']['subsetting'][key] = None
+            IS2_atl06_dims[gtx]['land_ice_segments']['subsetting'][key] = ['delta_time']
+            IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting'][key] = {}
+            IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting'][key]['contentType'] = \
+                "referenceInformation"
+            IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting'][key]['long_name'] = \
+                f'{key} Mask'
+            IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting'][key]['description'] = \
+                f'Mask calculated using the {key} drainage from {DESCRIPTION}.'
+            IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting'][key]['reference'] = REFERENCE[HEM]
+            IS2_atl06_mask_attrs[gtx]['land_ice_segments']['subsetting'][key]['coordinates'] = \
+                "../segment_id ../delta_time ../latitude ../longitude"
         # wait for all processes to finish calculation
         comm.Barrier()
 
     # parallel h5py I/O does not support compression filters at this time
     if (comm.rank == 0) and valid_check:
-        # output HDF5 files with output masks
-        fargs=(PRD,'GROUNDING_ZONE_MASK',YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX)
+        # output HDF5 file with drainage basin masks
+        fargs = (PRD,BASIN_TITLE,YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX)
         file_format = '{0}_{1}_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
-        output_file = args.output_directory.joinpath(file_format.format(*fargs))
+        output_file = args.file.with_name(file_format.format(*fargs))
         # print file information
         logging.info(f'\t{str(output_file)}')
         # write to output HDF5 file
         HDF5_ATL06_mask_write(IS2_atl06_mask, IS2_atl06_mask_attrs,
-            FILENAME=output_file,
-            INPUT=GRANULE,
-            FILL_VALUE=IS2_atl06_fill,
-            DIMENSIONS=IS2_atl06_dims,
-            CLOBBER=True)
+            CLOBBER=True, INPUT=args.file.name,
+            FILL_VALUE=IS2_atl06_fill, DIMENSIONS=IS2_atl06_dims,
+            FILENAME=output_file)
         # change the permissions mode
         output_file.chmod(mode=args.mode)
     # close the input file
@@ -573,7 +559,7 @@ def HDF5_ATL06_mask_write(IS2_atl06_mask, IS2_atl06_attrs, INPUT=None,
     fileID.attrs['featureType'] = 'trajectory'
     fileID.attrs['title'] = 'ATLAS/ICESat-2 Land Ice Height'
     fileID.attrs['summary'] = ('Subsetting masks for ice-sheets segments '
-        'needed to interpret and assess the quality of land height estimates.')
+        'needed to interpret and assess the quality of the height estimates.')
     fileID.attrs['description'] = ('Land ice parameters for each beam.  All '
         'parameters are calculated for the same along-track increments for '
         'each beam and repeat.')
@@ -590,7 +576,7 @@ def HDF5_ATL06_mask_write(IS2_atl06_mask, IS2_atl06_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL06 file
-    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
+    fileID.attrs['input_files'] = pathlib.Path(INPUT).name
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for gtx in beams:

@@ -10,7 +10,7 @@ NGA Office of Geomatics
     https://earth-info.nga.mil/
 
 INPUTS:
-    ATM1B, ATM icessn or LVIS file from NSIDC
+    ATM1B, ATM icessn or LVIS file
 
 COMMAND LINE OPTIONS:
     -O X, --output-directory X: input/output data directory
@@ -56,7 +56,7 @@ geoidtk = gz.utilities.import_dependency('geoid_toolkit')
 h5py = gz.utilities.import_dependency('h5py')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read Operation IceBridge data from NSIDC
+# PURPOSE: read Operation IceBridge data
 # and interpolates EGM2008 geoid undulation at points
 def interp_EGM2008_icebridge_data(model_file, arg,
     LOVE=0.3,

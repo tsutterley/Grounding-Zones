@@ -8,7 +8,7 @@ Calculates radial solid Earth tide displacements for correcting Operation
     http://maia.usno.navy.mil/conventions/chapter7.php
 
 INPUTS:
-    ATM1B, ATM icessn or LVIS file from NSIDC
+    ATM1B, ATM icessn or LVIS file
 
 COMMAND LINE OPTIONS:
     -p X, --tide-system X: Permanent tide system for output values
@@ -64,7 +64,7 @@ h5py = gz.utilities.import_dependency('h5py')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read Operation IceBridge data from NSIDC
+# PURPOSE: read Operation IceBridge data
 # compute solid earth tide radial displacements at data points and times
 def compute_SET_icebridge_data(arg,
         TIDE_SYSTEM=None,

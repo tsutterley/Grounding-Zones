@@ -46,7 +46,11 @@ References
 
      T. C. Sutterley, T. Markus, T. A. Neumann, M. R. van den Broeke, J. M. van Wessem, and S. R. M. Ligtenberg,
      "Antarctic ice shelf thickness change from multimission lidar mapping", *The Cryosphere*,
-     13, 1801-1817, (2019). `doi:tc-13-1801-2019 <https://doi.org/10.5194/tc-13-1801-2019>`_
+     13, 1801--1817, (2019). `doi:tc-13-1801-2019 <https://doi.org/10.5194/tc-13-1801-2019>`_
+
+     T. C. Sutterley, I. Velicogna, E. J. Rignot, J. Mouginot, T. Flament, M. R. van den Broeke, J. M. van Wessem, C. H. Reijmer, 
+     "Mass loss of the Amundsen Sea Embayment of West Antarctica from four independent techniques", *Geophysical Research Letters*,
+     41(23), 8421--8428, (2014). `doi:10.1002/2014GL061940 <https://doi.org/10.1002/2014GL061940>`_
 
 Download
 ########

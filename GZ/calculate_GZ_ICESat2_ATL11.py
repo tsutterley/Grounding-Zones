@@ -107,8 +107,6 @@ import itertools
 import traceback
 import numpy as np
 import collections
-import scipy.stats
-import scipy.optimize
 import grounding_zones as gz
 
 # attempt imports
@@ -179,204 +177,7 @@ def compress_list(i,n):
         group = list(map(operator.itemgetter(1),b))
         yield (group[0], group[-1])
 
-# Derivation of Sharp Breakpoint Piecewise Regression:
-# http://www.esajournals.org/doi/abs/10.1890/02-0472
-# y = beta_0 + beta_1*t + e (for x <= alpha)
-# y = beta_0 + beta_1*t + beta_2*(t-alpha) + e (for x > alpha)
-def piecewise_fit(x, y, STEP=1, CONF=0.95):
-    # regrid x and y to STEP
-    XI = x[::STEP]
-    YI = y[::STEP]
-    # Creating Design matrix based on chosen input fit_type parameters:
-    nmax = len(XI)
-    P_x0 = np.ones((nmax))# Constant Term
-    P_x1a = XI[0:nmax]# Linear Term 1
-    # Calculating the number parameters to search
-    n_param = (nmax**2 - nmax)//2
-    # R^2 and Log-Likelihood
-    rsquare_array = np.zeros((n_param))
-    loglik_array = np.zeros((n_param))
-    # output cutoff and fit parameters
-    cutoff_array = np.zeros((n_param,2),dtype=int)
-    beta_matrix = np.zeros((n_param,4))
-    # counter variable
-    c = 0
-    # SStotal = sum((Y-mean(Y))^2)
-    SStotal = np.dot(np.transpose(YI - np.mean(YI)),(YI - np.mean(YI)))
-    # uniform distribution over entire range
-    for n in range(0,nmax):
-        # Linear Term 2 (= change from linear term1: trend2 = beta1+beta2)
-        P_x1b = np.zeros((nmax))
-        P_x1b[n:nmax] = XI[n:nmax] - XI[n]
-        for nn in range(n+1,nmax):
-            # Linear Term 3 (= change from linear term2)
-            P_x1c = np.zeros((nmax))
-            P_x1c[nn:nmax] = XI[nn:nmax] - XI[nn]
-            DMAT = np.transpose([P_x0, P_x1a, P_x1b, P_x1c])
-            # Calculating Least-Squares Coefficients
-            # Least-Squares fitting (the [0] denotes coefficients output)
-            beta_mat = np.linalg.lstsq(DMAT,YI,rcond=-1)[0]
-            # number of terms in least-squares solution
-            n_terms = len(beta_mat)
-            # nu = Degrees of Freedom
-            # number of measurements-number of parameters
-            nu = nmax - n_terms
-            # residual of data-model
-            residual = YI - np.dot(DMAT,beta_mat)
-            # CALCULATING R_SQUARE VALUES
-            # SSerror = sum((Y-X*B)^2)
-            SSerror = np.dot(np.transpose(residual),residual)
-            # R^2 term = 1- SSerror/SStotal
-            rsquare_array[c] = 1 - (SSerror/SStotal)
-            # Log-Likelihood
-            loglik_array[c] = 0.5*(-nmax*(np.log(2.0 * np.pi) + 1.0 - \
-                np.log(nmax) + np.log(np.sum(residual**2))))
-            # save cutoffs and beta matrix
-            cutoff_array[c,:] = [n,nn]
-            beta_matrix[c,:] = beta_mat
-            # add 1 to counter
-            c += 1
-
-    # find where Log-Likelihood is maximum
-    ind, = np.nonzero(loglik_array == loglik_array.max())
-    n,nn = cutoff_array[ind,:][0]
-    # create matrix of likelihoods
-    likelihood = np.zeros((nmax,nmax))
-    likelihood[:,:] = np.nan
-    likelihood[cutoff_array[:,0],cutoff_array[:,1]] = np.exp(loglik_array) / \
-        np.sum(np.exp(loglik_array))
-    # probability distribution functions of each cutoff
-    PDF1 = np.zeros((nmax))
-    PDF2 = np.zeros((nmax))
-    for i in range(nmax):
-        # PDF for cutoff 1 for all cutoff 2
-        PDF1[i] = np.nansum(likelihood[i,:])
-        # PDF for cutoff 2 for all cutoff 1
-        PDF2[i] = np.nansum(likelihood[:,i])
-    # calculate confidence intervals
-    # CI1 = conf_interval(XI, PDF1/np.sum(PDF1), CONF)
-    CI1 = 5e3
-    CMN1,CMX1 = (XI[n]-CI1,XI[nn]+CI1)
-    # CI2 = conf_interval(XI, PDF2/np.sum(PDF2), CONF)
-    CI2 = 5e3
-    CMN2,CMX2 = (XI[nn]-CI2,XI[nn]+CI2)
-
-    # calculate model using best fit coefficients
-    P_x0 = np.ones_like(x)
-    P_x1a = np.copy(x)
-    P_x1b = np.zeros_like(x)
-    P_x1c = np.zeros_like(x)
-    P_x1b[n*STEP:] = x[n*STEP:] - XI[n]
-    P_x1c[nn*STEP:] = x[nn*STEP:] - XI[nn]
-    DMAT = np.transpose([P_x0, P_x1a, P_x1b, P_x1c])
-    beta_mat, = beta_matrix[ind,:]
-    MODEL = np.dot(DMAT,beta_mat)
-    # return the cutoff parameters, their confidence interval and the model
-    return ([XI[n],CMN1,CMX1], [XI[nn],CMN2,CMX2], MODEL)
-
-# PURPOSE: run a physical elastic bending model with Levenberg-Marquardt
-# D. G. Vaughan, Journal of Geophysical Research Solid Earth, 1995
-# A. M. Smith, Journal of Glaciology, 1991
-def physical_elastic_model(XI,YI,METHOD='trf',GRZ=[0,0,0],TIDE=[0,0,0],
-    ORIENTATION=False,THICKNESS=None,CONF=0.95,XOUT=None):
-    # reorient input parameters to go from land ice to floating
-    if XOUT is None:
-        XOUT = np.copy(XI)
-    if ORIENTATION:
-        Xm1 = XI[-1]
-        GRZ = Xm1 - GRZ
-        GRZ[1:] = GRZ[:0:-1]
-        XI = Xm1 - XI[::-1]
-        YI = YI[::-1]
-        XOUT = Xm1 - XOUT[::-1]
-    # calculate thickness mean, min and max
-    if THICKNESS is not None:
-        # only use positive thickness values
-        # ocean points could be negative with tides
-        ii, = np.nonzero(THICKNESS > 0.0)
-        MTH = np.mean(THICKNESS[ii])
-        MNTH = np.min(THICKNESS[ii])
-        MXTH = np.max(THICKNESS[ii])
-    else:
-        MTH = 1000.0
-        MNTH = 100.0
-        MXTH = 1900.0
-    # elastic model parameters
-    # G0: location of grounding line
-    # A0: tidal amplitude (values from Padman 2002)
-    # E0: Effective Elastic modulus of ice [Pa]
-    # T0: ice thickness of ice shelf [m]
-    # dH0: mean height change (thinning/thickening)
-    p0 = [GRZ[0], TIDE[0], 1e9, MTH, 0.0]
-    # tuple for parameter bounds (lower and upper)
-    # G0: 95% confidence interval of initial fit
-    # A0: greater than +/- 2.4m value from Padman (2002)
-    # E0: Range from Table 1 of Vaughan (1995)
-    # T0: Range of ice thicknesses from Chuter (2015)
-    # dH0: mean height change +/- 10 m/yr
-    bounds = ([GRZ[1], TIDE[1], 8.3e8, MNTH, -10],
-        [GRZ[2], TIDE[2], 1e10, MXTH, 10])
-    # optimized curve fit with Levenberg-Marquardt algorithm
-    popt,pcov = scipy.optimize.curve_fit(elasticmodel, XI, YI,
-        p0=p0, bounds=bounds, method=METHOD)
-    MODEL = elasticmodel(XOUT, *popt)
-    # elasticmodel function outputs and 1 standard deviation uncertainties
-    GZ = np.zeros((2))
-    A = np.zeros((2))
-    E = np.zeros((2))
-    T = np.zeros((2))
-    dH = np.zeros((2))
-    GZ[0],A[0],E[0],T[0],dH[0] = popt[:]
-    # Error analysis
-    # nu = Degrees of Freedom = number of measurements-number of parameters
-    nu = len(XI) - len(p0)
-    # Setting the confidence interval of the output error
-    alpha = 1.0 - CONF
-    # Student T-Distribution with D.O.F. nu
-    # t.ppf parallels tinv in matlab
-    tstar = scipy.stats.t.ppf(1.0-(alpha/2.0),nu)
-    # error for each coefficient = t(nu,1-alpha/2)*standard error
-    perr = np.sqrt(np.diag(pcov))
-    GZ[1],A[1],E[1],T[1],dH[1] = tstar*perr[:]
-    # reverse the reorientation
-    if ORIENTATION:
-        GZ[0] = Xm1 - GZ[0]
-        MODEL = MODEL[::-1]
-    return (GZ,A,E,T,dH,MODEL)
-
-# PURPOSE: create physical elastic bending model with a mean height change
-def elasticmodel(x, GZ, A, E, T, dH):
-    # density of water [kg/m^3]
-    rho_w = 1030.0
-    # gravitational constant [m/s^2]
-    g = 9.806
-    # Poisson's ratio of ice
-    nu = 0.3
-    # structural rigidity of ice
-    D = (E*T**3)/(12.0*(1.0-nu**2))
-    # beta elastic damping parameter
-    b = (0.25*rho_w*g/D)**0.25
-    # distance of points from grounding line (R0 = 0 at grounding line)
-    R0 = (x[x >= GZ] - GZ)
-    # deflection of ice beyond the grounding line (elastic)
-    eta = np.zeros_like(x)
-    eta[x >= GZ] = A*(1.0-np.exp(-b*R0)*(np.cos(b*R0) + np.sin(b*R0)))
-    # model = large scale height change + tidal deflection
-    return (dH + eta)
-
-# PURPOSE: calculate the confidence interval in the retrieval
-def conf_interval(x,f,p):
-    # sorting probability distribution from smallest probability to largest
-    ii = np.argsort(f)
-    # compute the sorted cumulative probability distribution
-    cdf = np.cumsum(f[ii])
-    # linearly interpolate to confidence interval
-    J = np.interp(p, cdf, x[ii])
-    # position with maximum probability
-    K = x[ii[-1]]
-    return np.abs(K-J)
-
-# PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
+# PURPOSE: read ICESat-2 slope-corrected land ice height data (ATL11)
 # calculate mean elevation between all dates in file
 # calculate inflexion point using elevation surface slopes
 # use mean elevation to calculate elevation anomalies
@@ -743,7 +544,8 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                     w_thick = QFB*rho_w/(rho_w-rho_ice)
                     # fit with a hard piecewise model to get rough estimate of GZ
                     try:
-                        C1,C2,PWMODEL = piecewise_fit(dist, dh_gz, STEP=5, CONF=0.95)
+                        C1, C2, PWMODEL = gz.fit.piecewise_bending(
+                            dist, dh_gz, STEP=5)
                     except:
                         continue
                     # distance from estimated grounding line (0 = grounding line)
@@ -775,9 +577,10 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                     for grz,tide in zip(GRZ,TIDE):
                         # fit physical elastic model
                         try:
-                            GZ,PA,PE,PT,PdH,MODEL = physical_elastic_model(dist,
-                                dh_gz, GRZ=grz, TIDE=tide, ORIENTATION=sco,
-                                THICKNESS=w_thick, CONF=0.95, XOUT=output)
+                            GZ,PA,PE,PT,PdH,MODEL = gz.fit.elastic_bending(
+                                dist, dh_gz, GRZ=grz, TIDE=tide,
+                                ORIENTATION=sco, THICKNESS=w_thick,
+                                CONF=0.95, XOUT=output)
                         except:
                             pass
                         # copy grounding zone parameters to get best fit

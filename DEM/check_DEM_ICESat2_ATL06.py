@@ -195,7 +195,7 @@ def read_DEM_index(index_file, DEM_MODEL):
     # return the dictionaries of polygon objects and attributes
     return (poly_dict,attrs_dict,epsg)
 
-# PURPOSE: read ICESat-2 data from NSIDC and determine which DEM tiles to read
+# PURPOSE: read ICESat-2 data and determine which DEM tiles to read
 def check_DEM_ICESat2_ATL06(INPUT_FILE,
     DIRECTORY=None,
     DEM_MODEL=None):

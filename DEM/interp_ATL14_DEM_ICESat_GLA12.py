@@ -34,6 +34,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 05/2024: use ellipsoid transformation function from pyTMD
     Written 05/2024
 """
 from __future__ import print_function
@@ -48,12 +49,11 @@ import grounding_zones as gz
 
 # attempt imports
 h5py = gz.utilities.import_dependency('h5py')
-is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 pyproj = gz.utilities.import_dependency('pyproj')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12)
 # interpolate DEM data to x and y coordinates
 def interp_ATL14_DEM_ICESat(INPUT_FILE,
     OUTPUT_DIRECTORY=None,
@@ -138,8 +138,9 @@ def interp_ATL14_DEM_ICESat(INPUT_FILE,
     topex = pyTMD.datum(ellipsoid='TOPEX', units='MKS')
     wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = is2tk.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
-        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
+    lat_40HZ,elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
+        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat,
+        eps=1e-12, itmax=10)
 
     # pyproj transformer for converting from latitude/longitude
     EPSG = dict(N=3413, S=3031)

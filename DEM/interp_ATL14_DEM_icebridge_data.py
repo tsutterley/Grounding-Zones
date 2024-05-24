@@ -5,7 +5,7 @@ Written by Tyler Sutterley (05/2024)
 Interpolates ATL14 elevations to locations of Operation IceBridge data
 
 INPUTS:
-    ATM1B, ATM icessn or LVIS file from NSIDC
+    ATM1B, ATM icessn or LVIS file
 
 COMMAND LINE OPTIONS:
     -m X, --model X: path to ATL14 model file
@@ -56,7 +56,7 @@ pyproj = gz.utilities.import_dependency('pyproj')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12)
 # interpolate DEM data to x and y coordinates
 def interp_ATL14_DEM_icebridge_data(arg,
     DEM_MODEL=None,

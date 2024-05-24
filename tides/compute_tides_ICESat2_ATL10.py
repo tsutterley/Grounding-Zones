@@ -124,7 +124,7 @@ is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read ICESat-2 sea ice freeboard (ATL10) from NSIDC
+# PURPOSE: read ICESat-2 sea ice freeboard (ATL10)
 # compute tides at points and times using tidal model driver algorithms
 def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         OUTPUT_DIRECTORY=None,

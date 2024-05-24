@@ -3,56 +3,7 @@ u"""
 fit.py
 Written by Tyler Sutterley (05/2024)
 
-Fits a polynomial surface to a set of points
-
-CALLING SEQUENCE:
-    tsbeta = fit.reduce_fit(t, x, y, data, ORDER_TIME=3, 
-        ORDER_SPACE=3)
-    reg_coef = tsbeta['beta']
-    reg_error = tsbeta['error']
-
-INPUTS:
-    t_in: input time array
-    x_in: x-coordinate array
-    y_in: y-coordinate array
-    d_in: input data array
-
-OUTPUTS:
-    beta: regressed coefficients array
-    data: modeled elevation at centroid
-    model: modeled surface time-series
-    error: regression fit error for each coefficient for an input deviation
-        STDEV: standard deviation of output error
-        CONF: confidence interval of output error
-    std_error: standard error for each coefficient
-    R2: coefficient of determination (r**2).
-        Proportion of variability accounted by the model
-    R2Adj: adjusted r**2. adjusts the r**2 for the number of terms in the model
-    MSE: mean square error
-    WSSE: Weighted sum of squares error
-    NRMSE: normalized root mean square error
-    AIC: Akaike information criterion (Second-Order, AICc)
-    BIC: Bayesian information criterion (Schwarz criterion)
-    LOGLIK: log likelihood
-    residual: model residual
-    DOF: degrees of freedom
-    N: number of terms used in fit
-    cov_mat: covariance matrix
-    centroid: centroid point of input coordinates
-
-OPTIONS:
-    RELATIVE: relative period
-    FIT_TYPE: type of time-variable polynomial fit to apply
-        ('polynomial', 'chebyshev', 'spline')
-    BOUNDED: use a bounded-least squares fit
-    ORDER_TIME: maximum polynomial order in time-variable fit
-        (0=constant, 1=linear, 2=quadratic)
-    ORDER_SPACE:  maximum polynomial order in spatial fit
-        (1=planar, 2=quadratic)
-    TERMS: list of extra terms
-    STDEV: standard deviation of output error
-    CONF: confidence interval of output error
-    AICc: use second order AIC
+Utilities for creating models from surface elevation data
 
 PYTHON DEPENDENCIES:
     numpy: Scientific Computing Tools For Python (https://numpy.org)
@@ -64,6 +15,7 @@ UPDATE HISTORY:
         add function to validate the columns in the design matrix
         add functions to give the number of spatial and temporal terms
         optionally use a bounded least-squares fit for the model runs
+        add grounding zone, elastic bending and breakpoint fits
     Updated 04/2024: rewritten for python3 and added function docstrings
         add optional TERMS argument to augment the design matrix
         add spline design matrix option for time-variable fit
@@ -80,7 +32,7 @@ from scipy.interpolate import BSpline
 
 # PURPOSE: iteratively fit a polynomial surface to the elevation data to
 # reduce to within a valid window
-def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
+def iterative_surface(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
     """
     Iteratively fit a polynomial surface to the elevation data to reduce to
     within a valid surface window [Schenk2012]_ [Smith2019]_ [Sutterley2014]_
@@ -119,6 +71,51 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
         use second order AIC
     kwargs: dict
         keyword arguments for the fit type
+
+    Returns
+    -------
+    beta: np.ndarray
+        regressed coefficients array
+    error: np.ndarray
+        regression fit error for each coefficient
+    data: np.ndarray
+        modeled elevation at centroid
+    model: np.ndarray
+        modeled surface time-series at input points
+    std_error: np.ndarray
+        standard error for each coefficient
+    R2: float
+        coefficient of determination (r^2)
+    R2Adj: float
+        adjusted r^2 value
+    MSE: float
+        mean square error
+    WSSE: float
+        weighted sum of squares error
+    NRMSE: float
+        normalized root mean square error
+    AIC: float
+        Akaike information criterion (Second-Order, AICc)
+    BIC: float
+        Bayesian information criterion (Schwarz criterion)
+    LOGLIK: float
+        log likelihood
+    residual: np.ndarray
+        model residual
+    DOF: int
+        degrees of freedom
+    count: int
+        final number of points used in the fit
+    indices: np.ndarray
+        indices of valid points
+    iterations: int
+        number of iterations performed
+    window: float
+        final window size for the fit
+    RDE: float
+        robust dispersion estimate
+    centroid: dict
+        centroid point used in the fit
 
     References
     ----------
@@ -171,7 +168,7 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
         # save initial indices
         indices = ind.copy()
         # run fit program for fit types
-        s = surface_fit(t_in, x_in, y_in, d_in, **kwargs)
+        s = polynomial_surface(t_in, x_in, y_in, d_in, **kwargs)
         # number of iterations performed
         n_iter = 1
         # save beta coefficients
@@ -227,7 +224,7 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
             # reduce 
             terms = [t[filt] for t in TERMS]
             # run fit program for polynomial type
-            s = surface_fit(t_filt, x_filt, y_filt, d_filt,
+            s = polynomial_surface(t_filt, x_filt, y_filt, d_filt,
                 TERMS=terms, **kwargs)
             # add to number of iterations performed
             n_iter += 1
@@ -292,7 +289,7 @@ def reduce_fit(t_in, x_in, y_in, d_in, TERMS=[], **kwargs):
     else:
         raise Exception(f'No valid fit found after {n_iter} iterations')
 
-def surface_fit(t_in, x_in, y_in, d_in,
+def polynomial_surface(t_in, x_in, y_in, d_in,
         STDEV=0,
         CONF=0,
         AICc=True,
@@ -335,6 +332,45 @@ def surface_fit(t_in, x_in, y_in, d_in,
         use second order AIC
     kwargs: dict
         keyword arguments for the fit type
+
+    Returns
+    -------
+    beta: np.ndarray
+        regressed coefficients array
+    error: np.ndarray
+        regression fit error for each coefficient
+    data: np.ndarray
+        modeled elevation at centroid
+    model: np.ndarray
+        modeled surface time-series at input points
+    std_error: np.ndarray
+        standard error for each coefficient
+    R2: float
+        coefficient of determination (r^2)
+    R2Adj: float
+        adjusted r^2 value
+    MSE: float
+        mean square error
+    WSSE: float
+        weighted sum of squares error
+    NRMSE: float
+        normalized root mean square error
+    AIC: float
+        Akaike information criterion (Second-Order, AICc)
+    BIC: float
+        Bayesian information criterion (Schwarz criterion)
+    LOGLIK: float
+        log likelihood
+    residual: np.ndarray
+        model residual
+    N: int
+        number of terms in the model
+    DOF: int
+        degrees of freedom
+    cov_mat: np.ndarray
+        covariance matrix
+    centroid: dict
+        centroid point used in the fit
 
     References
     ----------
@@ -462,12 +498,272 @@ def surface_fit(t_in, x_in, y_in, d_in,
     beta_err = tstar*std_error
 
     # return the modeled surface time-series and the coefficients
-    return {'beta':beta_mat, 'data':data, 'model':mod,
-        'error':beta_err, 'std_error':std_error, 'R2':rsquare,
+    return {'beta':beta_mat, 'error':beta_err, 'data':data,
+        'model':mod, 'std_error':std_error, 'R2':rsquare,
         'R2Adj':rsq_adj, 'MSE':MSE, 'NRMSE':NRMSE,
         'AIC':AIC, 'BIC':BIC, 'LOGLIK':log_lik,
         'residual':res, 'N':n_terms, 'DOF':nu,
         'cov_mat':Hinv, 'centroid':centroid}
+
+# Derivation of Sharp Breakpoint Piecewise Regression:
+# http://www.esajournals.org/doi/abs/10.1890/02-0472
+# y = beta_0 + beta_1*t + e (for x <= alpha)
+# y = beta_0 + beta_1*t + beta_2*(t-alpha) + e (for x > alpha)
+def piecewise_bending(x, y, STEP=1, CONF=None):
+    """
+    Fits a piecewise linear regression to elevation data
+    to find two sharp breakpoints
+
+    Parameters
+    ----------
+    x: np.ndarray
+        input x-coordinate array
+    y: np.ndarray
+        input y-coordinate array
+    STEP: int, default 1
+        step size for regridding the input data
+    CONF: float or None, default None
+        confidence interval of output error
+
+    Returns
+    -------
+    point1: list
+        first breakpoint and confidence interval
+    point2: list
+        second breakpoint and confidence interval
+    model: np.ndarray
+        modeled surface from the piecewise fit
+    """
+    # regrid x and y to STEP
+    XI = x[::STEP]
+    YI = y[::STEP]
+    # Creating Design matrix based on chosen input fit_type parameters:
+    nmax = len(XI)
+    P_x0 = np.ones((nmax))# Constant Term
+    P_x1a = XI[0:nmax]# Linear Term 1
+    # Calculating the number parameters to search
+    n_param = (nmax**2 - nmax)//2
+    # R^2 and Log-Likelihood
+    rsquare_array = np.zeros((n_param))
+    loglik_array = np.zeros((n_param))
+    # output cutoff and fit parameters
+    cutoff_array = np.zeros((n_param,2),dtype=int)
+    beta_matrix = np.zeros((n_param,4))
+    # counter variable
+    c = 0
+    # SStotal = sum((Y-mean(Y))^2)
+    SStotal = np.dot(np.transpose(YI - np.mean(YI)),(YI - np.mean(YI)))
+    # uniform distribution over entire range
+    for n in range(0,nmax):
+        # Linear Term 2 (= change from linear term1: trend2 = beta1+beta2)
+        P_x1b = np.zeros((nmax))
+        P_x1b[n:nmax] = XI[n:nmax] - XI[n]
+        for nn in range(n+1,nmax):
+            # Linear Term 3 (= change from linear term2)
+            P_x1c = np.zeros((nmax))
+            P_x1c[nn:nmax] = XI[nn:nmax] - XI[nn]
+            DMAT = np.transpose([P_x0, P_x1a, P_x1b, P_x1c])
+            # Calculating Least-Squares Coefficients
+            # Least-Squares fitting (the [0] denotes coefficients output)
+            beta_mat = np.linalg.lstsq(DMAT,YI,rcond=-1)[0]
+            # number of terms in least-squares solution
+            n_terms = len(beta_mat)
+            # nu = Degrees of Freedom
+            # number of measurements-number of parameters
+            nu = nmax - n_terms
+            # residual of data-model
+            residual = YI - np.dot(DMAT,beta_mat)
+            # CALCULATING R_SQUARE VALUES
+            # SSerror = sum((Y-X*B)^2)
+            SSerror = np.dot(np.transpose(residual),residual)
+            # R^2 term = 1- SSerror/SStotal
+            rsquare_array[c] = 1 - (SSerror/SStotal)
+            # Log-Likelihood
+            loglik_array[c] = 0.5*(-nmax*(np.log(2.0 * np.pi) + 1.0 - \
+                np.log(nmax) + np.log(np.sum(residual**2))))
+            # save cutoffs and beta matrix
+            cutoff_array[c,:] = [n,nn]
+            beta_matrix[c,:] = beta_mat
+            # add 1 to counter
+            c += 1
+
+    # find where Log-Likelihood is maximum
+    ind, = np.nonzero(loglik_array == loglik_array.max())
+    n,nn = cutoff_array[ind,:][0]
+    # create matrix of likelihoods
+    likelihood = np.zeros((nmax,nmax))
+    likelihood[:,:] = np.nan
+    likelihood[cutoff_array[:,0],cutoff_array[:,1]] = np.exp(loglik_array) / \
+        np.sum(np.exp(loglik_array))
+    # probability distribution functions of each cutoff
+    PDF1 = np.zeros((nmax))
+    PDF2 = np.zeros((nmax))
+    for i in range(nmax):
+        # PDF for cutoff 1 for all cutoff 2
+        PDF1[i] = np.nansum(likelihood[i,:])
+        # PDF for cutoff 2 for all cutoff 1
+        PDF2[i] = np.nansum(likelihood[:,i])
+    # calculate confidence intervals
+    if CONF is not None:
+        CI1 = _confidence_interval(XI, PDF1/np.sum(PDF1), CONF)
+        CI2 = _confidence_interval(XI, PDF2/np.sum(PDF2), CONF)
+    else:
+        # use a default confidence interval
+        CI1 = 5e3
+        CI2 = 5e3
+    # confidence interval for cutoffs
+    CMN1,CMX1 = (XI[n]-CI1, XI[n]+CI1)
+    CMN2,CMX2 = (XI[nn]-CI2, XI[nn]+CI2)
+
+    # calculate model using best fit coefficients
+    P_x0 = np.ones_like(x)
+    P_x1a = np.copy(x)
+    P_x1b = np.zeros_like(x)
+    P_x1c = np.zeros_like(x)
+    P_x1b[n*STEP:] = x[n*STEP:] - XI[n]
+    P_x1c[nn*STEP:] = x[nn*STEP:] - XI[nn]
+    DMAT = np.transpose([P_x0, P_x1a, P_x1b, P_x1c])
+    beta_mat, = beta_matrix[ind,:]
+    MODEL = np.dot(DMAT, beta_mat)
+    # return the cutoff points, their confidence interval and the model
+    point1 = [XI[n], CMN1, CMX1]
+    point2 = [XI[nn], CMN2, CMX2]
+    return (point1, point2, MODEL)
+
+# PURPOSE: run a physical elastic bending model with Levenberg-Marquardt
+# D. G. Vaughan, Journal of Geophysical Research Solid Earth, 1995
+# A. M. Smith, Journal of Glaciology, 1991
+def elastic_bending(XI, YI,
+        METHOD='trf',
+        GRZ=[0,0,0],
+        TIDE=[0,0,0],
+        ORIENTATION=False,
+        THICKNESS=None,
+        CONF=0.95,
+        XOUT=None
+    ):
+    """
+    Fits an elastic bending model to the grounding zone of an
+    ice shelf [Smith1991]_ [Vaughan1995]_
+
+    Parameters
+    ----------
+    XI: np.ndarray
+        input x-coordinate array
+    YI: np.ndarray
+        input y-coordinate array
+    METHOD: str
+        optimization algorithm to use in curve_fit
+    GRZ: np.ndarray
+        initial guess for the grounding line location
+    TIDE: np.ndarray
+        initial guess for the tidal amplitude
+    ORIENTATION: bool
+        reorient input parameters to go from land ice to floating
+    THICKNESS: np.ndarray or None
+        initial guess for ice thickness
+    CONF: float, default 0.95
+        confidence interval of output error
+    XOUT: np.ndarray or None
+        output x-coordinates for model fit
+
+    Returns
+    -------
+    GZ: np.ndarray
+        grounding line location and confidence interval
+    A: np.ndarray
+        tidal amplitude and confidence interval
+    E: np.ndarray
+        effective elastic modulus of ice and confidence interval
+    T: np.ndarray
+        ice thickness of ice shelf and confidence interval
+    dH: np.ndarray
+        mean height change and confidence interval
+    MODEL: np.ndarray
+        modeled surface from the elastic bending model
+
+    References
+    ----------
+    .. [Smith1991] A. M. Smith, "The use of tiltmeters to study the
+        dynamics of Antarctic ice-shelf grounding lines",
+        *Journal of Glaciology*, 37(125), 51--58, (1991).
+        `doi:10.3198/1991JoG37-125-51-59
+        <https://doi.org/10.3198/1991JoG37-125-51-59>`_
+    .. [Vaughan1995] D. G. Vaughan, "Tidal flexure at ice shelf margins",
+        *Journal of Geophysical Research Solid Earth*, 100(B4),
+        6213--6224, (1995). `doi:10.1029/94JB02467
+        <https://doi.org/10.1029/94JB02467>`_
+    """
+
+    # default output x-coordinates for model fit
+    if XOUT is None:
+        XOUT = np.copy(XI)
+
+    # reorient input parameters to go from land ice to floating
+    if ORIENTATION:
+        Xm1 = XI[-1]
+        GRZ = Xm1 - GRZ
+        GRZ[1:] = GRZ[:0:-1]
+        XI = Xm1 - XI[::-1]
+        YI = YI[::-1]
+        XOUT = Xm1 - XOUT[::-1]
+
+    # calculate thickness mean, min and max
+    if THICKNESS is not None:
+        # only use positive thickness values
+        # ocean points could be negative with tides
+        ii, = np.nonzero(THICKNESS > 0.0)
+        MTH = np.mean(THICKNESS[ii])
+        MNTH = np.min(THICKNESS[ii])
+        MXTH = np.max(THICKNESS[ii])
+    else:
+        MTH = 1000.0
+        MNTH = 100.0
+        MXTH = 1900.0
+
+    # elastic model parameters
+    # G0: location of grounding line
+    # A0: tidal amplitude (values from Padman 2002)
+    # E0: Effective Elastic modulus of ice [Pa]
+    # T0: ice thickness of ice shelf [m]
+    # dH0: mean height change (thinning/thickening)
+    p0 = [GRZ[0], TIDE[0], 1e9, MTH, 0.0]
+    # tuple for parameter bounds (lower and upper)
+    # G0: 95% confidence interval of initial fit
+    # A0: greater than +/- 2.4m value from Padman (2002)
+    # E0: Range from Table 1 of Vaughan (1995)
+    # T0: Range of ice thicknesses from Chuter (2015)
+    # dH0: mean height change +/- 10 m/yr
+    bounds = ([GRZ[1], TIDE[1], 8.3e8, MNTH, -10],
+        [GRZ[2], TIDE[2], 1e10, MXTH, 10])
+    # optimized curve fit with Levenberg-Marquardt algorithm
+    popt,pcov = scipy.optimize.curve_fit(_elastic, XI, YI,
+        p0=p0, bounds=bounds, method=METHOD)
+    MODEL = _elastic(XOUT, *popt)
+    # elasticmodel function outputs and 1 standard deviation uncertainties
+    GZ = np.zeros((2))
+    A = np.zeros((2))
+    E = np.zeros((2))
+    T = np.zeros((2))
+    dH = np.zeros((2))
+    GZ[0],A[0],E[0],T[0],dH[0] = popt[:]
+    # Error analysis
+    # nu = Degrees of Freedom = number of measurements-number of parameters
+    nu = len(XI) - len(p0)
+    # Setting the confidence interval of the output error
+    alpha = 1.0 - CONF
+    # Student T-Distribution with D.O.F. nu
+    # t.ppf parallels tinv in matlab
+    tstar = scipy.stats.t.ppf(1.0-(alpha/2.0),nu)
+    # error for each coefficient = t(nu,1-alpha/2)*standard error
+    perr = np.sqrt(np.diag(pcov))
+    GZ[1],A[1],E[1],T[1],dH[1] = tstar*perr[:]
+    # reverse the reorientation
+    if ORIENTATION:
+        GZ[0] = Xm1 - GZ[0]
+        MODEL = MODEL[::-1]
+    # return the model outputs
+    return (GZ, A, E, T, dH, MODEL)
 
 # PURPOSE: calculate the interquartile range (Pritchard et al, 2009) and
 # robust dispersion estimator (Smith et al, 2017) of the model residuals
@@ -858,3 +1154,71 @@ def _surface(x_in, y_in, ORDER_SPACE=3, **kwargs):
             SMAT.append(rel_x**(o-p) * rel_y**p)
     # return the design matrix and the centroid
     return (SMAT, centroid)
+
+# PURPOSE: create physical elastic bending model with a mean height change
+def _elastic(x, GZ, A, E, T, dH):
+    """
+    Physical elastic bending model with a mean height change
+
+    Parameters
+    ----------
+    x: np.ndarray
+        x-coordinate array
+    GZ: float
+        grounding line location
+    A: float
+        tidal amplitude
+    E: float
+        effective elastic modulus of ice
+    T: float
+        ice thickness of ice shelf
+    dH: float
+        mean height change
+
+    Returns
+    -------
+    model: np.ndarray
+        modeled surface from the elastic bending model
+    """
+    # density of water [kg/m^3]
+    rho_w = 1030.0
+    # gravitational constant [m/s^2]
+    g = 9.806
+    # Poisson's ratio of ice
+    nu = 0.3
+    # structural rigidity of ice
+    D = (E*T**3)/(12.0*(1.0-nu**2))
+    # beta elastic damping parameter
+    b = (0.25*rho_w*g/D)**0.25
+    # distance of points from grounding line (R0 = 0 at grounding line)
+    R0 = (x[x >= GZ] - GZ)
+    # deflection of ice beyond the grounding line (elastic)
+    eta = np.zeros_like(x)
+    eta[x >= GZ] = A*(1.0-np.exp(-b*R0)*(np.cos(b*R0) + np.sin(b*R0)))
+    # model = large scale height change + tidal deflection
+    model = (dH + eta)
+    return model
+
+# PURPOSE: calculate the confidence interval in the retrieval
+def _confidence_interval(x, f, p):
+    """
+    Calculate the confidence interval
+
+    Parameters
+    ----------
+    x: np.ndarray
+        input x-coordinate array
+    f: np.ndarray
+        input probability distribution
+    p: float
+        confidence interval
+    """
+    # sorting probability distribution from smallest probability to largest
+    ii = np.argsort(f)
+    # compute the sorted cumulative probability distribution
+    cdf = np.cumsum(f[ii])
+    # linearly interpolate to confidence interval
+    J = np.interp(p, cdf, x[ii])
+    # position with maximum probability
+    K = x[ii[-1]]
+    return np.abs(K-J)

@@ -37,10 +37,35 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/MPI_triangulate_elevation.rst
     api_reference/symbolic_icebridge_files.rst
     api_reference/symbolic_ICESat_GLA12.rst
+    api_reference/symbolic_ICESat2_files.rst
     api_reference/tile_icebridge_data.rst
     api_reference/tile_ICESat_GLA12.rst
     api_reference/tile_ICESat2_ATL06.rst
     api_reference/tile_ICESat2_ATL11.rst
+
+.. toctree::
+    :maxdepth: 1
+    :hidden:
+    :caption: Subsetting
+
+    api_reference/subset/MPI_reduce_ICESat2_ATL03_RGI.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL06_RGI.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL11_RGI.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL06_drainages.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL11_drainages.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL06_grounded.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL11_grounded.rst
+    api_reference/subset/MPI_reduce_ICESat_GLA12_grounding_zone.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL03_grounding_zone.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL06_grounding_zone.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL11_grounding_zone.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL06_ice_shelves.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL11_ice_shelves.rst
+    api_reference/subset/reduce_ICESat_GLA12_raster.rst
+    api_reference/subset/reduce_ICESat2_ATL06_raster.rst
+    api_reference/subset/reduce_ICESat2_ATL07_raster.rst
+    api_reference/subset/reduce_ICESat2_ATL10_raster.rst
+    api_reference/subset/reduce_ICESat2_ATL11_raster.rst
 
 .. toctree::
     :maxdepth: 1
@@ -70,6 +95,9 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/DEM/interp_ATL14_DEM_ICESat2_ATL06.rst
     api_reference/DEM/interp_ATL14_DEM_ICESat2_ATL11.rst
     api_reference/DEM/MPI_interpolate_DEM.rst
+    api_reference/DEM/MPI_DEM_ICESat2_ATL03.rst
+    api_reference/DEM/MPI_DEM_ICESat2_ATL06.rst
+    api_reference/DEM/MPI_DEM_ICESat2_ATL11.rst
     api_reference/DEM/nsidc_convert_GIMP_DEM.rst
     api_reference/DEM/pgc_arcticdem_strip_sync.rst
     api_reference/DEM/pgc_arcticdem_sync.rst
@@ -99,13 +127,11 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     :caption: GZ
 
     api_reference/GZ/calculate_grounding_zone.rst
+    api_reference/GZ/calculate_GZ_ICESat_GLA12.rst
     api_reference/GZ/calculate_GZ_ICESat2_ATL03.rst
     api_reference/GZ/calculate_GZ_ICESat2_ATL06.rst
     api_reference/GZ/calculate_GZ_ICESat2_ATL11.rst
     api_reference/GZ/model_grounding_zone.rst
-    api_reference/GZ/MPI_reduce_ICESat2_ATL03_grounding_zone.rst
-    api_reference/GZ/MPI_reduce_ICESat2_ATL06_grounding_zone.rst
-    api_reference/GZ/MPI_reduce_ICESat2_ATL11_grounding_zone.rst
 
 .. toctree::
     :maxdepth: 1

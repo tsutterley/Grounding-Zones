@@ -204,7 +204,7 @@ def ncdf_pressure(FILENAMES,VARNAME,TIMENAME,LATNAME,MEAN,OCEAN,AREA):
     # return the sea level pressure anomalies and times
     return (SLP, TPX, latitude, MJD)
 
-# PURPOSE: read ICESat-2 sea ice height (ATL07) from NSIDC
+# PURPOSE: read ICESat-2 sea ice height (ATL07)
 # calculate and interpolate the instantaneous inverse barometer response
 def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
     OUTPUT_DIRECTORY=None,

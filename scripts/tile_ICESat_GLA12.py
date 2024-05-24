@@ -60,7 +60,7 @@ pyproj = gz.utilities.import_dependency('pyproj')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 
 # PURPOSE: create tile index files of ICESat ice sheet
-# HDF5 elevation data (GLAH12) from NSIDC
+# HDF5 elevation data (GLAH12)
 def tile_ICESat_GLA12(input_file,
     SPACING=None,
     HEM=None,

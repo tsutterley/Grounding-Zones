@@ -7,7 +7,7 @@ MPI_reduce_ICESat2_ATL03_grounding_zone.py
 
 `Source code`__
 
-.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/GZ/MPI_reduce_ICESat2_ATL03_grounding_zone.py
+.. __: https://github.com/tsutterley/Grounding-Zones/blob/main/subset/MPI_reduce_ICESat2_ATL03_grounding_zone.py
 
 Calling Sequence
 ################

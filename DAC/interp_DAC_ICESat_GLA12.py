@@ -44,6 +44,7 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
         fix memory allocation for output 40HZ data
+        use ellipsoid transformation function from pyTMD
     Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
     Updated 12/2022: single implicit import of grounding zone tools
@@ -69,13 +70,12 @@ import grounding_zones as gz
 
 # attempt imports
 h5py = gz.utilities.import_dependency('h5py')
-is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 netCDF4 = gz.utilities.import_dependency('netCDF4')
 pyproj = gz.utilities.import_dependency('pyproj')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12)
 # calculate and interpolate the dynamic atmospheric correction
 def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE,
     OUTPUT_DIRECTORY=None,
@@ -164,8 +164,9 @@ def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE,
     topex = pyTMD.datum(ellipsoid='TOPEX', units='MKS')
     wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
-    lat_40HZ,elev_40HZ = is2tk.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
-        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
+    lat_40HZ,elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
+        topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat,
+        eps=1e-12, itmax=10)
 
     # pyproj transformer for converting from input coordinates (EPSG)
     # to model coordinates

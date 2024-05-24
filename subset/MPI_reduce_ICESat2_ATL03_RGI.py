@@ -1,17 +1,33 @@
 #!/usr/bin/env python
 u"""
-MPI_reduce_ICESat2_ATL03_grounding_zone.py
+MPI_reduce_ICESat2_ATL03_RGI.py
 Written by Tyler Sutterley (05/2024)
 
-Create masks for reducing ICESat-2 geolocated photon height data to within
-    a buffer region near the ice sheet grounding zone
-Used to calculate a more definite grounding zone from the ICESat-2 data
+Create masks for reducing ICESat-2 data to the Randolph Glacier Inventory
+    https://www.glims.org/RGI/rgi60_dl.html
 
 COMMAND LINE OPTIONS:
-    -D X, --directory X: Working data directory
-    -O X, --output-directory X: input/output data directory
-    -B X, --buffer X: Distance in kilometers to buffer from grounding line
-    -p X, --polygon X: Georeferenced file containing a set of polygons
+    -D X, --directory X: Working Data Directory
+    -R X, --region X: region of Randolph Glacier Inventory to run
+        1: Alaska
+        2: Western Canada and USA
+        3: Arctic Canada North
+        4: Arctic Canada South
+        5: Greenland Periphery
+        6: Iceland
+        7: Svalbard
+        8: Scandinavia
+        9: Russian Arctic
+        10: North Asia
+        11: Central Europe
+        12: Caucasus, Middle East
+        13: Central Asia
+        14: South Asia West
+        15: South Asia East
+        16: Low Latitudes
+        17: Southern Andes
+        18: New Zealand
+        19: Antarctic, Subantarctic
     -V, --verbose: Output information about each created file
     -M X, --mode X: Permission mode of directories and files created
 
@@ -28,14 +44,12 @@ PYTHON DEPENDENCIES:
         http://pythonhosted.org/mpi4py/
         http://mpi4py.readthedocs.org/en/stable/
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
-        https://www.h5py.org/
+        https://h5py.org
         http://docs.h5py.org/en/stable/mpi.html
-    fiona: Python wrapper for vector data access functions from the OGR library
-        https://fiona.readthedocs.io/en/latest/manual.html
     shapely: PostGIS-ish operations outside a database context for Python
         http://toblerity.org/shapely/index.html
-    pyproj: Python interface to PROJ library
-        https://pypi.org/project/pyproj/
+    pyshp: Python read/write support for ESRI Shapefile format
+        https://github.com/GeospatialPython/pyshp
     timescale: Python tools for time and astronomical calculations
         https://pypi.org/project/timescale/
 
@@ -44,61 +58,50 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 05/2024: use wrapper to importlib for optional dependencies
-    Updated 11/2023: add option to read a specific georeferenced file
-    Updated 08/2023: create s3 filesystem when using s3 urls as input
-        use time functions from timescale.time
-    Updated 07/2023: using pathlib to define and operate on paths
-        use geoms attribute for shapely 2.0 compliance
-    Updated 12/2022: single implicit import of grounding zone tools
-    Updated 11/2022: verify coordinate reference system of shapefile
-    Updated 10/2022: simplified HDF5 file output to match other reduction programs
-    Updated 08/2022: use logging for verbose output of processing run
-    Updated 07/2022: place some imports within try/except statements
-    Updated 05/2022: use argparse descriptions within documentation
+        moved from icesat2_toolkit to Grounding-Zones package
+    Updated 04/2024: use timescale for temporal operations
+    Updated 03/2024: use pathlib to define and operate on paths
+    Updated 12/2022: single implicit import of altimetry tools
+    Updated 07/2022: place some imports behind try/except statements
+    Updated 05/2022: use argparse descriptions within sphinx documentation
+    Updated 10/2021: using python logging for handling verbose output
+        added parsing for converting file lines to arguments
+    Updated 05/2021: print full path of output filename
     Updated 02/2021: replaced numpy bool/int to prevent deprecation warnings
     Updated 01/2021: time utilities for converting times from JD and to decimal
     Updated 12/2020: H5py deprecation warning change to use make_scale
-    Updated 10/2020: using argparse to set parameters.  update pyproj transforms
+    Updated 10/2020: using argparse to set parameters
     Updated 08/2020: using convert delta time function to convert to Julian days
+    Updated 06/2020: add additional beam check within heights groups
     Updated 10/2019: using delta_time as output HDF5 variable dimensions
-    Updated 09/2019: using fiona for shapefile read and pyproj for coordinates
+        changing Y/N flags to True/False
+    Updated 09/2019: using date functions paralleling public repository
+    Updated 05/2019: read shapefiles from RGI provided zip files
+        check if beam exists in a try except else clause
     Updated 04/2019: check if subsetted beam contains land ice data
-    Forked 04/2019 from MPI_reduce_triangulated_grounding_zone.py
-    Updated 02/2019: shapely updates for python3 compatibility
-    Updated 07/2017: using parts from shapefile
-    Written 06/2017
+        save RGIId for valid points to determine containing RGI polygons
+    Written 04/2019
 """
 from __future__ import print_function
 
+import sys
 import os
 import re
+import io
 import logging
 import pathlib
-import argparse
+import zipfile
 import datetime
+import argparse
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
-fiona = gz.utilities.import_dependency('fiona')
 h5py = gz.utilities.import_dependency('h5py')
 MPI = gz.utilities.import_dependency('mpi4py.MPI')
-pyproj = gz.utilities.import_dependency('pyproj')
+shapefile = gz.utilities.import_dependency('shapefile')
 geometry = gz.utilities.import_dependency('shapely.geometry')
 timescale = gz.utilities.import_dependency('timescale')
-
-# buffered shapefile
-buffer_shapefile = {}
-buffer_shapefile['N'] = 'grn_ice_sheet_buffer_{0:0.0f}km.shp'
-buffer_shapefile['S'] = 'ant_ice_sheet_islands_v2_buffer_{0:0.0f}km.shp'
-# description and reference for each grounded ice file
-grounded_description = {}
-grounded_description['N'] = 'Greenland Mapping Project (GIMP) Ice & Ocean Mask'
-grounded_description['S'] = ('MEaSUREs Antarctic Boundaries for IPY 2007-2009 '
-    'from Satellite_Radar, Version 2')
-grounded_reference = {}
-grounded_reference['N'] = 'https://doi.org/10.5194/tc-8-1509-2014'
-grounded_reference['S'] = 'https://doi.org/10.5067/IKBWW4RYHF1Q'
 
 # PURPOSE: keep track of MPI threads
 def info(rank, size):
@@ -111,31 +114,25 @@ def info(rank, size):
 # PURPOSE: create argument parser
 def arguments():
     parser = argparse.ArgumentParser(
-        description="""Create masks for reducing ICESat-2 geolocated
-            photon height data to within a buffer region near the
-            ice sheet grounding zone
-            """
+        description="""Create masks for reducing ICESat-2 photon event data to
+            the Randolph Glacier Inventory (RGI)
+            """,
+        fromfile_prefix_chars="@"
     )
+    parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
     parser.add_argument('file',
         type=pathlib.Path,
         help='ICESat-2 ATL03 file to run')
-    # working data directory for shapefiles
+    # working data directory for location of RGI files
     parser.add_argument('--directory','-D',
-        type=pathlib.Path, default=gz.utilities.get_data_path('data'),
-        help='Working data directory')
-    # directory with input/output data
-    parser.add_argument('--output-directory','-O',
         type=pathlib.Path,
-        help='Output data directory')
-    # buffer in kilometers for extracting grounding zone
-    parser.add_argument('--buffer','-B',
-        type=float, default=20.0,
-        help='Distance in kilometers to buffer grounding zone')
-    # alternatively read a specific georeferenced file
-    parser.add_argument('--polygon','-p',
-        type=pathlib.Path, default=None,
-        help='Georeferenced file containing a set of polygons')
+        default=pathlib.Path.cwd(),
+        help='Working data directory for mask files')
+    # region of Randolph Glacier Inventory to run
+    parser.add_argument('--region','-r',
+        metavar='RGI', type=int, choices=range(1,20),
+        help='region of Randolph Glacier Inventory to run')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -144,60 +141,71 @@ def arguments():
     # permissions mode of the local files (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
-        help='permissions mode of output files')
+        help='Permissions mode of output files')
     # return the parser
     return parser
 
-# PURPOSE: set the hemisphere of interest based on the granule
-def set_hemisphere(GRANULE):
-    if GRANULE in ('10','11','12'):
-        projection_flag = 'S'
-    elif GRANULE in ('03','04','05'):
-        projection_flag = 'N'
-    return projection_flag
-
-# PURPOSE: load the polygon object for the buffered estimated grounding zone
-def load_grounding_zone(base_dir, HEM, BUFFER, shapefile=None):
-    # buffered shapefile for region
-    if shapefile is None:
-        shapefile = buffer_shapefile[HEM].format(BUFFER)
-        input_shapefile = base_dir.joinpath(shapefile)
-    else:
-        input_shapefile = pathlib.Path(shapefile).expanduser().absolute()
-    # read buffered shapefile
-    logging.info(str(input_shapefile))
-    shape = fiona.open(str(input_shapefile))
-    # extract coordinate reference system
-    if ('init' in shape.crs.keys()):
-        epsg = pyproj.CRS(shape.crs['init']).to_epsg()
-    else:
-        epsg = pyproj.CRS(shape.crs).to_epsg()
-    # create list of polygons
-    polygons = []
-    # extract the entities and assign by tile name
-    for i,ent in enumerate(shape.values()):
-        # list of coordinates
+# PURPOSE: load zip file containing Randolph Glacier Inventory shapefiles
+def load_glacier_inventory(RGI_DIRECTORY,RGI_REGION):
+    # list of Randolph Glacier Inventory files
+    RGI_files = []
+    RGI_files.append('01_rgi60_Alaska')
+    RGI_files.append('02_rgi60_WesternCanadaUS')
+    RGI_files.append('03_rgi60_ArcticCanadaNorth')
+    RGI_files.append('04_rgi60_ArcticCanadaSouth')
+    RGI_files.append('05_rgi60_GreenlandPeriphery')
+    RGI_files.append('06_rgi60_Iceland')
+    RGI_files.append('07_rgi60_Svalbard')
+    RGI_files.append('08_rgi60_Scandinavia')
+    RGI_files.append('09_rgi60_RussianArctic')
+    RGI_files.append('10_rgi60_NorthAsia')
+    RGI_files.append('11_rgi60_CentralEurope')
+    RGI_files.append('12_rgi60_CaucasusMiddleEast')
+    RGI_files.append('13_rgi60_CentralAsia')
+    RGI_files.append('14_rgi60_SouthAsiaWest')
+    RGI_files.append('15_rgi60_SouthAsiaEast')
+    RGI_files.append('16_rgi60_LowLatitudes')
+    RGI_files.append('17_rgi60_SouthernAndes')
+    RGI_files.append('18_rgi60_NewZealand')
+    RGI_files.append('19_rgi60_AntarcticSubantarctic')
+    # read input zipfile containing RGI shapefiles
+    RGI_DIRECTORY = pathlib.Path(RGI_DIRECTORY).expanduser().absolute()
+    RGI_FILE = RGI_DIRECTORY.joinpath(f'{RGI_files[RGI_REGION-1]}.zip')
+    zs = zipfile.ZipFile(str(RGI_FILE))
+    dbf,prj,shp,shx = [io.BytesIO(zs.read(s)) for s in sorted(zs.namelist())
+        if re.match(r'(.*?)\.(dbf|prj|shp|shx)$',s)]
+    # read the shapefile and extract entities
+    shape_input = shapefile.Reader(dbf=dbf, prj=prj, shp=shp, shx=shx,
+        encodingErrors='ignore')
+    shape_entities = shape_input.shapes()
+    shape_attributes = shape_input.records()
+    # extract the RGI entities
+    poly_dict = {}
+    for i,att in enumerate(shape_attributes):
+        # extract latitude and longitude coordinates for entity
+        points = np.array(shape_entities[i].points)
+        # entities can have multiple parts
+        parts = shape_entities[i].parts
+        parts.append(len(points))
+        # list object for coordinates (exterior and holes)
         poly_list = []
-        # extract coordinates for entity
-        for coords in ent['geometry']['coordinates']:
-            # extract Polar-Stereographic coordinates for record
-            x,y = np.transpose(coords)
-            poly_list.append(list(zip(x,y)))
+        # add each part to list
+        for p1,p2 in zip(parts[:-1], parts[1:]):
+            poly_list.append(np.c_[points[p1:p2,0], points[p1:p2,1]])
         # convert poly_list into Polygon object with holes
-        poly_obj = geometry.Polygon(poly_list[0], holes=poly_list[1:])
-        # Valid Polygon cannot have overlapping exterior or interior rings
+        poly_obj = geometry.Polygon(poly_list[0], poly_list[1:])
+        # Valid Polygon may not possess overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
-        polygons.append(poly_obj)
-    # create shapely multipolygon object
-    mpoly_obj = geometry.MultiPolygon(polygons)
-    # close the shapefile
-    shape.close()
-    # return the polygon object for the ice sheet
-    return (mpoly_obj, epsg)
+        # add to dictionary based on RGI identifier
+        poly_dict[att[0]] = poly_obj
+    # close the zipfile
+    zs.close()
+    # return the dictionary of polygon objects and the input file
+    return (poly_dict, RGI_FILE.name)
 
 # PURPOSE: read ICESat-2 geolocated photon height data (ATL03)
-# reduce data to within buffer of grounding zone
+# reduce to the Randolph Glacier Inventory
 def main():
     # start MPI communicator
     comm = MPI.COMM_WORLD
@@ -211,34 +219,36 @@ def main():
     logging.basicConfig(level=loglevel)
 
     # output module information for process
-    info(comm.rank, comm.size)
+    info(comm.rank,comm.size)
     if (comm.rank == 0):
         logging.info(f'{str(args.file)} -->')
-    # input granule basename
-    GRANULE = args.file.name
 
+    # Open the HDF5 file for reading
+    args.file = pathlib.Path(args.file).expanduser().absolute()
+    fileID = h5py.File(args.file, 'r', driver='mpio', comm=comm)
     # extract parameters from ICESat-2 ATLAS HDF5 file name
     rx = re.compile(r'(processed_)?(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})'
         r'(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
-    SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX = rx.findall(GRANULE).pop()
-    # get output directory from input file
-    if args.output_directory is None:
-        args.output_directory = args.file.parent
+    SUB,PRD,YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX = \
+        rx.findall(args.file.name).pop()
 
-    # check if data is an s3 presigned url
-    if str(args.file).startswith('s3:'):
-        client = gz.utilities.attempt_login('urs.earthdata.nasa.gov',
-            authorization_header=True)
-        session = gz.utilities.s3_filesystem()
-        args.file = session.open(args.file, mode='rb')
+    # read data on rank 0
+    if (comm.rank == 0):
+        # read RGI for region and create shapely polygon objects
+        poly_dict,RGI_file = load_glacier_inventory(args.directory,args.region)
     else:
-        args.file = pathlib.Path(args.file).expanduser().absolute()
+        # create empty object for list of shapely objects
+        poly_dict = None
+        RGI_file = None
 
-    # Open the HDF5 file for reading
-    fileID = h5py.File(args.file, 'r', driver='mpio', comm=comm)
+    # Broadcast Shapely polygon objects
+    poly_dict = comm.bcast(poly_dict, root=0)
+    RGI_file = comm.bcast(RGI_file, root=0)
+    # RGI version and name
+    RGI_VERSION,RGI_NAME = re.findall(r'\d_rgi(\d+)_(.*?)$', RGI_file).pop()
+    # combined validity check for all beams
+    valid_check = False
 
-    # set the hemisphere flag based on ICESat-2 granule
-    HEM = set_hemisphere(GRN)
     # read each input beam within the file
     IS2_atl03_beams = []
     for gtx in [k for k in fileID.keys() if bool(re.match(r'gt\d[lr]',k))]:
@@ -252,32 +262,11 @@ def main():
         else:
             IS2_atl03_beams.append(gtx)
 
-    # read data on rank 0
-    if (comm.rank == 0):
-        # read shapefile and create shapely multipolygon objects
-        mpoly_obj, epsg = load_grounding_zone(args.directory, HEM,
-            args.buffer, shapefile=args.polygon)
-    else:
-        # create empty object for list of shapely objects
-        mpoly_obj = None
-        epsg = None
-
-    # Broadcast Shapely multipolygon objects and projection
-    mpoly_obj = comm.bcast(mpoly_obj, root=0)
-    epsg = comm.bcast(epsg, root=0)
-
-    # pyproj transformer for converting lat/lon to polar stereographic
-    crs1 = pyproj.CRS.from_epsg(4326)
-    crs2 = pyproj.CRS.from_epsg(epsg)
-    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
-
     # copy variables for outputting to HDF5 file
     IS2_atl03_mask = {}
     IS2_atl03_fill = {}
     IS2_atl03_dims = {}
     IS2_atl03_mask_attrs = {}
-    # combined validity check for all beams
-    valid_check = False
     # number of GPS seconds between the GPS epoch (1980-01-06T00:00:00Z UTC)
     # and ATLAS Standard Data Product (SDP) epoch (2018-01-01T00:00:00Z UTC)
     # Add this value to delta time parameters to compute full gps_seconds
@@ -313,18 +302,17 @@ def main():
         longitude = fileID[gtx]['heights']['lon_ph'][:]
         latitude = fileID[gtx]['heights']['lat_ph'][:]
 
-        # convert lat/lon to polar stereographic
-        X,Y = transformer.transform(longitude[ind], latitude[ind])
-        # convert reduced x and y to shapely multipoint object
-        xy_point = geometry.MultiPoint(np.c_[X, Y])
+        # convert reduced lat/lon to shapely multipoint object
+        xy_point = geometry.MultiPoint(np.c_[longitude[ind], latitude[ind]])
 
         # create distributed intersection map for calculation
         distributed_map = np.zeros((n_pe),dtype=bool)
+        distributed_RGIId = np.zeros((n_pe),dtype='|S14')
         # create empty intersection map array for receiving
         associated_map = np.zeros((n_pe),dtype=bool)
-        # for each polygon
-        for poly_obj in mpoly_obj.geoms:
-            # finds if points are encapsulated (in grounding zone)
+        associated_RGIId = np.zeros((n_pe),dtype='|S14')
+        for key,poly_obj in poly_dict.items():
+            # finds if points are encapsulated (within RGI polygon)
             int_test = poly_obj.intersects(xy_point)
             if int_test:
                 # extract intersected points
@@ -332,11 +320,16 @@ def main():
                 int_indices, = np.nonzero(int_map)
                 # set distributed_map indices to True for intersected points
                 distributed_map[ind[int_indices]] = True
+                distributed_RGIId[ind[int_indices]] = key
         # communicate output MPI matrices between ranks
         # operation is a logical "or" across the elements.
         comm.Allreduce(sendbuf=[distributed_map, MPI.BOOL], \
             recvbuf=[associated_map, MPI.BOOL], op=MPI.LOR)
+        # operation is a element summation.
+        comm.Allreduce(sendbuf=[distributed_RGIId, MPI.CHAR], \
+            recvbuf=[associated_RGIId, MPI.CHAR], op=MPI.SUM)
         distributed_map = None
+        distributed_RGIId = None
         # wait for all processes to finish calculation
         comm.Barrier()
         # add to validity check
@@ -412,37 +405,50 @@ def main():
             "detection rate.")
 
         # output mask to HDF5
-        IS2_atl03_mask[gtx]['subsetting']['ice_gz'] = associated_map
-        IS2_atl03_fill[gtx]['subsetting']['ice_gz'] = None
-        IS2_atl03_dims[gtx]['subsetting']['ice_gz'] = ['delta_time']
-        IS2_atl03_mask_attrs[gtx]['subsetting']['ice_gz'] = {}
-        IS2_atl03_mask_attrs[gtx]['subsetting']['ice_gz']['contentType'] = "referenceInformation"
-        IS2_atl03_mask_attrs[gtx]['subsetting']['ice_gz']['long_name'] = 'Grounding Zone Mask'
-        IS2_atl03_mask_attrs[gtx]['subsetting']['ice_gz']['description'] = \
-            ("Grounding zone mask calculated using delineations from {0} buffered by "
-             "{1:0.0f} km.".format(grounded_description[HEM], args.buffer))
-        IS2_atl03_mask_attrs[gtx]['subsetting']['ice_gz']['reference'] = grounded_reference[HEM]
-        IS2_atl03_mask_attrs[gtx]['subsetting']['ice_gz']['source'] = args.buffer
-        IS2_atl03_mask_attrs[gtx]['subsetting']['ice_gz']['coordinates'] = \
+        key = RGI_NAME.replace('_',' ')
+        IS2_atl03_mask[gtx]['subsetting'][RGI_NAME] = associated_map
+        IS2_atl03_fill[gtx]['subsetting'][RGI_NAME] = None
+        IS2_atl03_dims[gtx]['subsetting'][RGI_NAME] = ['delta_time']
+        IS2_atl03_mask_attrs[gtx]['subsetting'][RGI_NAME] = {}
+        IS2_atl03_mask_attrs[gtx]['subsetting'][RGI_NAME]['contentType'] = "referenceInformation"
+        IS2_atl03_mask_attrs[gtx]['subsetting'][RGI_NAME]['long_name'] = f'{key} Mask'
+        IS2_atl03_mask_attrs[gtx]['subsetting'][RGI_NAME]['description'] = ('Mask calculated '
+            f'using the {key} region from the Randolph Glacier Inventory.')
+        IS2_atl03_mask_attrs[gtx]['subsetting'][RGI_NAME]['source'] = f'RGIv{RGI_VERSION}'
+        IS2_atl03_mask_attrs[gtx]['subsetting'][RGI_NAME]['reference'] = \
+            'https://www.glims.org/RGI/'
+        IS2_atl03_mask_attrs[gtx]['subsetting'][RGI_NAME]['coordinates'] = \
+            "../heights/delta_time ../heights/lat_ph ../heights/lon_ph"
+        # output RGI identifier
+        IS2_atl03_mask[gtx]['subsetting']['RGIId'] = associated_RGIId
+        IS2_atl03_fill[gtx]['subsetting']['RGIId'] = None
+        IS2_atl03_dims[gtx]['subsetting']['RGIId'] = ['delta_time']
+        IS2_atl03_mask_attrs[gtx]['subsetting']['RGIId'] = {}
+        IS2_atl03_mask_attrs[gtx]['subsetting']['RGIId']['contentType'] = "referenceInformation"
+        IS2_atl03_mask_attrs[gtx]['subsetting']['RGIId']['long_name'] = "RGI Identifier"
+        IS2_atl03_mask_attrs[gtx]['subsetting']['RGIId']['description'] = ('Identification '
+            f'code within version {RGI_VERSION} of the Randolph Glacier Inventory (RGI).')
+        IS2_atl03_mask_attrs[gtx]['subsetting']['RGIId']['source'] = f'RGIv{RGI_VERSION}'
+        IS2_atl03_mask_attrs[gtx]['subsetting']['RGIId']['reference'] = \
+            'https://www.glims.org/RGI/'
+        IS2_atl03_mask_attrs[gtx]['subsetting']['RGIId']['coordinates'] = \
             "../heights/delta_time ../heights/lat_ph ../heights/lon_ph"
         # wait for all processes to finish calculation
         comm.Barrier()
 
     # parallel h5py I/O does not support compression filters at this time
     if (comm.rank == 0) and valid_check:
-        # output HDF5 files with output masks
-        fargs=(PRD,'GROUNDING_ZONE_MASK',YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX)
-        file_format = '{0}_{1}_{2}{3}{4}{5}{6}{7}_{8}{9}{10}_{11}_{12}{13}.h5'
-        output_file = args.output_directory.joinpath(file_format.format(*fargs))
+        # output HDF5 file with RGI masks
+        fargs=(PRD,RGI_VERSION,RGI_NAME,YY,MM,DD,HH,MN,SS,TRK,CYC,GRN,RL,VRS,AUX)
+        file_format='{0}_RGI{1}_{2}_{3}{4}{5}{6}{7}{8}_{9}{10}{11}_{12}_{13}{14}.h5'
+        output_file = args.file.with_name(file_format.format(*fargs))
         # print file information
         logging.info(f'\t{str(output_file)}')
         # write to output HDF5 file
         HDF5_ATL03_mask_write(IS2_atl03_mask, IS2_atl03_mask_attrs,
-            FILENAME=output_file,
-            INPUT=GRANULE,
-            FILL_VALUE=IS2_atl03_fill,
-            DIMENSIONS=IS2_atl03_dims,
-            CLOBBER=True)
+            CLOBBER=True, INPUT=args.file.name,
+            FILL_VALUE=IS2_atl03_fill, DIMENSIONS=IS2_atl03_dims,
+            FILENAME=output_file)
         # change the permissions mode
         output_file.chmod(mode=args.mode)
     # close the input file
@@ -547,7 +553,7 @@ def HDF5_ATL03_mask_write(IS2_atl03_mask, IS2_atl03_attrs, INPUT=None,
     fileID.attrs['references'] = 'https://nsidc.org/data/icesat-2'
     fileID.attrs['processing_level'] = '4'
     # add attributes for input ATL03 and ATL09 files
-    fileID.attrs['lineage'] = pathlib.Path(INPUT).name
+    fileID.attrs['input_files'] = ','.join([pathlib.Path(i).name for i in INPUT])
     # find geospatial and temporal ranges
     lnmn,lnmx,ltmn,ltmx,tmn,tmx = (np.inf,-np.inf,np.inf,-np.inf,np.inf,-np.inf)
     for gtx in beams:

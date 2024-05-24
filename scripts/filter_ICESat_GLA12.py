@@ -72,7 +72,7 @@ import grounding_zones as gz
 # attempt imports
 h5py = gz.utilities.import_dependency('h5py')
 
-# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12) from NSIDC
+# PURPOSE: read ICESat ice sheet HDF5 elevation data (GLAH12)
 # Calculates quality summary flags for ice sheet elevation data
 def filter_ICESat_GLA12(INPUT_FILE,
     OUTPUT_DIRECTORY=None,
@@ -113,11 +113,11 @@ def filter_ICESat_GLA12(INPUT_FILE,
             rx.findall(GRANULE).pop()
     except (ValueError, IndexError):
         # output quality summary HDF5 file (generic)
-        FILENAME = f'{INPUT_FILE.stem}_MASK{INPUT_FILE.suffix}'
+        FILENAME = f'{INPUT_FILE.stem}_QA{INPUT_FILE.suffix}'
     else:
         # output quality summary HDF5 file for NSIDC granules
         args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
-        file_format = 'GLAH{0}_{1}_MASK_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
+        file_format = 'GLAH{0}_{1}_QA_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
         FILENAME = file_format.format(*args)
     # get output directory from input file
     if OUTPUT_DIRECTORY is None:

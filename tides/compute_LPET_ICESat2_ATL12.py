@@ -69,7 +69,7 @@ pyproj = gz.utilities.import_dependency('pyproj')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read ICESat-2 ocean surface height (ATL12) from NSIDC
+# PURPOSE: read ICESat-2 ocean surface height (ATL12)
 # compute long-period equilibrium tides at points and times
 def compute_LPET_ICESat2(INPUT_FILE,
         OUTPUT_DIRECTORY=None,
