@@ -84,10 +84,8 @@ import pathlib
 import zipfile
 import datetime
 import argparse
-import warnings
 import numpy as np
 import collections
-import timescale.time
 import grounding_zones as gz
 
 # attempt imports
@@ -95,6 +93,7 @@ h5py = gz.utilities.import_dependency('h5py')
 MPI = gz.utilities.import_dependency('mpi4py.MPI')
 shapefile = gz.utilities.import_dependency('shapefile')
 geometry = gz.utilities.import_dependency('shapely.geometry')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: keep track of MPI threads
 def info(rank, size):

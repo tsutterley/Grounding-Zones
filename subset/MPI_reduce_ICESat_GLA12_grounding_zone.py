@@ -55,7 +55,6 @@ import re
 import logging
 import pathlib
 import argparse
-import datetime
 import numpy as np
 import grounding_zones as gz
 

@@ -65,13 +65,13 @@ import numpy as np
 import scipy.ndimage
 import scipy.spatial
 import scipy.interpolate
-import timescale.time
-import icesat2_toolkit as is2tk
 import grounding_zones as gz
 
 # attempt imports
 h5py = gz.utilities.import_dependency('h5py')
+is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 pyproj = gz.utilities.import_dependency('pyproj')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: try to get the projection information for the input file
 def get_projection(attributes, PROJECTION):

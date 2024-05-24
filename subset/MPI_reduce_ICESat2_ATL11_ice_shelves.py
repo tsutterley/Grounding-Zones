@@ -64,10 +64,8 @@ import logging
 import pathlib
 import datetime
 import argparse
-import warnings
 import numpy as np
 import collections
-import timescale.time
 import grounding_zones as gz
 
 # attempt imports
@@ -76,6 +74,7 @@ MPI = gz.utilities.import_dependency('mpi4py.MPI')
 pyproj = gz.utilities.import_dependency('pyproj')
 shapefile = gz.utilities.import_dependency('shapefile')
 geometry = gz.utilities.import_dependency('shapely.geometry')
+timescale = gz.utilities.import_dependency('timescale')
 
 # regional ice shelf files
 ice_shelf_file = {}

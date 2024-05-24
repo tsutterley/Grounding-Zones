@@ -59,19 +59,17 @@ import re
 import logging
 import pathlib
 import argparse
-import datetime
-import warnings
 import numpy as np
 import scipy.ndimage
 import scipy.spatial
 import scipy.interpolate
-import timescale.time
 import grounding_zones as gz
 
 # attempt imports
 h5py = gz.utilities.import_dependency('h5py')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 pyproj = gz.utilities.import_dependency('pyproj')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: try to get the projection information for the input file
 def get_projection(attributes, PROJECTION):
