@@ -90,7 +90,6 @@ import argparse
 import collections
 import numpy as np
 import scipy.interpolate
-import timescale.time
 import grounding_zones as gz
 
 # attempt imports
@@ -100,6 +99,7 @@ h5py = gz.utilities.import_dependency('h5py')
 MPI = gz.utilities.import_dependency('mpi4py.MPI')
 pyproj = gz.utilities.import_dependency('pyproj')
 geometry = gz.utilities.import_dependency('shapely.geometry')
+timescale = gz.utilities.import_dependency('timescale')
 
 # digital elevation models
 elevation_dir = {}
