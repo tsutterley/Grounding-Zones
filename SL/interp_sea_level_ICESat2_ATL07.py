@@ -196,7 +196,7 @@ def interpolate_sea_level(base_dir, xi, yi, MJD, HEM):
     # return interpolated values
     return dict(h_mdt=MDT, h_sla=SLA, h_adt=ADT)
 
-# PURPOSE: read ICESat-2 sea ice height (ATL07) from NSIDC
+# PURPOSE: read ICESat-2 sea ice height (ATL07)
 # interpolate AVISO sea level at points and times
 def interp_sea_level_ICESat2(base_dir, INPUT_FILE,
     OUTPUT_DIRECTORY=None,

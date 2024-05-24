@@ -489,7 +489,7 @@ def read_ATM_icessn_file(input_file, input_subsetter):
     # return the output variables
     return ATM_L2_input, file_lines, HEM
 
-# PURPOSE: read LVIS Level-2 data files from NSIDC
+# PURPOSE: read LVIS Level-2 data files
 def read_LVIS_ascii_file(input_file: str | pathlib.Path | io.BytesIO):
     """
     Reads LVIS Level-2 ascii data files

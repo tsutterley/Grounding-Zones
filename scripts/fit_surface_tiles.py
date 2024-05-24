@@ -462,7 +462,7 @@ def fit_surface_tiles(tile_files,
                         R2.findall(group).pop()
                     # quality summary HDF5 file for NSIDC granules
                     args = (PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
-                    glasmask = 'GLAH{0}_{1}_MASK_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
+                    glasmask = 'GLAH{0}_{1}_QA_{2}{3}{4}_{5}_{6}_{7}_{8}_{9}.h5'
                     FILE3 = d1.joinpath(glasmask.format(*args))
                     f3 = gz.io.multiprocess_h5py(FILE3, mode='r')
                     # extract number of points from group

@@ -72,7 +72,7 @@ h5py = gz.utilities.import_dependency('h5py')
 is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read ICESat-2 land ice data (ATL06) from NSIDC
+# PURPOSE: read ICESat-2 land ice data (ATL06)
 # and computes geoid undulation at points
 def compute_geoid_ICESat2(model_file, INPUT_FILE,
     OUTPUT_DIRECTORY=None,

@@ -8,7 +8,7 @@ Calculates radial ocean pole tide displacements for correcting Operation
     http://maia.usno.navy.mil/conventions/chapter7.php
 
 INPUTS:
-    ATM1B, ATM icessn or LVIS file from NSIDC
+    ATM1B, ATM icessn or LVIS file
 
 COMMAND LINE OPTIONS:
     -c X, --convention X: IERS mean or secular pole convention
@@ -97,7 +97,7 @@ h5py = gz.utilities.import_dependency('h5py')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read Operation IceBridge data from NSIDC
+# PURPOSE: read Operation IceBridge data
 # compute ocean pole tide radial displacements at data points and times
 def compute_OPT_icebridge_data(arg,
         CONVENTION='2018',

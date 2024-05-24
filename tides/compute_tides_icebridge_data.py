@@ -12,7 +12,7 @@ Global Tide Model (GOT) solutions provided by Richard Ray at GSFC
 or Finite Element Solution (FES) models provided by AVISO
 
 INPUTS:
-    ATM1B, ATM icessn or LVIS file from NSIDC
+    ATM1B, ATM icessn or LVIS file
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
@@ -134,7 +134,7 @@ h5py = gz.utilities.import_dependency('h5py')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read Operation IceBridge data from NSIDC
+# PURPOSE: read Operation IceBridge data
 # compute tides at points and times using tidal model driver algorithms
 def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         ATLAS_FORMAT=None,

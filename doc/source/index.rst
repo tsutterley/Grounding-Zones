@@ -46,6 +46,30 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
 .. toctree::
     :maxdepth: 1
     :hidden:
+    :caption: Subsetting
+
+    api_reference/subset/MPI_reduce_ICESat2_ATL03_RGI.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL06_RGI.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL11_RGI.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL06_grounded.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL11_grounded.rst
+    api_reference/subset/MPI_reduce_ICESat_GLA12_grounding_zone.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL03_grounding_zone.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL06_grounding_zone.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL11_grounding_zone.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL06_drainages.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL11_drainages.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL06_ice_shelves.rst
+    api_reference/subset/MPI_reduce_ICESat2_ATL11_ice_shelves.rst
+    api_reference/subset/reduce_ICESat_GLA12_raster.rst
+    api_reference/subset/reduce_ICESat2_ATL06_raster.rst
+    api_reference/subset/reduce_ICESat2_ATL07_raster.rst
+    api_reference/subset/reduce_ICESat2_ATL10_raster.rst
+    api_reference/subset/reduce_ICESat2_ATL11_raster.rst
+
+.. toctree::
+    :maxdepth: 1
+    :hidden:
     :caption: DAC
 
     api_reference/DAC/aviso_dac_sync.rst
@@ -108,10 +132,6 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/GZ/calculate_GZ_ICESat2_ATL06.rst
     api_reference/GZ/calculate_GZ_ICESat2_ATL11.rst
     api_reference/GZ/model_grounding_zone.rst
-    api_reference/GZ/MPI_reduce_ICESat_GLA12_grounding_zone.rst
-    api_reference/GZ/MPI_reduce_ICESat2_ATL03_grounding_zone.rst
-    api_reference/GZ/MPI_reduce_ICESat2_ATL06_grounding_zone.rst
-    api_reference/GZ/MPI_reduce_ICESat2_ATL11_grounding_zone.rst
 
 .. toctree::
     :maxdepth: 1

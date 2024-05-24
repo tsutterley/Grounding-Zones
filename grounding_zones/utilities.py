@@ -297,7 +297,7 @@ def cmr_filter_json(
     producer_granule_ids: list
         ICESat-2 granules
     granule_urls: list
-        ICESat-2 granule urls from NSIDC
+        ICESat-2 granule urls
     """
     # output list of granule ids and urls
     producer_granule_ids = []
@@ -386,7 +386,7 @@ def cmr(
     producer_granule_ids: list
         Data granules
     granule_urls: list
-        Data granule urls from NSIDC
+        Data granule urls
     """
     # create logger
     loglevel = logging.INFO if verbose else logging.CRITICAL

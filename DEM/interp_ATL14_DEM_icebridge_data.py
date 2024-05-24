@@ -5,7 +5,7 @@ Written by Tyler Sutterley (05/2024)
 Interpolates ATL14 elevations to locations of Operation IceBridge data
 
 INPUTS:
-    ATM1B, ATM icessn or LVIS file from NSIDC
+    ATM1B, ATM icessn or LVIS file
 
 COMMAND LINE OPTIONS:
     -m X, --model X: path to ATL14 model file

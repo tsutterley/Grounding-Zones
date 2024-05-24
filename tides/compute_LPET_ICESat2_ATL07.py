@@ -68,7 +68,7 @@ is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read ICESat-2 sea ice height (ATL07) from NSIDC
+# PURPOSE: read ICESat-2 sea ice height (ATL07)
 # compute long-period equilibrium tides at points and times
 def compute_LPET_ICESat2(INPUT_FILE,
         OUTPUT_DIRECTORY=None,

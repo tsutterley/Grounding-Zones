@@ -7,7 +7,7 @@ Reads GIMP 30m DEM tiles from the OSU Greenland Ice Mapping Project
     https://nsidc.org/data/nsidc-0645/versions/1
 Outputs as gzipped tar files similar to REMA and ArcticDEM tiles
 
-Reads tiles directly from NSIDC server:
+Reads tiles directly server:
 https://wiki.earthdata.nasa.gov/display/EL/How+To+Access+Data+With+Python
 https://nsidc.org/support/faq/what-options-are-available-bulk-downloading-data-
     https-earthdata-login-enabled

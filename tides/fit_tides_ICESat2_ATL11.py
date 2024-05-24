@@ -96,7 +96,7 @@ def common_reference_points(XT, AT):
     ind2 = [np.flatnonzero(XT == p) for p in AT]
     return ind2
 
-# PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
+# PURPOSE: read ICESat-2 annual land ice height data (ATL11)
 # use an initial tide model as a prior for estimating ice flexure
 def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         OUTPUT_DIRECTORY=None,

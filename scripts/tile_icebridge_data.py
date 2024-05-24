@@ -5,7 +5,7 @@ Written by Tyler Sutterley (05/2024)
 Creates tile index files of Operation IceBridge elevation data
 
 INPUTS:
-    ATM1B, ATM icessn or LVIS file from NSIDC
+    ATM1B, ATM icessn or LVIS file
 
 COMMAND LINE OPTIONS:
     --help: list the command line options

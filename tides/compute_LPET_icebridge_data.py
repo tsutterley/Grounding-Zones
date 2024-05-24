@@ -6,7 +6,7 @@ Calculates long-period equilibrium tidal elevations for correcting Operation
     IceBridge elevation data
 
 INPUTS:
-    ATM1B, ATM icessn or LVIS file from NSIDC
+    ATM1B, ATM icessn or LVIS file
 
 COMMAND LINE OPTIONS:
     -M X, --mode X: Permission mode of directories and files created
@@ -76,7 +76,7 @@ h5py = gz.utilities.import_dependency('h5py')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read Operation IceBridge data from NSIDC
+# PURPOSE: read Operation IceBridge data
 # compute long-period equilibrium tides at points and times
 def compute_LPET_icebridge_data(arg,
         VERBOSE=False,

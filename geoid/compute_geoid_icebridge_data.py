@@ -5,7 +5,7 @@ Written by Tyler Sutterley (05/2024)
 Calculates geoid undulations for correcting Operation IceBridge elevation data
 
 INPUTS:
-    ATM1B, ATM icessn or LVIS file from NSIDC
+    ATM1B, ATM icessn or LVIS file
 
 COMMAND LINE OPTIONS:
     -G X, --gravity X: Gravity model file to use (.gfc format)
@@ -80,7 +80,7 @@ is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 pyproj = gz.utilities.import_dependency('pyproj')
 timescale = gz.utilities.import_dependency('timescale')
 
-# PURPOSE: read Operation IceBridge data from NSIDC
+# PURPOSE: read Operation IceBridge data
 # and computes geoid undulation at points
 def compute_geoid_icebridge_data(model_file, arg, LMAX=None, LOVE=None,
     VERBOSE=False, MODE=0o775):
