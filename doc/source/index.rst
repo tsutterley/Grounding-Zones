@@ -99,10 +99,12 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     :caption: GZ
 
     api_reference/GZ/calculate_grounding_zone.rst
+    api_reference/GZ/calculate_GZ_ICESat_GLA12.rst
     api_reference/GZ/calculate_GZ_ICESat2_ATL03.rst
     api_reference/GZ/calculate_GZ_ICESat2_ATL06.rst
     api_reference/GZ/calculate_GZ_ICESat2_ATL11.rst
     api_reference/GZ/model_grounding_zone.rst
+    api_reference/GZ/MPI_reduce_ICESat_GLA12_grounding_zone.rst
     api_reference/GZ/MPI_reduce_ICESat2_ATL03_grounding_zone.rst
     api_reference/GZ/MPI_reduce_ICESat2_ATL06_grounding_zone.rst
     api_reference/GZ/MPI_reduce_ICESat2_ATL11_grounding_zone.rst
