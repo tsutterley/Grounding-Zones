@@ -107,8 +107,6 @@ import itertools
 import traceback
 import numpy as np
 import collections
-import scipy.stats
-import scipy.optimize
 import grounding_zones as gz
 
 # attempt imports
@@ -179,7 +177,7 @@ def compress_list(i,n):
         group = list(map(operator.itemgetter(1),b))
         yield (group[0], group[-1])
 
-# PURPOSE: read ICESat-2 annual land ice height data (ATL11) from NSIDC
+# PURPOSE: read ICESat-2 slope-corrected land ice height data (ATL11)
 # calculate mean elevation between all dates in file
 # calculate inflexion point using elevation surface slopes
 # use mean elevation to calculate elevation anomalies

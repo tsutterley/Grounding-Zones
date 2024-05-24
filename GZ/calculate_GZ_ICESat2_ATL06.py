@@ -102,8 +102,6 @@ import itertools
 import traceback
 import collections
 import numpy as np
-import scipy.stats
-import scipy.optimize
 import grounding_zones as gz
 
 # attempt imports
@@ -188,7 +186,7 @@ def compress_list(i,n):
         group = list(map(operator.itemgetter(1),b))
         yield (group[0], group[-1])
 
-# PURPOSE: read ICESat-2 data from NSIDC or MPI_ICESat2_ATL03.py
+# PURPOSE: read ICESat-2 land ice height data (ATL06)
 # calculate mean elevation between all dates in file
 # calculate inflexion point using elevation surface slopes
 # use mean elevation to calculate elevation anomalies
@@ -398,7 +396,7 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                 mdt.mask = np.ones((n_seg),dtype=bool)
                 pass
             else:
-                IB.mask = (IB.data[:] == fv5)
+                mdt.mask = (mdt.data[:] == fv5)
                 fid5.close()
         else:
             # use no mean dynamic topography
