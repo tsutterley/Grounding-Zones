@@ -65,6 +65,7 @@ UPDATE HISTORY:
     Updated 05/2024: switched from individual mask files to a
         common raster mask option for non-ice points
         moved multiprocess h5py reader to io utilities module
+        additional logging information for processing run
     Updated 04/2024: rewritten for python3 following new fit changes
         add spline design matrix option for time-variable fit
         add option to read from ATL06 or ATL11 datasets
@@ -197,6 +198,7 @@ def fit_surface_tiles(tile_files,
     # identifier for dataset
     mission = dict(ATL06=0, ATL11=0, GLAS=1, ATM=2, ATM1b=2, LVIS=3, LVGH=3)
     mission_types = sorted(set(mission.values()))
+    mission_names = ['ICESat-2', 'ICESat', 'ATM', 'LVIS']
 
     # extract information from input tile file
     tile_file = pathlib.Path(tile_files[0]).expanduser().absolute()
@@ -540,14 +542,27 @@ def fit_surface_tiles(tile_files,
         # close the tile file
         f1.close()
 
-    # convert time into year-decimal
+    # calculate coordinates in coordinate reference system of tiles
+    d['x'], d['y'] = transformer.transform(d['lon'], d['lat'])
+    # reduce to valid surfaces with raster mask
+    if SPL is not None:
+        d['mask'] &= (SPL.ev(d['x'], d['y']) >= TOLERANCE)
+
+    # log total number of valid points
+    valid, = np.nonzero(d['mask'])
+    logging.info(f'Total Valid: {len(valid):d}')
+    # log total number of valid points for each mission
+    for k,m in enumerate(mission_types):
+        nvalid = np.sum(d['mission'][valid] == m)
+        logging.info(f'Total Valid ({mission_names[k]}): {nvalid:d}')
+
+    # convert time into year-decimal for fitting
     ts = timescale.time.Timescale().from_deltatime(
         d['time'], epoch=timescale.time._j2000_epoch,
         standard='UTC')
 
     # set default knots as range of time
     if not np.any(KNOTS):
-        valid, = np.nonzero(d['mask'])
         tmin = np.floor(ts.year[valid].min())
         tmax = np.ceil(ts.year[valid].max())
         KNOTS = np.arange(tmin, tmax + 1, 1)
@@ -642,7 +657,7 @@ def fit_surface_tiles(tile_files,
     # R2
     attributes['R2'] = {}
     attributes['R2']['long_name'] = 'Coefficient in Determination'
-    attributes['R2']['units'] = 'meters'
+    attributes['R2']['units'] = '1'
     attributes['R2']['coordinates'] = 'y x'
     attributes['R2']['grid_mapping'] = 'crs'
     fill_value['R2'] = FILL_VALUE
@@ -669,6 +684,13 @@ def fit_surface_tiles(tile_files,
     attributes['iterations']['coordinates'] = 'y x'
     attributes['iterations']['grid_mapping'] = 'crs'
     fill_value['iterations'] = 0
+    # degrees of freedom
+    attributes['DOF'] = {}
+    attributes['DOF']['long_name'] = 'Degrees of freedom'
+    attributes['DOF']['units'] = '1'
+    attributes['DOF']['coordinates'] = 'y x'
+    attributes['DOF']['grid_mapping'] = 'crs'
+    fill_value['DOF'] = FILL_VALUE
     # data count
     attributes['count'] = {}
     attributes['count']['long_name'] = 'Number of data points'
@@ -679,17 +701,11 @@ def fit_surface_tiles(tile_files,
     # counts for each mission
     attributes['mission'] = {}
     attributes['mission']['long_name'] = 'Number of data points for each mission'
-    attributes['mission']['columns'] = ['ICESat-2', 'ICESat', 'ATM', 'LVIS']
+    attributes['mission']['columns'] = mission_names
     attributes['mission']['units'] = '1'
     attributes['mission']['coordinates'] = 'y x'
     attributes['mission']['grid_mapping'] = 'crs'
     fill_value['mission'] = 0
-
-    # calculate coordinates in polar stereographic
-    d['x'], d['y'] = transformer.transform(d['lon'], d['lat'])
-    # reduce to valid surfaces with raster mask
-    if SPL is not None:
-        d['mask'] &= (SPL.ev(d['x'], d['y']) >= TOLERANCE)
 
     # number of time points in output fit
     nt = len(KNOTS)
@@ -708,6 +724,7 @@ def fit_surface_tiles(tile_files,
         ORDER_SPACE=ORDER_SPACE)   
     # number of mission types
     nm = len(mission_types)
+
     # allocate for output variables
     output = {}
     # projection variable
@@ -728,6 +745,7 @@ def fit_surface_tiles(tile_files,
     output['RDE'] = np.zeros((ny, nx))
     output['window'] = np.zeros((ny, nx))
     output['iterations'] = np.zeros((ny, nx), dtype=np.int64)
+    output['DOF'] = np.zeros((ny, nx), dtype=np.int64)
     output['count'] = np.zeros((ny, nx), dtype=np.int64)
     output['mission'] = np.zeros((ny, nx, nm), dtype=np.int64)
 
@@ -784,6 +802,7 @@ def fit_surface_tiles(tile_files,
             output['RDE'][indy, indx] = fit['RDE']
             output['iterations'][indy, indx] = fit['iterations']
             output['window'][indy, indx] = fit['window']
+            output['DOF'][indy, indx] = fit['DOF']
             output['count'][indy, indx] = fit['count']
             # save mission counts
             fit['mission'] = np.zeros_like(mission_types)
