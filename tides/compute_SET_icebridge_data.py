@@ -247,7 +247,7 @@ def compute_SET_icebridge_data(arg,
 
     # HDF5 file attributes
     fid.attrs['featureType'] = 'trajectory'
-    fid.attrs['title'] = 'Tidal_correction_for_elevation_measurements'
+    fid.attrs['title'] = 'Solid_Earth_Tide_correction'
     fid.attrs['summary'] = ('Solid_Earth_tide_radial_displacements_'
         'computed_at_elevation_measurements.')
     fid.attrs['project'] = 'NASA_Operation_IceBridge'

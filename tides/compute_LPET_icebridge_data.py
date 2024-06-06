@@ -223,8 +223,7 @@ def compute_LPET_icebridge_data(arg,
 
     # HDF5 file attributes
     fid.attrs['featureType'] = 'trajectory'
-    fid.attrs['title'] = ('Long-Period_Equilibrium_tidal_correction_for_'
-        'elevation_measurements')
+    fid.attrs['title'] = 'Long-Period_Equilibrium_Tide_correction'
     fid.attrs['summary'] = ('Tidal_correction_computed_at_elevation_'
         'measurements_using_fifteen_spectral_lines.')
     fid.attrs['project'] = 'NASA_Operation_IceBridge'

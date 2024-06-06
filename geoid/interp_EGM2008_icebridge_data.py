@@ -251,9 +251,8 @@ def interp_EGM2008_icebridge_data(model_file, arg,
 
     # HDF5 file attributes
     fid.attrs['featureType'] = 'trajectory'
-    fid.attrs['title'] = 'Geoid_height_for_elevation_measurements'
-    fid.attrs['summary'] = ('EGM2008_geoid_undulation_interpolated_to_'
-        'elevation_measurements')
+    fid.attrs['title'] = 'Geoid_height'
+    fid.attrs['summary'] = 'EGM2008_geoid_undulation'
     fid.attrs['project'] = 'NASA_Operation_IceBridge'
     fid.attrs['processing_level'] = '4'
     fid.attrs['date_created'] = time.strftime('%Y-%m-%d',time.localtime())

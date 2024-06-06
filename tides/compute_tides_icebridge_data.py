@@ -343,7 +343,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
 
     # HDF5 file attributes
     fid.attrs['featureType'] = 'trajectory'
-    fid.attrs['title'] = 'Tidal_correction_for_elevation_measurements'
+    fid.attrs['title'] = 'Tidal_correction'
     fid.attrs['summary'] = ('Tidal_correction_computed_at_elevation_'
         'measurements_using_a_tidal_model_driver.')
     fid.attrs['project'] = 'NASA_Operation_IceBridge'

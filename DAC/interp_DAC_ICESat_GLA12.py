@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_DAC_ICESat_GLA12.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (06/2024)
 Interpolates AVISO dynamic atmospheric corrections (DAC) for ICESat/GLAS
     L2 GLA12 Antarctic and Greenland Ice Sheet elevation data
 
@@ -11,7 +11,7 @@ Data will be interpolated for all valid points
 https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/
     atmospheric-corrections.html
 
-Note that the AVISO DAC data are bz2 compressed netCDF4 files
+Note that the AVISO DAC data can be bz2 compressed netCDF4 files
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
@@ -42,6 +42,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 06/2024: fix case where input files are not bz2 compressed
     Updated 05/2024: use wrapper to importlib for optional dependencies
         fix memory allocation for output 40HZ data
         use ellipsoid transformation function from pyTMD
@@ -157,8 +158,11 @@ def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE,
     t = ts.to_deltatime(epoch=(1950,1,1,0,0,0))
     YY = np.datetime_as_string(ts.to_datetime(), unit='Y')
     # days and hours to read
-    unique_hours = np.unique([np.floor(t*24.0/6.0)*6.0, np.ceil(t*24.0/6.0)*6.0])
+    unique_hours, unique_indices = np.unique(
+        [np.floor(t*24.0/6.0)*6.0, np.ceil(t*24.0/6.0)*6.0],
+        return_index=True)
     days,hours = (unique_hours // 24, unique_hours % 24)
+    unique_indices = unique_indices % len(t)
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
     topex = pyTMD.datum(ellipsoid='TOPEX', units='MKS')
@@ -178,16 +182,25 @@ def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE,
     # calculate projected coordinates of input coordinates
     ix,iy = transformer.transform(lon_40HZ, lat_40HZ)
 
-    # shape of pressure field
-    ny,nx = (721,1440)
+    # shape of DAC field
+    ny,nx = (721, 1440)
     # allocate for DAC fields
-    idac = np.ma.zeros((len(days),ny,nx))
+    idac = np.ma.zeros((len(days), ny, nx))
     icjd = np.zeros((len(days)))
     for i,CJD in enumerate(days):
         # input file for 6-hour period
-        input_file = f'dac_dif_{CJD:0.0f}_{hours[i]:02.0f}.nc.bz2'
-        # read bytes from compressed file
-        fd = bz2.BZ2File(base_dir.joinpath(YY[i], input_file))
+        f = f'dac_dif_{CJD:0.0f}_{hours[i]:02.0f}.nc'
+        input_file = base_dir.joinpath(YY[unique_indices[i]], f)
+        # check if the file exists as a compressed file
+        if input_file.with_suffix('.nc.bz2').exists():
+            # read bytes from compressed file
+            input_file = input_file.with_suffix('.nc.bz2')
+            fd = bz2.BZ2File(input_file, 'rb')
+        elif input_file.exists():
+            # read bytes from uncompressed file
+            fd = open(input_file, 'rb')
+        else:
+            raise FileNotFoundError(f'File not found: {input_file}')
         # read netCDF file for time
         with netCDF4.Dataset('dac', mode='r', memory=fd.read()) as fid:
             ilon = fid['longitude'][:]
@@ -196,6 +209,7 @@ def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE,
             icjd[i] = fid['dac'].getncattr('Date_CNES_JD')
         # close the compressed file objects
         fd.close()
+
     # create an interpolator for dynamic atmospheric correction
     RGI = scipy.interpolate.RegularGridInterpolator((icjd,ilat,ilon), idac,
         bounds_error=False)
