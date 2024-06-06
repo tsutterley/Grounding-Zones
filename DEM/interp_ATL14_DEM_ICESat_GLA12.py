@@ -88,10 +88,10 @@ def interp_ATL14_DEM_ICESat(INPUT_FILE,
     try:
         PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = rx.findall(GRANULE).pop()
     except:
-        # output inverse-barometer response HDF5 file (generic)
+        # output DEM HDF5 file (generic)
         FILENAME = f'{INPUT_FILE.stem}_{MODEL}_{INPUT_FILE.suffix}'
     else:
-        # output inverse-barometer response HDF5 file for NSIDC granules
+        # output DEM HDF5 file for NSIDC granules
         args = (PRD,RL,MODEL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         file_format = 'GLAH{0}_{1}_{2}_{3}{4}{5}_{6}_{7}_{8}_{9}_{10}.h5'
         FILENAME = file_format.format(*args)
