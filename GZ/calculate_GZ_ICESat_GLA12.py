@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat_GLA12.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (06/2024)
 
 Calculates ice sheet grounding zones with ICESat data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
@@ -65,6 +65,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 06/2024: save output HDF5 files as trajectory type
     Written 05/2024
 """
 from __future__ import print_function
@@ -260,9 +261,9 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
     ancillary_data = fid['ANCILLARY_DATA']
     campaign = ancillary_data.attrs['Campaign'].decode('utf-8')
     # get variables and attributes
-    n_40HZ, = fid1['Data_40HZ']['Time']['i_rec_ndx'].shape
-    rec_ndx_1HZ = fid1['Data_1HZ']['Time']['i_rec_ndx'][:].copy()
-    rec_ndx_40HZ = fid1['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
+    n_40HZ, = fid['Data_40HZ']['Time']['i_rec_ndx'].shape
+    rec_ndx_1HZ = fid['Data_1HZ']['Time']['i_rec_ndx'][:].copy()
+    rec_ndx_40HZ = fid['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
     # ICESat track number
     i_track_1HZ = fid['Data_1HZ']['Geolocation']['i_track'][:].copy()
     i_track_40HZ = np.zeros((n_40HZ), dtype=i_track_1HZ.dtype)
@@ -291,7 +292,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
         d_elev[:] + sat_corr + bias_corr, ts.year)
     # mask invalid values
     elev = np.ma.array(data, fill_value=fv)
-    elev.mask = (d_elev == fv) 
+    elev.mask = (d_elev == fv) | np.isnan(elev.data)
     # map 1HZ data to 40HZ data
     for k,record in enumerate(rec_ndx_1HZ):
         # indice mapping the 40HZ data to the 1HZ data
@@ -436,7 +437,10 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
             # extract lat/lon and convert to polar stereographic
             X,Y = transformer.transform(lon[i], lat[i])
             # shapely LineString object for altimetry segment
-            segment_line = geometry.LineString(np.c_[X, Y])
+            try:
+                segment_line = geometry.LineString(np.c_[X, Y])
+            except:
+                continue
             # determine if line segment intersects previously known GZ
             if segment_line.intersects(mline_obj):
                 # extract intersected point (find minimum distance)
@@ -550,11 +554,13 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
         return
 
     # copy variables for outputting to HDF5 file
-    IS_gla12_gz = dict(Data_GZ=Data_GZ)
+    IS_gla12_gz = dict(Data_GZ={})
     IS_gla12_gz_attrs = dict(Data_GZ={})
+    # copy variables as numpy arrays
+    IS_gla12_gz['Data_GZ'] = {key:np.array(val) for key, val in Data_GZ.items()}
 
     # copy global file attributes of interest
-    global_attribute_list = ['featureType','title','comment','summary','license',
+    global_attribute_list = ['title','comment','summary','license',
         'references','AccessConstraints','CitationforExternalPublication',
         'contributor_role','contributor_name','creator_name','creator_email',
         'publisher_name','publisher_email','publisher_url','platform','instrument',
@@ -579,6 +585,8 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
         IS_gla12_gz_attrs[att] = fid.attrs[att]
     # copy ICESat campaign name from ancillary data
     IS_gla12_gz_attrs['Campaign'] = campaign
+    # save HDF5 as trajectory type
+    IS_gla12_gz_attrs['featureType'] = 'trajectory'
 
     # add attributes for input GLA12 file
     IS_gla12_gz_attrs['lineage'] = GRANULE

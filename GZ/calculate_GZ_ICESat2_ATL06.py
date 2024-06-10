@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL06.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (06/2024)
 
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
@@ -68,6 +68,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 06/2024: attempt to create line string and continue if exception
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from timescale.time
@@ -413,7 +414,10 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
             # extract lat/lon and convert to polar stereographic
             X,Y = transformer.transform(v['longitude'][i],v['latitude'][i])
             # shapely LineString object for altimetry segment
-            segment_line = geometry.LineString(np.c_[X, Y])
+            try:
+                segment_line = geometry.LineString(np.c_[X, Y])
+            except:
+                continue
             # determine if line segment intersects previously known GZ
             if segment_line.intersects(mline_obj):
                 # extract intersected point (find minimum distance)
