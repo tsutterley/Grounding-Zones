@@ -260,9 +260,9 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
     ancillary_data = fid['ANCILLARY_DATA']
     campaign = ancillary_data.attrs['Campaign'].decode('utf-8')
     # get variables and attributes
-    n_40HZ, = fid1['Data_40HZ']['Time']['i_rec_ndx'].shape
-    rec_ndx_1HZ = fid1['Data_1HZ']['Time']['i_rec_ndx'][:].copy()
-    rec_ndx_40HZ = fid1['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
+    n_40HZ, = fid['Data_40HZ']['Time']['i_rec_ndx'].shape
+    rec_ndx_1HZ = fid['Data_1HZ']['Time']['i_rec_ndx'][:].copy()
+    rec_ndx_40HZ = fid['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
     # ICESat track number
     i_track_1HZ = fid['Data_1HZ']['Geolocation']['i_track'][:].copy()
     i_track_40HZ = np.zeros((n_40HZ), dtype=i_track_1HZ.dtype)
