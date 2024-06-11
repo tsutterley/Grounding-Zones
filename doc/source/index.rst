@@ -42,6 +42,7 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/tile_ICESat_GLA12.rst
     api_reference/tile_ICESat2_ATL06.rst
     api_reference/tile_ICESat2_ATL11.rst
+    api_reference/track_ICESat_GLA12.rst
 
 .. toctree::
     :maxdepth: 1
