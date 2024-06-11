@@ -53,6 +53,25 @@ def track_ICESat_GLA12(input_file, VERBOSE=False, MODE=0o775):
     # create index directory for hemisphere
     DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
 
+    # compile regular expression operator for extracting information from file
+    rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
+        r'(\d{4})_(\d{1})_(\d{2})_(\d{4})\.H5$'), re.VERBOSE)
+    # extract parameters from ICESat/GLAS HDF5 file name
+    # PRD:  Product number (01, 05, 06, 12, 13, 14, or 15)
+    # RL:  Release number for process that created the product = 634
+    # RGTP:  Repeat ground-track phase (1=8-day, 2=91-day, 3=transfer orbit)
+    # ORB:   Reference orbit number (starts at 1 and increments each time a
+    #           new reference orbit ground track file is obtained.)
+    # INST:  Instance number (increments every time the satellite enters a
+    #           different reference orbit)
+    # CYCL:   Cycle of reference orbit for this phase
+    # TRK: Track within reference orbit
+    # SEG:   Segment of orbit
+    # GRAN:  Granule version number
+    # TYPE:  File type
+    PRD,RL,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE = \
+        rx.findall(input_file.name).pop()
+
     # attributes for each output item
     attributes = dict(i_rec_ndx={},DS_UTCTime_40={},d_lon={},d_lat={})
     # index
@@ -66,6 +85,17 @@ def track_ICESat_GLA12(input_file, VERBOSE=False, MODE=0o775):
     attributes['i_track']['description'] = 'Reference track number'
     attributes['i_track']['units'] = '1'
     attributes['i_track']['coordinates'] = 'd_lon d_lat'
+    # repeat ground-track phase
+    attributes['i_rgtp'] = {}
+    attributes['i_rgtp']['long_name'] = 'Repeat Ground-Track Phase'
+    attributes['i_rgtp']['description'] = ('Repeat ground-track phase '
+        '(1=8-day, 2=91-day, 3=transfer orbit)')
+    attributes['i_rgtp']['units'] = '1'
+    attributes['i_rgtp']['valid_min'] = 1
+    attributes['i_rgtp']['valid_max'] = 3
+    attributes['i_rgtp']['flag_meanings'] = '8_day 91_day transfer_orbit'
+    attributes['i_rgtp']['flag_values'] = [1,2,3]
+    attributes['i_rgtp']['coordinates'] = 'd_lon d_lat'
 
     # track file progress
     logging.info(str(input_file))
@@ -84,6 +114,9 @@ def track_ICESat_GLA12(input_file, VERBOSE=False, MODE=0o775):
         if att_name not in ('DIMENSION_LIST','CLASS','NAME','coordinates'):
             attributes[key][att_name] = copy.copy(att_val)
     attributes[key]['coordinates'] = 'd_lon d_lat'
+    # repeat ground-track phase
+    i_rgtp_40HZ = np.zeros((n_40HZ), dtype=int)
+    i_rgtp_40HZ[:] = int(RGTP)
     # seconds since 2000-01-01 12:00:00 UTC (J2000)
     key = 'DS_UTCTime_40'
     DS_UTCTime_40HZ = fileID['Data_40HZ'][key][:].copy()
@@ -128,7 +161,7 @@ def track_ICESat_GLA12(input_file, VERBOSE=False, MODE=0o775):
     # for each unique ground track
     for i, rgt in enumerate(tracks):
         # create group
-        track_group = f'{rgt:0.0f}'
+        track_group = f'{rgt:04.0f}'
         if track_group not in f2:
             g2 = f2.create_group(track_group)
         else:
@@ -161,6 +194,7 @@ def track_ICESat_GLA12(input_file, VERBOSE=False, MODE=0o775):
         output['DS_UTCTime_40'] = DS_UTCTime_40HZ[indices].copy()
         output['i_rec_ndx'] = rec_ndx_40HZ[indices].copy()
         output['i_track'] = i_track_40HZ[indices].copy()
+        output['i_rgtp'] = i_rgtp_40HZ[indices].copy()
         output['index'] = indices.copy()
         output['d_lon'] = lon_TPX[indices].copy()
         output['d_lat'] = lat_TPX[indices].copy()
