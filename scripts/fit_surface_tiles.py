@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_surface_tiles.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (06/2024)
 
 Fits a time-variable surface to altimetry data
 
@@ -62,6 +62,7 @@ REFERENCES:
         41(23), 8421--8428, (2014). https://doi.org/10.1002/2014GL061940
 
 UPDATE HISTORY:
+    Updated 06/2024: renamed GLAH12 quality summary variable to d_qa_sum
     Updated 05/2024: switched from individual mask files to a
         common raster mask option for non-ice points
         moved multiprocess h5py reader to io utilities module
@@ -505,7 +506,7 @@ def fit_surface_tiles(tile_files,
                     # mask for reducing to valid values
                     d['mask'][c:c+file_length] = \
                         (f2[group][subgroup]['d_elev'][indices] != invalid) & \
-                        (f3[group]['Quality']['quality_summary'][indices] == 0)
+                        (f3[group]['Quality']['d_qa_sum'][indices] == 0)
                     # add to mission variable
                     d['mission'][c:c+file_length] = mission[short_name]
                     # add to counter

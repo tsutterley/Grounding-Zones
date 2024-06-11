@@ -65,7 +65,8 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
-    Updated 06/2024: save output HDF5 files as trajectory type
+    Updated 06/2024: renamed GLAH12 quality summary variable to d_qa_sum
+        save output HDF5 files as trajectory type for visualization
     Written 05/2024
 """
 from __future__ import print_function
@@ -284,7 +285,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
     d_elev = fid['Data_40HZ']['Elevation_Surfaces']['d_elev'][:]
     fv = fid['Data_40HZ']['Elevation_Surfaces']['d_elev'].fillvalue
     # mask for reducing to valid values
-    quality_summary = fid1['Data_40HZ']['Quality']['quality_summary'][:]
+    quality_summary = fid1['Data_40HZ']['Quality']['d_qa_sum'][:]
     # get the transform for converting to the latest ITRF
     transform = gz.crs.tp_itrf2008_to_wgs84_itrf2020()
     # transform the data to WGS84 ellipsoid in ITRF2020
@@ -516,7 +517,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
                         logging.debug(traceback.format_exc())
                         pass
                     # copy grounding zone parameters to get best fit
-                    if (GZ[1] < PGZ[1]):
+                    if (GZ[1] < PGZ[1]) & (GZ[1] != 0.0):
                         PGZ = np.copy(GZ)
                         model_scale = np.copy(PA[0])
                         PEMODEL = np.copy(MODEL)
@@ -530,14 +531,14 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
                 valid_fit = True
 
                 # linearly interpolate distance to grounding line
-                GZseg = np.interp(PGZ[0],dist,rec_ndx_40HZ[i])
+                GZrec = np.interp(PGZ[0],dist,rec_ndx_40HZ[i])
                 GZlat = np.interp(PGZ[0],dist,lat[i])
                 GZlon = np.interp(PGZ[0],dist,lon[i])
                 GZtime = np.interp(PGZ[0],dist,J2000[i])
                 # append outputs of grounding zone fit
                 # save all outputs (not just within tolerance)
                 Data_GZ['DS_UTCTime_40'].append(GZtime)
-                Data_GZ['i_rec_ndx'].append(GZseg)
+                Data_GZ['i_rec_ndx'].append(GZrec)
                 Data_GZ['i_track'].append(rgt)
                 Data_GZ['d_lat'].append(GZlat)
                 Data_GZ['d_lon'].append(GZlon)
