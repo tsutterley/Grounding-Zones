@@ -204,6 +204,8 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
     # get output directory from input file
     if OUTPUT_DIRECTORY is None:
         OUTPUT_DIRECTORY = INPUT_FILE.parent
+    # create output directory if it doesn't exist
+    OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
     # file format for associated auxiliary files
     file_format = '{0}_{1}_{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
     # set the hemisphere flag based on ICESat-2 granule
@@ -527,19 +529,19 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                     # ocean tide height for scaling model
                     tide_mean =  np.mean(tide_ocean['AT'][i,:],axis=1)
                     # tide_mean = tide_ocean['AT'].data[i,0]
-                    h_tide = np.ma.array(tide_ocean['AT'].data[i,c] - tide_mean,
+                    h_tide = np.ma.array(tide_ocean['AT'].data[i,c],
                         fill_value=tide_ocean['AT'].fill_value)
                     h_tide.mask = tide_ocean['AT'].mask[i,c] | tide_mean.mask
                     # inverse-barometer response
                     ib_mean =  np.mean(IB['AT'][i,:],axis=1)
                     # ib_mean = IB['AT'].data[i,0]
-                    h_ib = np.ma.array(IB['AT'].data[i,c] - ib_mean,
+                    h_ib = np.ma.array(IB['AT'].data[i,c],
                         fill_value=IB['AT'].fill_value)
                     h_ib.mask = IB['AT'].mask[i,c] | ib_mean.mask
                     # deflection from mean land ice height in grounding zone
                     dh_gz = h_gz - h_mean
                     # quasi-freeboard: WGS84 elevation - geoid height
-                    QFB = h_gz - geoid_h[i]
+                    QFB = h_gz - h_tide - h_ib - geoid_h[i]
                     # ice thickness from quasi-freeboard and densities
                     w_thick = QFB*rho_w/(rho_w-rho_ice)
                     # fit with a hard piecewise model to get rough estimate of GZ
@@ -566,13 +568,13 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                     # set tide values for testing
                     TIDE = []
                     i0 = 0 if sco else -1
-                    tplus = h_tide[i0] + h_ib[i0]
+                    tplus = (h_tide[i0] - tide_mean) + (h_ib[i0] - ib_mean)
                     # 1,3: use tide range values from Padman (2002)
                     # 2,4: use tide range values from model+ib
                     TIDE.append([1.2,-3.0,3.0])
-                    TIDE.append([tplus,tplus-0.3,tplus+0.3])
+                    TIDE.append([tplus, tplus-0.3, tplus+0.3])
                     TIDE.append([1.2,-3.0,3.0])
-                    TIDE.append([tplus,tplus-0.3,tplus+0.3])
+                    TIDE.append([tplus, tplus-0.3, tplus+0.3])
                     # iterate through tests
                     for grz,tide in zip(GRZ,TIDE):
                         # fit physical elastic model
@@ -641,12 +643,13 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                     # add to test plot
                     if PLOT:
                         # plot height differences
-                        l, = ax1.plot(ref_pt['AT'][i],dh_gz-PdH[0],'.-',ms=1.5,lw=0,
-                            label=f'Cycle {CYCLE}')
+                        l, = ax1.plot(ref_pt['AT'][i], dh_gz-PdH[0], '.-',
+                            ms=1.5, lw=0, label=f'Cycle {CYCLE}')
                         # plot downstream tide and IB
                         hocean = tide_ocean['AT'].data[i0,c] - mean_tide
                         # hocean += IB['AT'].data[i0,c] - mean_ib
-                        ax1.axhline(hocean,color=l.get_color(),lw=3.0,ls='--')
+                        ax1.axhline(hocean, color=l.get_color(), lw=3.0,
+                            ls='--')
                         # set valid plot flag
                         valid_plot = True
 
@@ -667,14 +670,14 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                     # add to test plot
                     if PLOT:
                         # plot elastic deformation model
-                        ax1.plot(ref_pt['AT'][iout],PEMODEL-PdH[0],
-                            color='0.3',lw=2,zorder=9)
+                        ax1.plot(ref_pt['AT'][iout], PEMODEL-PdH[0],
+                            color='0.3', lw=2, zorder=9)
                         # plot scaled elastic deformation model
-                        ax1.plot(ref_pt['AT'][iout],flexure[iout,c]-mean_tide,
-                            color='0.8',lw=2,zorder=10)
+                        ax1.plot(ref_pt['AT'][iout], flexure[iout,c]-mean_tide,
+                            color='0.8', lw=2, zorder=10)
                         # plot grounding line location
-                        ax1.axvline(GZrpt,color=l.get_color(),
-                            ls='--',dashes=(8,4))
+                        ax1.axvline(GZrpt, color=l.get_color(),
+                            ls='--', dashes=(8,4))
 
         # make final plot adjustments and save to file
         if valid_plot:

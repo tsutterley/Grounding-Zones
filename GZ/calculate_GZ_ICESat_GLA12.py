@@ -87,6 +87,7 @@ import grounding_zones as gz
 # attempt imports
 fiona = gz.utilities.import_dependency('fiona')
 h5py = gz.utilities.import_dependency('h5py')
+plt = gz.utilities.import_dependency('matplotlib.pyplot')
 pyproj = gz.utilities.import_dependency('pyproj')
 geometry = gz.utilities.import_dependency('shapely.geometry')
 timescale = gz.utilities.import_dependency('timescale')
@@ -187,6 +188,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
         REANALYSIS=None,
         SEA_LEVEL=False,
         GEOID=None,
+        PLOT=False,
         MODE=0o775
     ):
 
@@ -241,8 +243,12 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
     # get output directory from input file
     if OUTPUT_DIRECTORY is None:
         OUTPUT_DIRECTORY = INPUT_FILE.parent
+    # create output directory if it doesn't exist
+    OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
     # full path to output file
     OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
+    # plot counter
+    plot_number = 0
 
     # open the HDF5 file for reading
     fid = gz.io.multiprocess_h5py(INPUT_FILE, mode='r')
@@ -284,13 +290,16 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
     # Elevation (height above TOPEX/Poseidon ellipsoid in meters)
     d_elev = fid['Data_40HZ']['Elevation_Surfaces']['d_elev'][:]
     fv = fid['Data_40HZ']['Elevation_Surfaces']['d_elev'].fillvalue
+    # retide the elevation data
+    d_ocElv = fid['Data_40HZ']['Geophysical']['d_ocElv'][:]
+    d_ocElv[d_ocElv == fv] = 0.0
     # mask for reducing to valid values
     quality_summary = fid1['Data_40HZ']['Quality']['d_qa_sum'][:]
     # get the transform for converting to the latest ITRF
     transform = gz.crs.tp_itrf2008_to_wgs84_itrf2020()
     # transform the data to WGS84 ellipsoid in ITRF2020
     lon, lat, data, tdec = transform.transform(d_lon, d_lat,
-        d_elev[:] + sat_corr + bias_corr, ts.year)
+        d_elev[:] + sat_corr + bias_corr + d_ocElv[:], ts.year)
     # mask invalid values
     elev = np.ma.array(data, fill_value=fv)
     elev.mask = (d_elev == fv) | np.isnan(elev.data)
@@ -306,7 +315,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
         a2 = (PRD,RL,VAR,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
         f2 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a2))
     elif (FILE_FORMAT == 'generic'):
-        file2 = f'{INPUT_FILE.stem}_{VAR}_{INPUT_FILE.suffix}'
+        file2 = f'{INPUT_FILE.stem}_{VAR}{INPUT_FILE.suffix}'
         f2 = OUTPUT_DIRECTORY.joinpath(file2)
     # extract grounding zone mask
     ice_gz = np.zeros((n_40HZ),dtype=bool)
@@ -335,7 +344,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
         f4 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a4))
     elif TIDE_MODEL and (FILE_FORMAT == 'generic'):
         VAR = f'{TIDE_MODEL}_TIDES'
-        file4 = f'{INPUT_FILE.stem}_{VAR}_{INPUT_FILE.suffix}'
+        file4 = f'{INPUT_FILE.stem}_{VAR}{INPUT_FILE.suffix}'
         f4 = OUTPUT_DIRECTORY.joinpath(file4)
     if TIDE_MODEL:
         fid4 = gz.io.multiprocess_h5py(f4, mode='r')
@@ -358,7 +367,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
         f5 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a5))
     elif REANALYSIS and (FILE_FORMAT == 'generic'):
         VAR = 'DAC' if (REANALYSIS == 'DAC') else f'{REANALYSIS}_IB'
-        file5 = f'{INPUT_FILE.stem}_{VAR}_{INPUT_FILE.suffix}'
+        file5 = f'{INPUT_FILE.stem}_{VAR}{INPUT_FILE.suffix}'
         f5 = OUTPUT_DIRECTORY.joinpath(file5)
     if REANALYSIS:
         fid5 = gz.io.multiprocess_h5py(f5, mode='r')
@@ -377,7 +386,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
         f6 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a6))
     elif SEA_LEVEL and (FILE_FORMAT == 'generic'):
         VAR = 'DAC' if (REANALYSIS == 'DAC') else f'{REANALYSIS}_IB'
-        file6 = f'{INPUT_FILE.stem}_{VAR}_{INPUT_FILE.suffix}'
+        file6 = f'{INPUT_FILE.stem}_{VAR}{INPUT_FILE.suffix}'
         f6 = OUTPUT_DIRECTORY.joinpath(file6)
     if SEA_LEVEL:
         fid6 = gz.io.multiprocess_h5py(f6, mode='r')
@@ -394,7 +403,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
         f7 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a7))
     elif GEOID and (FILE_FORMAT == 'generic'):
         VAR = f'{GEOID}_GEOID'
-        file7 = f'{INPUT_FILE.stem}_{VAR}_{INPUT_FILE.suffix}'
+        file7 = f'{INPUT_FILE.stem}_{VAR}{INPUT_FILE.suffix}'
         f7 = OUTPUT_DIRECTORY.joinpath(file7)
     if GEOID:
         fid7 = gz.io.multiprocess_h5py(f7, mode='r')
@@ -470,7 +479,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
                 # deflection from mean land ice height in grounding zone
                 dh_gz = h_gz - h_mean
                 # quasi-freeboard: WGS84 elevation - geoid height
-                QFB = h_gz - (h_geoid + mdt[i])
+                QFB = h_gz - h_tide - h_ib - (h_geoid + mdt[i])
                 # ice thickness from quasi-freeboard and densities
                 w_thick = QFB*rho_w/(rho_w-rho_ice)
                 # fit with a hard piecewise model to get rough estimate of GZ
@@ -548,6 +557,41 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
                 Data_GZ['d_e_mod_sigma'].append(PE[1]/1e9)
                 # Data_GZ['d_H_ice'].append(PT)
                 # Data_GZ['d_delta_h'].append(PdH)
+
+                # add to test plot
+                if PLOT:
+                    fig1,ax1 = plt.subplots(num=1,figsize=(13,7))
+                    # plot height differences
+                    l, = ax1.plot(dist, dh_gz - PdH[0],
+                        '.-', ms=1.5, lw=0)
+                    # ax1.plot(dist, PEMODEL)
+                    # plot downstream tide and IB
+                    ax1.axhline(tplus, color='0.3',
+                        lw=3.0, ls='--')
+                    # plot grounding line location
+                    ax1.axvline(PGZ[0], color=l.get_color(),
+                        ls='--', dashes=(8,4))
+                    # adjust figure
+                    fig1.subplots_adjust(left=0.05, right=0.97,
+                        bottom=0.04, top=0.96)
+                    # create plot file of flexural zone
+                    VAR = f'{TIDE_MODEL}_GZ_TIDES_{plot_number:d}'
+                    if (FILE_FORMAT == 'standard'):
+                        a8 = (PRD,RL,VAR,RGTP,ORB,INST,CYCL,TRK,SEG,GRAN,TYPE)
+                        f8 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a8))
+                    elif (FILE_FORMAT == 'generic'):
+                        file8 = f'{INPUT_FILE.stem}_{VAR}{INPUT_FILE.suffix}'
+                        f8 = OUTPUT_DIRECTORY.joinpath(file8)
+                    # log output plot file
+                    output_plot_file = f8.with_suffix('.png')
+                    logging.info(str(output_plot_file))
+                    fig1.savefig(output_plot_file, dpi=240, format='png',
+                        metadata={'Title':pathlib.Path(sys.argv[0]).name})
+                    # clear all figure axes
+                    plt.cla()
+                    plt.clf()
+                    # add to plot counter
+                    plot_number += 1
 
     # if no valid grounding zone fit has been found
     # skip saving variables and attributes
@@ -808,6 +852,10 @@ def arguments():
     parser.add_argument('--geoid','-G',
         metavar='GEOID', type=str,
         help='Geoid height model to use in correction')
+    # create test plots
+    parser.add_argument('--plot','-P',
+        default=False, action='store_true',
+        help='Create plots of flexural zone')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -840,6 +888,7 @@ def main():
             REANALYSIS=args.reanalysis,
             SEA_LEVEL=args.sea_level,
             GEOID=args.geoid,
+            PLOT=args.plot,
             MODE=args.mode)
 
 # run main program
