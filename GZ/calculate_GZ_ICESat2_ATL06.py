@@ -213,6 +213,7 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
     # get output directory from input file
     if OUTPUT_DIRECTORY is None:
         OUTPUT_DIRECTORY = INPUT_FILE.parent
+    OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
     # set the hemisphere flag based on ICESat-2 granule
     HEM = set_hemisphere(GRAN)
 
