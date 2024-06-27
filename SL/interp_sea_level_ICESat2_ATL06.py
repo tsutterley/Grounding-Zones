@@ -87,7 +87,8 @@ h5py = gz.utilities.import_dependency('h5py')
 is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 netCDF4 = gz.utilities.import_dependency('netCDF4')
 pyproj = gz.utilities.import_dependency('pyproj')
-neighbors = gz.utilities.import_dependency('sklearn.neighbors')
+sklearn = gz.utilities.import_dependency('sklearn')
+sklearn.neighbors = gz.utilities.import_dependency('sklearn.neighbors')
 timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: set the hemisphere of interest based on the granule
@@ -104,9 +105,9 @@ def inverse_distance(x, y, z, xi, yi, SEARCH='BallTree', N=10, POWER=2.0):
     npts = len(xi)
     # create neighbors object for coordinates
     if (SEARCH == 'BallTree'):
-        tree = neighbors.BallTree(np.c_[x,y])
+        tree = sklearn.neighbors.BallTree(np.c_[x,y])
     elif (SEARCH == 'KDTree'):
-        tree = neighbors.KDTree(np.c_[x,y])
+        tree = sklearn.neighbors.KDTree(np.c_[x,y])
     # query the search tree to find the N closest points
     dist,indices = tree.query(np.c_[xi,yi], k=N, return_distance=True)
     # normalized weights if POWER > 0 (typically between 1 and 3)

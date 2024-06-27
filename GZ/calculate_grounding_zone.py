@@ -83,7 +83,8 @@ import grounding_zones as gz
 fiona = gz.utilities.import_dependency('fiona')
 pyTMD = gz.utilities.import_dependency('pyTMD')
 pyproj = gz.utilities.import_dependency('pyproj')
-geometry = gz.utilities.import_dependency('shapely.geometry')
+shapely = gz.utilities.import_dependency('shapely')
+shapely.geometry = gz.utilities.import_dependency('shapely.geometry')
 
 # grounded ice shapefiles
 grounded_shapefile = {}
@@ -123,10 +124,10 @@ def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
     # extract the entities and assign by tile name
     for i,ent in enumerate(shape_entities):
         # extract coordinates for entity
-        line_obj = geometry.LineString(ent['geometry']['coordinates'])
+        line_obj = shapely.geometry.LineString(ent['geometry']['coordinates'])
         lines.append(line_obj)
     # create shapely multilinestring object
-    mline_obj = geometry.MultiLineString(lines)
+    mline_obj = shapely.geometry.MultiLineString(lines)
     # close the shapefile
     shape.close()
     # return the line string object for the ice sheet
@@ -402,7 +403,7 @@ def calculate_grounding_zone(base_dir, input_file, output_file,
         # find valid indices within range
         i = sorted(set(np.arange(imin,imax+1)) & set(valid))
         # shapely LineString object for segment
-        segment_line = geometry.LineString(np.c_[X[i], Y[i]])
+        segment_line = shapely.geometry.LineString(np.c_[X[i], Y[i]])
         # determine if line segment intersects previously known GZ
         if segment_line.intersects(mline_obj):
             # horizontal eulerian distance from start of segment

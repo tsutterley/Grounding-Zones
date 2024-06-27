@@ -70,7 +70,8 @@ import grounding_zones as gz
 fiona = gz.utilities.import_dependency('fiona')
 is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 pyproj = gz.utilities.import_dependency('pyproj')
-geometry = gz.utilities.import_dependency('shapely.geometry')
+shapely = gz.utilities.import_dependency('shapely')
+shapely.geometry = gz.utilities.import_dependency('shapely.geometry')
 
 # digital elevation models
 elevation_dir = {}
@@ -185,7 +186,7 @@ def read_DEM_index(index_file, DEM_MODEL):
         # extract Polar Stereographic coordinates for entity
         x = [ul[0],ur[0],lr[0],ll[0],ul2[0]]
         y = [ul[1],ur[1],lr[1],ll[1],ul2[1]]
-        poly_obj = geometry.Polygon(np.c_[x, y])
+        poly_obj = shapely.geometry.Polygon(np.c_[x, y])
         # Valid Polygon may not possess overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
@@ -258,7 +259,7 @@ def check_DEM_ICESat2_ATL06(INPUT_FILE,
         # convert projection from latitude/longitude to tile EPSG
         X,Y = transformer.transform(longitude, latitude)
         # convert reduced x and y to shapely multipoint object
-        xy_point = geometry.MultiPoint(np.c_[X, Y])
+        xy_point = shapely.geometry.MultiPoint(np.c_[X, Y])
 
         # create complete masks for each DEM tile
         intersection_map = {}

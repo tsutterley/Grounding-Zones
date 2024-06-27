@@ -77,7 +77,8 @@ fiona = gz.utilities.import_dependency('fiona')
 h5py = gz.utilities.import_dependency('h5py')
 MPI = gz.utilities.import_dependency('mpi4py.MPI')
 pyproj = gz.utilities.import_dependency('pyproj')
-geometry = gz.utilities.import_dependency('shapely.geometry')
+shapely = gz.utilities.import_dependency('shapely')
+shapely.geometry = gz.utilities.import_dependency('shapely.geometry')
 timescale = gz.utilities.import_dependency('timescale')
 
 # buffered shapefile
@@ -177,13 +178,13 @@ def load_grounding_zone(base_dir, HEM, BUFFER, shapefile=None):
             x,y = np.transpose(coords)
             poly_list.append(list(zip(x,y)))
         # convert poly_list into Polygon object with holes
-        poly_obj = geometry.Polygon(poly_list[0], holes=poly_list[1:])
+        poly_obj = shapely.geometry.Polygon(poly_list[0], holes=poly_list[1:])
         # Valid Polygon cannot have overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
         polygons.append(poly_obj)
     # create shapely multipolygon object
-    mpoly_obj = geometry.MultiPolygon(polygons)
+    mpoly_obj = shapely.geometry.MultiPolygon(polygons)
     # close the shapefile
     shape.close()
     # return the polygon object for the ice sheet
@@ -304,7 +305,7 @@ def main():
         X,Y = transformer.transform(fileID[ptx]['longitude'][:],
             fileID[ptx]['latitude'][:])
         # convert reduced x and y to shapely multipoint object
-        xy_point = geometry.MultiPoint(np.c_[X[ind], Y[ind]])
+        xy_point = shapely.geometry.MultiPoint(np.c_[X[ind], Y[ind]])
 
         # create distributed intersection map for calculation
         distributed_map = np.zeros((n_points),dtype=bool)

@@ -117,7 +117,8 @@ MPI = gz.utilities.import_dependency('mpi4py.MPI')
 gdal = gz.utilities.import_dependency('osgeo.gdal')
 pyproj = gz.utilities.import_dependency('pyproj')
 pyTMD = gz.utilities.import_dependency('pyTMD')
-geometry = gz.utilities.import_dependency('shapely.geometry')
+shapely = gz.utilities.import_dependency('shapely')
+shapely.geometry = gz.utilities.import_dependency('shapely.geometry')
 timescale = gz.utilities.import_dependency('timescale')
 
 # digital elevation models
@@ -292,7 +293,7 @@ def read_DEM_index(index_file, DEM_MODEL):
         # extract Polar Stereographic coordinates for entity
         x = [ul[0],ur[0],lr[0],ll[0],ul2[0]]
         y = [ul[1],ur[1],lr[1],ll[1],ul2[1]]
-        poly_obj = geometry.Polygon(np.c_[x, y])
+        poly_obj = shapely.geometry.Polygon(np.c_[x, y])
         # Valid Polygon may not possess overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
@@ -509,7 +510,7 @@ def main():
     dem_h.mask = np.ones((n_pts),dtype=bool)
 
     # convert reduced x and y to shapely multipoint object
-    xy_point = geometry.MultiPoint(np.c_[X[ind], Y[ind]])
+    xy_point = shapely.geometry.MultiPoint(np.c_[X[ind], Y[ind]])
 
     # create complete masks for each DEM tile
     associated_map = {}

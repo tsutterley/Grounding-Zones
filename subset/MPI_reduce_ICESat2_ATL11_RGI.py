@@ -92,7 +92,8 @@ import grounding_zones as gz
 h5py = gz.utilities.import_dependency('h5py')
 MPI = gz.utilities.import_dependency('mpi4py.MPI')
 shapefile = gz.utilities.import_dependency('shapefile')
-geometry = gz.utilities.import_dependency('shapely.geometry')
+shapely = gz.utilities.import_dependency('shapely')
+shapely.geometry = gz.utilities.import_dependency('shapely.geometry')
 timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: keep track of MPI threads
@@ -185,7 +186,7 @@ def load_glacier_inventory(RGI_DIRECTORY,RGI_REGION):
         for p1,p2 in zip(parts[:-1], parts[1:]):
             poly_list.append(np.c_[points[p1:p2,0], points[p1:p2,1]])
         # convert poly_list into Polygon object with holes
-        poly_obj = geometry.Polygon(poly_list[0], poly_list[1:])
+        poly_obj = shapely.geometry.Polygon(poly_list[0], poly_list[1:])
         # Valid Polygon may not possess overlapping exterior or interior rings
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
@@ -289,7 +290,7 @@ def main():
         # convert reduced lat/lon to shapely multipoint object
         longitude = fileID[ptx]['longitude'][:].copy()
         latitude = fileID[ptx]['latitude'][:].copy()
-        xy_point = geometry.MultiPoint(np.c_[longitude[ind], latitude[ind]])
+        xy_point = shapely.geometry.MultiPoint(np.c_[longitude[ind], latitude[ind]])
 
         # create distributed intersection map for calculation
         distributed_map = np.zeros((n_points),dtype=bool)

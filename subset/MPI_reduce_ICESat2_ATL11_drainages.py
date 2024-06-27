@@ -71,7 +71,8 @@ h5py = gz.utilities.import_dependency('h5py')
 MPI = gz.utilities.import_dependency('mpi4py.MPI')
 pyproj = gz.utilities.import_dependency('pyproj')
 shapefile = gz.utilities.import_dependency('shapefile')
-geometry = gz.utilities.import_dependency('shapely.geometry')
+shapely = gz.utilities.import_dependency('shapely')
+shapely.geometry = gz.utilities.import_dependency('shapely.geometry')
 timescale = gz.utilities.import_dependency('timescale')
 
 # IMBIE-2 Drainage basins
@@ -153,7 +154,7 @@ def load_IMBIE2_basins(basin_dir, HEM, EPSG):
             # extract Polar-Stereographic coordinates for record
             points = np.array(shape_entities[i].points)
             # shapely polygon object for region outline
-            poly_obj = geometry.Polygon(np.c_[points[:,0], points[:,1]])
+            poly_obj = shapely.geometry.Polygon(np.c_[points[:,0], points[:,1]])
         elif (HEM == 'N'):
             # no glaciers or ice caps
             i,=[i for i,a in enumerate(shape_attributes) if (a[0] == REGION)]
@@ -169,7 +170,7 @@ def load_IMBIE2_basins(basin_dir, HEM, EPSG):
                 X,Y = transformer.transform(points[p1:p2,0],points[p1:p2,1])
                 poly_list.append(np.c_[X,Y])
             # convert poly_list into Polygon object with holes
-            poly_obj = geometry.Polygon(poly_list[0],poly_list[1:])
+            poly_obj = shapely.geometry.Polygon(poly_list[0],poly_list[1:])
         # check if polygon object is valid
         if (not poly_obj.is_valid):
             poly_obj = poly_obj.buffer(0)
@@ -284,7 +285,7 @@ def main():
         X,Y = transformer.transform(fileID[ptx]['longitude'][:],
             fileID[ptx]['latitude'][:])
         # convert reduced x and y to shapely multipoint object
-        xy_point = geometry.MultiPoint(np.c_[X[ind], Y[ind]])
+        xy_point = shapely.geometry.MultiPoint(np.c_[X[ind], Y[ind]])
 
         # calculate mask for each drainage basin in the dictionary
         associated_map = {}

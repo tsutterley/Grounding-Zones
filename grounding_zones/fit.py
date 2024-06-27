@@ -1045,7 +1045,7 @@ def _polynomial(t_in, RELATIVE=Ellipsis, ORDER_TIME=3, **kwargs):
     # calculate epoch for calculating relative times
     if isinstance(RELATIVE, (list, np.ndarray)):
         t_rel = np.mean(RELATIVE)
-    elif isinstance(RELATIVE, (float, int, np.float_, np.int_)):
+    elif isinstance(RELATIVE, (float, int, np.float64, np.int_)):
         t_rel = np.copy(RELATIVE)
     elif RELATIVE in (Ellipsis, None):
         t_rel = t_in[RELATIVE].mean()
