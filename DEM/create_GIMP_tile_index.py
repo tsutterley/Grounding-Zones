@@ -71,9 +71,10 @@ import lxml.etree
 import grounding_zones as gz
 
 # attempt imports
-gdal = gz.utilities.import_dependency('osgeo.gdal')
-osr = gz.utilities.import_dependency('osgeo.osr')
-ogr = gz.utilities.import_dependency('osgeo.ogr')
+osgeo = gz.utilities.import_dependency('osgeo')
+osgeo.gdal = gz.utilities.import_dependency('osgeo.gdal')
+osgeo.osr = gz.utilities.import_dependency('osgeo.osr')
+osgeo.ogr = gz.utilities.import_dependency('osgeo.ogr')
 
 # PURPOSE: read GIMP image mosaic and create tile shapefile
 def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
@@ -94,30 +95,30 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
     parser = lxml.etree.HTMLParser()
 
      # save DEM tile outlines to ESRI shapefile
-    driver = ogr.GetDriverByName('Esri Shapefile')
+    driver = osgeo.ogr.GetDriverByName('Esri Shapefile')
     output_shapefile = ddir.joinpath(ff.format(VERSION,'shp'))
     ds = driver.CreateDataSource(str(output_shapefile))
     # set the spatial reference info
     # EPSG: 3413 (NSIDC Sea Ice Polar Stereographic North, WGS84)
-    SpatialReference = osr.SpatialReference()
+    SpatialReference = osgeo.osr.SpatialReference()
     SpatialReference.ImportFromEPSG(3413)
-    layer = ds.CreateLayer('', SpatialReference, ogr.wkbPolygon)
+    layer = ds.CreateLayer('', SpatialReference, osgeo.ogr.wkbPolygon)
     # Add shapefile attributes (following attributes from ArcticDEM and REMA)
-    layer.CreateField(ogr.FieldDefn('id', ogr.OFTInteger))
-    layer.CreateField(ogr.FieldDefn('name', ogr.OFTString))
-    layer.CreateField(ogr.FieldDefn('tile', ogr.OFTString))
-    layer.CreateField(ogr.FieldDefn('nd_value', ogr.OFTReal))
-    layer.CreateField(ogr.FieldDefn('resolution', ogr.OFTInteger))
-    layer.CreateField(ogr.FieldDefn('lastmodtm', ogr.OFTString))
-    layer.CreateField(ogr.FieldDefn('fileurl', ogr.OFTString))
-    layer.CreateField(ogr.FieldDefn('rel_ver', ogr.OFTReal))
-    layer.CreateField(ogr.FieldDefn('spec_type', ogr.OFTString))
-    layer.CreateField(ogr.FieldDefn('reg_src', ogr.OFTString))
-    field_area = ogr.FieldDefn('st_area_sh', ogr.OFTReal)
+    layer.CreateField(osgeo.ogr.FieldDefn('id', osgeo.ogr.OFTInteger))
+    layer.CreateField(osgeo.ogr.FieldDefn('name', osgeo.ogr.OFTString))
+    layer.CreateField(osgeo.ogr.FieldDefn('tile', osgeo.ogr.OFTString))
+    layer.CreateField(osgeo.ogr.FieldDefn('nd_value', osgeo.ogr.OFTReal))
+    layer.CreateField(osgeo.ogr.FieldDefn('resolution', osgeo.ogr.OFTInteger))
+    layer.CreateField(osgeo.ogr.FieldDefn('lastmodtm', osgeo.ogr.OFTString))
+    layer.CreateField(osgeo.ogr.FieldDefn('fileurl', osgeo.ogr.OFTString))
+    layer.CreateField(osgeo.ogr.FieldDefn('rel_ver', osgeo.ogr.OFTReal))
+    layer.CreateField(osgeo.ogr.FieldDefn('spec_type', osgeo.ogr.OFTString))
+    layer.CreateField(osgeo.ogr.FieldDefn('reg_src', osgeo.ogr.OFTString))
+    field_area = osgeo.ogr.FieldDefn('st_area_sh', osgeo.ogr.OFTReal)
     field_area.SetWidth(24)
     field_area.SetPrecision(10)
     layer.CreateField(field_area)
-    layer.CreateField(ogr.FieldDefn('st_length_', ogr.OFTInteger))
+    layer.CreateField(osgeo.ogr.FieldDefn('st_length_', osgeo.ogr.OFTInteger))
     defn = layer.GetLayerDefn()
 
     # create a counter for shapefile id
@@ -147,8 +148,8 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
 
         # use GDAL memory-mapped file to read dem
         mmap_name = f'/vsimem/{uuid.uuid4().hex}'
-        gdal.FileFromMemBuffer(mmap_name, fileID.read())
-        dataset = gdal.Open(mmap_name)
+        osgeo.gdal.FileFromMemBuffer(mmap_name, fileID.read())
+        dataset = osgeo.gdal.Open(mmap_name)
 
         # get dimensions of tile
         xsize = dataset.RasterXSize
@@ -172,10 +173,10 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
         st_length_ = int(2*(xmax-xmin) + 2*(ymax-ymin))
         # close the dataset
         dataset = None
-        gdal.Unlink(mmap_name)
+        osgeo.gdal.Unlink(mmap_name)
 
         # Create a new feature (attribute and geometry)
-        feature = ogr.Feature(defn)
+        feature = osgeo.ogr.Feature(defn)
         # Add shapefile attributes
         feature.SetField('id', id)
         feature.SetField('name', colname.replace('.tif',''))
@@ -192,11 +193,11 @@ def create_GIMP_tile_index(base_dir, VERSION, MODE=0o775):
         feature.SetField('st_length_', st_length_)
 
         # create LineString object and add x/y points
-        ring_obj = ogr.Geometry(ogr.wkbLinearRing)
+        ring_obj = osgeo.ogr.Geometry(osgeo.ogr.wkbLinearRing)
         for x, y in zip(xbox, ybox):
             ring_obj.AddPoint(x, y)
         # create Polygon object for LineString of tile
-        poly_obj = ogr.Geometry(ogr.wkbPolygon)
+        poly_obj = osgeo.ogr.Geometry(osgeo.ogr.wkbPolygon)
         poly_obj.AddGeometry(ring_obj)
         feature.SetGeometry(poly_obj)
         layer.CreateFeature(feature)

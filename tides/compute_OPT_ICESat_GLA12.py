@@ -61,7 +61,7 @@ UPDATE HISTORY:
         use constants class from pyTMD for ellipsoidal parameters
         refactored pyTMD tide model structure
     Updated 07/2022: place some imports within try/except statements
-    Updated 04/2022: use longcomplex data format to be windows compliant
+    Updated 04/2022: use clongdouble data format to be windows compliant
         use argparse descriptions within sphinx documentation
     Updated 02/2022: save ICESat campaign attribute to output file
     Updated 10/2021: using python logging for handling verbose output
@@ -225,7 +225,7 @@ def compute_OPT_ICESat(INPUT_FILE,
             iur[:,::-1].real, kx=1, ky=1)
         f2 = scipy.interpolate.RectBivariateSpline(ilon, ilat[::-1],
             iur[:,::-1].imag, kx=1, ky=1)
-        UR = np.zeros((n_40HZ),dtype=np.longcomplex)
+        UR = np.zeros((n_40HZ),dtype=np.clongdouble)
         UR.real = f1.ev(lon_40HZ,latitude_geocentric)
         UR.imag = f2.ev(lon_40HZ,latitude_geocentric)
     else:

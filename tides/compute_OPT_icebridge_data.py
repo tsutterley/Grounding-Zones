@@ -59,7 +59,7 @@ UPDATE HISTORY:
     Updated 07/2022: update imports of ATM1b QFIT functions to released version
         place some imports within try/except statements
     Updated 04/2022: include utf-8 encoding in reads to be windows compliant
-        use longcomplex data format to be windows compliant
+        use clongdouble data format to be windows compliant
         use argparse descriptions within sphinx documentation
     Updated 10/2021: using python logging for handling verbose output
         using collections to store attributes in order of creation
@@ -271,7 +271,7 @@ def compute_OPT_icebridge_data(arg,
             iur[:,::-1].real, kx=1, ky=1)
         f2 = scipy.interpolate.RectBivariateSpline(ilon, ilat[::-1],
             iur[:,::-1].imag, kx=1, ky=1)
-        UR = np.zeros((file_lines),dtype=np.longcomplex)
+        UR = np.zeros((file_lines),dtype=np.clongdouble)
         UR.real = f1.ev(lon,latitude_geocentric)
         UR.imag = f2.ev(lon,latitude_geocentric)
     else:
