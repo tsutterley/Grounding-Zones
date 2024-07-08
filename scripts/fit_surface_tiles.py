@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_surface_tiles.py
-Written by Tyler Sutterley (06/2024)
+Written by Tyler Sutterley (07/2024)
 
 Fits a time-variable surface to altimetry data
 
@@ -62,6 +62,7 @@ REFERENCES:
         41(23), 8421--8428, (2014). https://doi.org/10.1002/2014GL061940
 
 UPDATE HISTORY:
+    Updated 07/2024: ignore overflow errors in ATL06/11 error calculations
     Updated 06/2024: renamed GLAH12 quality summary variable to d_qa_sum
     Updated 05/2024: switched from individual mask files to a
         common raster mask option for non-ice points
@@ -382,10 +383,12 @@ def fit_surface_tiles(tile_files,
                         d['data'][c:c+file_length] = data.copy()
                         d['lon'][c:c+file_length] = lon.copy()
                         d['lat'][c:c+file_length] = lat.copy()
-                        # combine errors
-                        d['error'][c:c+file_length] = np.sqrt(
-                            mds[gtx][g]['h_li_sigma'][indices]**2 + 
-                            mds[gtx][g]['sigma_geo_h'][indices]**2)
+                        # combine errors (ignore overflow at invalid points)
+                        with np.errstate(over='ignore'):
+                            d['error'][c:c+file_length] = np.sqrt(
+                                mds[gtx][g]['h_li_sigma'][indices]**2 +
+                                mds[gtx][g]['sigma_geo_h'][indices]**2
+                            )
                         # convert timescale to J2000 seconds
                         d['time'][c:c+file_length] = ts.to_deltatime(
                             epoch=timescale.time._j2000_epoch,
@@ -420,10 +423,12 @@ def fit_surface_tiles(tile_files,
                             ATTRIBUTES=True, KEEP=True)
                         # invalid value for heights
                         invalid = attrs[ptx]['h_corr']['_FillValue']
-                        # combine errors
-                        error = np.sqrt(
-                            mds[ptx]['h_corr_sigma'][indices,:]**2 + 
-                            mds[ptx]['h_corr_sigma_systematic'][indices,:]**2)
+                        # combine errors (ignore overflow at invalid points)
+                        with np.errstate(over='ignore'):
+                            error = np.sqrt(
+                                mds[ptx]['h_corr_sigma'][indices,:]**2 +
+                                mds[ptx]['h_corr_sigma_systematic'][indices,:]**2
+                            )
                         # for each cycle
                         for k, cycle in enumerate(cycle_number):
                             # convert time to timescale
@@ -548,6 +553,10 @@ def fit_surface_tiles(tile_files,
     # reduce to valid surfaces with raster mask
     if SPL is not None:
         d['mask'] &= (SPL.ev(d['x'], d['y']) >= TOLERANCE)
+
+    # check if there are any valid points
+    if not np.any(d['mask']):
+        raise ValueError('No valid points found for tile')
 
     # log total number of valid points
     valid, = np.nonzero(d['mask'])
