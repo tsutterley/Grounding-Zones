@@ -671,7 +671,7 @@ def arguments():
         type=str, default='ascii', choices=('ascii', 'json'),
         help='Format for model definition file')
     # crop tide model to (buffered) bounds of data
-    parser.add_argument('--crop', '-C',
+    parser.add_argument('--crop',
         default=False, action='store_true',
         help='Crop tide model to bounds of data')
     # interpolation method
