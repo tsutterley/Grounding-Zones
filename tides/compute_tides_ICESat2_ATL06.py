@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL06.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (07/2024)
 Calculates tidal elevations for correcting ICESat-2 land ice elevation data
 
 Uses OTIS format tidal solutions provided by Ohio State University and ESR
@@ -61,6 +61,8 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 07/2024: added option to crop to the domain of the input data
+        added option to use JSON format definition files
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 01/2024: made the inferrence of minor constituents an option
@@ -135,6 +137,8 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         ATLAS_FORMAT=None,
         GZIP=True,
         DEFINITION_FILE=None,
+        DEFINITION_FORMAT='ascii',
+        CROP=False,
         METHOD='spline',
         EXTRAPOLATE=False,
         CUTOFF=None,
@@ -150,7 +154,8 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
+        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE,
+            format=DEFINITION_FORMAT)
     else:
         model = pyTMD.io.model(tide_dir, format=ATLAS_FORMAT,
             compressed=GZIP).elevation(TIDE_MODEL)
@@ -195,26 +200,39 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
     IS2_atl06_mds,IS2_atl06_attrs,IS2_atl06_beams = \
         is2tk.io.ATL06.read_granule(INPUT_FILE, ATTRIBUTES=True)
 
+    # find geospatial ranges for bounding box
+    BOUNDS = [np.inf, -np.inf, np.inf, -np.inf]
+    for gtx in IS2_atl06_beams:
+        lon = IS2_atl06_mds[gtx]['land_ice_segments']['longitude']
+        lat = IS2_atl06_mds[gtx]['land_ice_segments']['latitude']
+        BOUNDS[0] = np.minimum(BOUNDS[0], np.min(lon))
+        BOUNDS[1] = np.maximum(BOUNDS[1], np.max(lon))
+        BOUNDS[2] = np.minimum(BOUNDS[2], np.min(lat))
+        BOUNDS[3] = np.maximum(BOUNDS[3], np.max(lat))
+
     # read tidal constants
     if model.format in ('OTIS','ATLAS','TMD3'):
         constituents = pyTMD.io.OTIS.read_constants(model.grid_file,
             model.model_file, model.projection, type=model.type,
-            grid=model.format, apply_flexure=APPLY_FLEXURE)
+            grid=model.format, crop=CROP, bounds=BOUNDS,
+            apply_flexure=APPLY_FLEXURE)
         # available model constituents
         c = constituents.fields
     elif (model.format == 'netcdf'):
         constituents = pyTMD.io.ATLAS.read_constants(model.grid_file,
-            model.model_file, type=model.type, compressed=model.compressed)
+            model.model_file, type=model.type, compressed=model.compressed,
+            crop=CROP, bounds=BOUNDS)
         # available model constituents
         c = constituents.fields
     elif (model.format == 'GOT'):
         constituents = pyTMD.io.GOT.read_constants(model.model_file,
-            compressed=model.compressed)
+            compressed=model.compressed, crop=CROP, bounds=BOUNDS)
         # available model constituents
         c = constituents.fields
     elif (model.format == 'FES'):
         constituents = pyTMD.io.FES.read_constants(model.model_file,
-            type=model.type, version=model.version, compressed=model.compressed)
+            type=model.type, version=model.version, compressed=model.compressed,
+            crop=CROP, bounds=BOUNDS)
         # available model constituents
         c = model.constituents
 
@@ -623,7 +641,14 @@ def arguments():
     # tide model definition file to set an undefined model
     group.add_argument('--definition-file',
         type=pathlib.Path,
-        help='Tide model definition file for use as correction')
+        help='Tide model definition file')
+    parser.add_argument('--definition-format',
+        type=str, default='ascii', choices=('ascii', 'json'),
+        help='Format for model definition file')
+    # crop tide model to (buffered) bounds of data
+    parser.add_argument('--crop', '-C',
+        default=False, action='store_true',
+        help='Crop tide model to bounds of data')
     # interpolation method
     parser.add_argument('--interpolate','-I',
         metavar='METHOD', type=str, default='spline',
@@ -672,6 +697,8 @@ def main():
             ATLAS_FORMAT=args.atlas_format,
             GZIP=args.gzip,
             DEFINITION_FILE=args.definition_file,
+            DEFINITION_FORMAT=args.definition_format,
+            CROP=args.crop,
             METHOD=args.interpolate,
             EXTRAPOLATE=args.extrapolate,
             CUTOFF=args.cutoff,

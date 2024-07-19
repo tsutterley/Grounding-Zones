@@ -2,7 +2,7 @@ name: gz-docs
 channels:
   - conda-forge
 dependencies:
-  - docutils<0.18
+  - docutils
   - fontconfig
   - freetype
   - graphviz

@@ -113,6 +113,15 @@ def interp_ATL14_DEM_ICESat2(INPUT_FILE,
     # convert bounding polygon coordinates to projection
     BX, BY = transformer.transform(bounding_lon, bounding_lat)
     BOUNDS = [BX.min(), BX.max(), BY.min(), BY.max()]
+    # check if bounding polygon is in multiple parts
+    if 'bounding_polygon_dim2' in IS2_atl11_mds['orbit_info']:
+        bounding_lon = IS2_atl11_mds['orbit_info']['bounding_polygon_lon2']
+        bounding_lat = IS2_atl11_mds['orbit_info']['bounding_polygon_lat2']
+        BX, BY = transformer.transform(bounding_lon, bounding_lat)
+        BOUNDS[0] = np.minimum(BOUNDS[0], BX.min())
+        BOUNDS[1] = np.maximum(BOUNDS[1], BX.max())
+        BOUNDS[2] = np.minimum(BOUNDS[2], BY.min())
+        BOUNDS[3] = np.maximum(BOUNDS[3], BY.max())
 
     # read ATL14 DEM model files within spatial bounds
     DEM = gz.io.ATL14(DEM_MODEL, BOUNDS=BOUNDS)

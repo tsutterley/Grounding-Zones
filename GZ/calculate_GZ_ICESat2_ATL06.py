@@ -16,23 +16,6 @@ COMMAND LINE OPTIONS:
     -O X, --output-directory X: input/output data directory
     --mean-file X: Mean elevation file to remove from the height data
     -T X, --tide X: Tide model to use in correction
-        CATS0201
-        CATS2008
-        TPXO9-atlas
-        TPXO9-atlas-v2
-        TPXO9-atlas-v3
-        TPXO9-atlas-v4
-        TPXO9-atlas-v5
-        TPXO9.1
-        TPXO8-atlas
-        TPXO7.2
-        AODTM-5
-        AOTIM-5
-        AOTIM-5-2018
-        GOT4.7
-        GOT4.8
-        GOT4.10
-        FES2014
     -R X, --reanalysis X: Reanalysis model to run
         ERA-Interim: http://apps.ecmwf.int/datasets/data/interim-full-moda
         ERA5: http://apps.ecmwf.int/data-catalogues/era5/?class=ea

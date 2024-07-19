@@ -1,30 +1,13 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (07/2024)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -O X, --output-directory X: input/output data directory
     -T X, --tide X: Tide model to use in correction
-        CATS0201
-        CATS2008
-        CATS2022
-        TPXO9-atlas
-        TPXO9-atlas-v2
-        TPXO9-atlas-v3
-        TPXO9-atlas-v4
-        TPXO9.1
-        TPXO8-atlas
-        TPXO7.2
-        AODTM-5
-        AOTIM-5
-        AOTIM-5-2018
-        GOT4.7
-        GOT4.8
-        GOT4.10
-        FES2014
     -R X, --reanalysis X: Reanalysis model to run
         ERA-Interim: http://apps.ecmwf.int/datasets/data/interim-full-moda
         ERA5: http://apps.ecmwf.int/data-catalogues/era5/?class=ea
@@ -52,6 +35,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 07/2024: added option to use JSON format definition files
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 12/2023: don't have a default tide model in arguments
@@ -101,6 +85,8 @@ def common_reference_points(XT, AT):
 def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         OUTPUT_DIRECTORY=None,
         TIDE_MODEL=None,
+        DEFINITION_FILE=None,
+        DEFINITION_FORMAT='ascii',
         REANALYSIS=None,
         VERBOSE=False,
         MODE=0o775
@@ -111,7 +97,11 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
     logging.basicConfig(level=loglevel)
 
     # get tide model parameters
-    model = pyTMD.io.model(tide_dir, verify=False).elevation(TIDE_MODEL)
+    if DEFINITION_FILE is not None:
+        model = pyTMD.io.model(tide_dir, verify=False).from_file(DEFINITION_FILE,
+            format=DEFINITION_FORMAT)
+    else:
+        model = pyTMD.io.model(tide_dir, verify=False).elevation(TIDE_MODEL)
 
     # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
@@ -985,6 +975,8 @@ def arguments():
     )
     parser.convert_arg_line_to_args = gz.utilities.convert_arg_line_to_args
     # command line parameters
+    group = parser.add_mutually_exclusive_group(required=True)
+    # input ICESat-2 annual land ice height files
     parser.add_argument('infile',
         type=pathlib.Path, nargs='+',
         help='ICESat-2 ATL11 file to run')
@@ -1001,6 +993,19 @@ def arguments():
         metavar='TIDE', type=str,
         choices=get_available_models(),
         help='Tide model to use in correction')
+    # tide model to use
+    group.add_argument('--tide','-T',
+        metavar='TIDE', type=str,
+        choices=get_available_models(),
+        help='Tide model to use in correction')
+    # tide model definition file to set an undefined model
+    group.add_argument('--definition-file',
+        type=pathlib.Path,
+        help='Tide model definition file')
+    parser.add_argument('--definition-format',
+        type=str, default='ascii', choices=('ascii', 'json'),
+        help='Format for model definition file')
+    # inverse barometer response to use
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,
         help='Reanalysis model to use in inverse-barometer correction')
@@ -1027,6 +1032,8 @@ def main():
         fit_tides_ICESat2(args.directory, FILE,
             OUTPUT_DIRECTORY=args.output_directory,
             TIDE_MODEL=args.tide,
+            DEFINITION_FILE=args.definition_file,
+            DEFINITION_FORMAT=args.definition_format,
             REANALYSIS=args.reanalysis,
             VERBOSE=args.verbose,
             MODE=args.mode)
