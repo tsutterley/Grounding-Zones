@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_icebridge_data.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (07/2024)
 Calculates tidal elevations for correcting Operation IceBridge elevation data
 
 Uses OTIS format tidal solutions provided by Ohio State University and ESR
@@ -69,6 +69,8 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 07/2024: added option to crop to the domain of the input data
+        added option to use JSON format definition files
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 01/2024: made the inferrence of minor constituents an option
@@ -140,6 +142,8 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         ATLAS_FORMAT=None,
         GZIP=True,
         DEFINITION_FILE=None,
+        DEFINITION_FORMAT='ascii',
+        CROP=False,
         METHOD='spline',
         EXTRAPOLATE=False,
         CUTOFF=None,
@@ -155,7 +159,8 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
+        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE,
+            format=DEFINITION_FORMAT)
     else:
         model = pyTMD.io.model(tide_dir, format=ATLAS_FORMAT,
             compressed=GZIP).elevation(TIDE_MODEL)
@@ -256,25 +261,25 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     if model.format in ('OTIS','ATLAS','TMD3'):
         amp,ph,D,c = pyTMD.io.OTIS.extract_constants(dinput['lon'], dinput['lat'],
             model.grid_file, model.model_file, model.projection,
-            type=model.type, method=METHOD, extrapolate=EXTRAPOLATE,
+            type=model.type, crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, grid=model.format, apply_flexure=APPLY_FLEXURE)
         deltat = np.zeros((file_lines))
     elif model.format in ('netcdf'):
         amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(dinput['lon'], dinput['lat'],
-            model.grid_file, model.model_file, type=model.type, method=METHOD,
-            extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale,
-            compressed=model.compressed)
+            model.grid_file, model.model_file, type=model.type, crop=CROP, 
+            method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
+            scale=model.scale, compressed=model.compressed)
         deltat = np.zeros((file_lines))
     elif (model.format == 'GOT'):
         amp,ph,c = pyTMD.io.GOT.extract_constants(dinput['lon'], dinput['lat'],
-            model.model_file, method=METHOD, extrapolate=EXTRAPOLATE,
+            model.model_file, crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE,
             cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
         # delta time (TT - UT1)
         deltat = ts.tt_ut1
     elif (model.format == 'FES'):
         amp,ph = pyTMD.io.FES.extract_constants(dinput['lon'], dinput['lat'],
             model.model_file, type=model.type, version=model.version,
-            method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
+            crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
             scale=model.scale, compressed=model.compressed)
         # available model constituents
         c = model.constituents
@@ -417,7 +422,14 @@ def arguments():
     # tide model definition file to set an undefined model
     group.add_argument('--definition-file',
         type=pathlib.Path,
-        help='Tide model definition file for use as correction')
+        help='Tide model definition file')
+    parser.add_argument('--definition-format',
+        type=str, default='ascii', choices=('ascii', 'json'),
+        help='Format for model definition file')
+    # crop tide model to (buffered) bounds of data
+    parser.add_argument('--crop', '-C',
+        default=False, action='store_true',
+        help='Crop tide model to bounds of data')
     # interpolation method
     parser.add_argument('--interpolate','-I',
         metavar='METHOD', type=str, default='spline',
@@ -465,6 +477,8 @@ def main():
             ATLAS_FORMAT=args.atlas_format,
             GZIP=args.gzip,
             DEFINITION_FILE=args.definition_file,
+            DEFINITION_FORMAT=args.definition_format,
+            CROP=args.crop,
             METHOD=args.interpolate,
             EXTRAPOLATE=args.extrapolate,
             CUTOFF=args.cutoff,
