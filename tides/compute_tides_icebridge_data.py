@@ -4,7 +4,7 @@ compute_tides_icebridge_data.py
 Written by Tyler Sutterley (07/2024)
 Calculates tidal elevations for correcting Operation IceBridge elevation data
 
-Uses OTIS format tidal solutions provided by Ohio State University and ESR
+Uses OTIS format tidal solutions provided by Oregon State University and ESR
     http://volkov.oce.orst.edu/tides/region.html
     https://www.esr.org/research/polar-tide-models/list-of-polar-tide-models/
     ftp://ftp.esr.org/pub/datasets/tmd/
@@ -71,6 +71,10 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 07/2024: added option to crop to the domain of the input data
         added option to use JSON format definition files
+        renamed format for ATLAS to ATLAS-compact
+        renamed format for netcdf to ATLAS-netcdf
+        renamed format for FES to FES-netcdf and added FES-ascii
+        renamed format for GOT to GOT-ascii and added GOT-netcdf
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 01/2024: made the inferrence of minor constituents an option
@@ -258,11 +262,12 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         epoch=timescale.time._j2000_epoch, standard='UTC')
 
     # read tidal constants and interpolate to grid points
-    if model.format in ('OTIS','ATLAS','TMD3'):
+    corrections, _, grid = model.format.partition('-')
+    if model.format in ('OTIS','ATLAS-compact','TMD3'):
         amp,ph,D,c = pyTMD.io.OTIS.extract_constants(dinput['lon'], dinput['lat'],
             model.grid_file, model.model_file, model.projection,
-            type=model.type, crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE,
-            cutoff=CUTOFF, grid=model.format, apply_flexure=APPLY_FLEXURE)
+            type=model.type, grid=corrections, crop=CROP, method=METHOD,
+            extrapolate=EXTRAPOLATE, cutoff=CUTOFF, apply_flexure=APPLY_FLEXURE)
         deltat = np.zeros((file_lines))
     elif model.format in ('netcdf'):
         amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(dinput['lon'], dinput['lat'],
@@ -270,13 +275,14 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
             method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
             scale=model.scale, compressed=model.compressed)
         deltat = np.zeros((file_lines))
-    elif (model.format == 'GOT'):
+    elif model.format in ('GOT-ascii','GOT-netcdf'):
         amp,ph,c = pyTMD.io.GOT.extract_constants(dinput['lon'], dinput['lat'],
-            model.model_file, crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE,
-            cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
+            model.model_file, grid=grid, crop=CROP, method=METHOD,
+            extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale,
+            compressed=model.compressed)
         # delta time (TT - UT1)
         deltat = ts.tt_ut1
-    elif (model.format == 'FES'):
+    elif model.format in ('FES-ascii','FES-netcdf'):
         amp,ph = pyTMD.io.FES.extract_constants(dinput['lon'], dinput['lat'],
             model.model_file, type=model.type, version=model.version,
             crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
@@ -318,11 +324,11 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     tide = np.ma.empty((file_lines),fill_value=fill_value)
     tide.mask = np.any(hc.mask,axis=1)
     tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
-        deltat=deltat, corrections=model.format)
+        deltat=deltat, corrections=corrections)
     # calculate values for minor constituents by inferrence
     if INFER_MINOR:
         minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
-            deltat=deltat, corrections=model.format)
+            deltat=deltat, corrections=corrections)
         tide.data[:] += minor.data[:]
     # replace invalid values with fill value
     tide.data[tide.mask] = tide.fill_value
