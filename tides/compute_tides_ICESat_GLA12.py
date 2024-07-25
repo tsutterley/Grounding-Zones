@@ -510,7 +510,7 @@ def arguments():
         help='ICESat GLA12 file to run')
     # directory with tide data
     parser.add_argument('--directory','-D',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path,
         help='Working data directory')
     # directory with output data
     parser.add_argument('--output-directory','-O',
