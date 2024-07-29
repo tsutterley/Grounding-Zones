@@ -68,6 +68,7 @@ UPDATE HISTORY:
         renamed format for netcdf to ATLAS-netcdf
         renamed format for FES to FES-netcdf and added FES-ascii
         renamed format for GOT to GOT-ascii and added GOT-netcdf
+        only append crossovers group if there are valid crossovers
     Updated 06/2024: added option to not run with crossover measurements
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
@@ -294,8 +295,6 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
 
         # if running ATL11 crossovers
         if CROSSOVERS:
-            # add to group
-            groups.append('XT')
             # across-track (XT) reference point, latitude, longitude and time
             ref_pt['XT'] = IS2_atl11_mds[ptx][XT]['ref_pt'].copy()
             latitude['XT'] = np.ma.array(IS2_atl11_mds[ptx][XT]['latitude'],
@@ -309,6 +308,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             # across-track (XT) tides
             tide['XT'] = np.ma.empty((n_cross),fill_value=fv)
             tide['XT'].mask = (delta_time['XT'] == delta_time['XT'].fill_value)
+            # add to group
+            if np.any(n_cross):
+                groups.append('XT')
 
         # calculate tides for along-track and across-track data
         for track in groups:

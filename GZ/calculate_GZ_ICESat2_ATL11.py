@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (07/2024)
 
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
@@ -54,6 +54,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2024: only append crossovers group if there are valid crossovers
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from timescale.time
@@ -302,8 +303,6 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
         geoid_h = mds1[ptx]['ref_surf']['geoid_h']
         # if running ATL11 crossovers
         if CROSSOVERS:
-            # add to group
-            groups.append('XT')
             # shape of across-track data
             n_cross, = mds1[ptx][XT]['delta_time'].shape
             # across-track (XT) reference point, latitude, longitude and time
@@ -328,6 +327,9 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
             IB['XT'] = np.ma.array(mds1[ptx][XT]['dac'],
                 fill_value=attr1[ptx][XT]['dac']['_FillValue'])
             IB['XT'].mask = (IB['XT'] == IB['XT'].fill_value)
+            # add to group
+            if np.any(n_cross):
+                groups.append('XT')
 
         # read buffered grounding zone mask
         a2 = (PRD,'GROUNDING_ZONE','MASK',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
