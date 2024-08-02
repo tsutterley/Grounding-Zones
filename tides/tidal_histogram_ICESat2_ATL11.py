@@ -329,6 +329,8 @@ def tidal_histogram(tile_file,
             f3.close()
         if REANALYSIS:
             f4.close()
+    # close the tile file
+    f1.close()
 
     # calculate coordinates in coordinate reference system of tiles
     d['x'], d['y'] = transformer.transform(d['longitude'], d['latitude'])
