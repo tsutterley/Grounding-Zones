@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL03.py
-Written by Tyler Sutterley (07/2024)
+Written by Tyler Sutterley (08/2024)
 Calculates tidal elevations for correcting ICESat-2 photon height data
 Calculated at ATL03 segment level using reference photon geolocation and time
 Segment level corrections can be applied to the individual photon events (PEs)
@@ -66,6 +66,7 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 08/2024: project bounds for cropping non-geographic OTIS models
     Updated 07/2024: added option to crop to the domain of the input data
         added option to use JSON format definition files
         renamed format for ATLAS to ATLAS-compact
@@ -206,23 +207,25 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
     IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
         is2tk.io.ATL03.read_main(INPUT_FILE, ATTRIBUTES=True)
 
-    # read orbit info for bounding polygons
-    bounding_lon = IS2_atl03_mds['orbit_info']['bounding_polygon_lon1']
-    bounding_lat = IS2_atl03_mds['orbit_info']['bounding_polygon_lat1']
-    # convert bounding polygon coordinates to bounding box
+    # transform bounding box coordinates 
+    if model.projection:
+        transformer = pyTMD.crs().get(model.projection)
+    # find geospatial ranges for bounding box
     BOUNDS = [np.inf, -np.inf, np.inf, -np.inf]
-    BOUNDS[0] = np.minimum(BOUNDS[0], np.min(bounding_lon))
-    BOUNDS[1] = np.maximum(BOUNDS[1], np.max(bounding_lon))
-    BOUNDS[2] = np.minimum(BOUNDS[2], np.min(bounding_lat))
-    BOUNDS[3] = np.maximum(BOUNDS[3], np.max(bounding_lat))
-    # check if bounding polygon is in multiple parts
-    if 'bounding_polygon_lon2' in IS2_atl03_mds['orbit_info']:
-        bounding_lon = IS2_atl03_mds['orbit_info']['bounding_polygon_lon2']
-        bounding_lat = IS2_atl03_mds['orbit_info']['bounding_polygon_lat2']
-        BOUNDS[0] = np.minimum(BOUNDS[0], np.min(bounding_lon))
-        BOUNDS[1] = np.maximum(BOUNDS[1], np.max(bounding_lon))
-        BOUNDS[2] = np.minimum(BOUNDS[2], np.min(bounding_lat))
-        BOUNDS[3] = np.maximum(BOUNDS[3], np.max(bounding_lat))
+    for gtx in IS2_atl03_beams:
+        lon = IS2_atl03_mds[gtx]['geolocation']['reference_photon_lon']
+        lat = IS2_atl03_mds[gtx]['geolocation']['reference_photon_lat']
+        if model.projection:
+            x, y = transformer.transform(lon, lat)
+            BOUNDS[0] = np.minimum(BOUNDS[0], np.min(x))
+            BOUNDS[1] = np.maximum(BOUNDS[1], np.max(x))
+            BOUNDS[2] = np.minimum(BOUNDS[2], np.min(y))
+            BOUNDS[3] = np.maximum(BOUNDS[3], np.max(y))
+        else:
+            BOUNDS[0] = np.minimum(BOUNDS[0], np.min(lon))
+            BOUNDS[1] = np.maximum(BOUNDS[1], np.max(lon))
+            BOUNDS[2] = np.minimum(BOUNDS[2], np.min(lat))
+            BOUNDS[3] = np.maximum(BOUNDS[3], np.max(lat))
 
     # read tidal constants
     corrections, _, grid = model.format.partition('-')
