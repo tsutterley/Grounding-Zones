@@ -577,6 +577,7 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                             PGZ = np.copy(GZ)
                             model_scale = np.copy(PA[0])
                             PEMODEL = np.copy(MODEL)
+                            dHGZ = np.copy(PdH[0])
                         # use parameters if fit significance is within tolerance
                         if (GZ[1] < 400.0):
                             break
@@ -601,7 +602,7 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                     grounding_zone_data['e_mod'].append(PE[0]/1e9)
                     grounding_zone_data['e_mod_sigma'].append(PE[1]/1e9)
                     # grounding_zone_data['H_ice'].append(PT)
-                    grounding_zone_data['delta_h'].append(PdH)
+                    grounding_zone_data['delta_h'].append(dHGZ)
 
                     # reorient input parameters to go from land ice to floating
                     flexure_mask = np.ones_like(iout,dtype=bool)
