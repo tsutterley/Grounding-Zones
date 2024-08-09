@@ -462,7 +462,7 @@ def arguments():
         help='Infer values for minor constituents')
     # specify minor constituents to infer
     parser.add_argument('--minor-constituents',
-        type=str, nargs='+',
+        metavar='MINOR', type=str, nargs='+',
         help='Minor constituents to infer')
     # apply flexure scaling factors to height constituents
     parser.add_argument('--apply-flexure',

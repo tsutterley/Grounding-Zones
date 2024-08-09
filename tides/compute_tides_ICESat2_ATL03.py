@@ -211,7 +211,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
     IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
         is2tk.io.ATL03.read_main(INPUT_FILE, ATTRIBUTES=True)
 
-    # transform bounding box coordinates 
+    # transform bounding box coordinates
     if model.projection:
         transformer = pyTMD.crs().get(model.projection)
     # find geospatial ranges for bounding box
@@ -689,7 +689,7 @@ def arguments():
         help='Infer values for minor constituents')
     # specify minor constituents to infer
     parser.add_argument('--minor-constituents',
-        type=str, nargs='+',
+        metavar='MINOR', type=str, nargs='+',
         help='Minor constituents to infer')
     # apply flexure scaling factors to height constituents
     parser.add_argument('--apply-flexure',
