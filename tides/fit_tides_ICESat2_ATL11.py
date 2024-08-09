@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2024)
+Written by Tyler Sutterley (08/2024)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -35,6 +35,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 08/2024: option for automatic detection of definition format
     Updated 07/2024: added option to use JSON format definition files
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
@@ -86,7 +87,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         OUTPUT_DIRECTORY=None,
         TIDE_MODEL=None,
         DEFINITION_FILE=None,
-        DEFINITION_FORMAT='ascii',
+        DEFINITION_FORMAT='auto',
         REANALYSIS=None,
         VERBOSE=False,
         MODE=0o775
@@ -1003,7 +1004,7 @@ def arguments():
         type=pathlib.Path,
         help='Tide model definition file')
     parser.add_argument('--definition-format',
-        type=str, default='ascii', choices=('ascii', 'json'),
+        type=str, default='auto', choices=('ascii','json','auto'),
         help='Format for model definition file')
     # inverse barometer response to use
     parser.add_argument('--reanalysis','-R',

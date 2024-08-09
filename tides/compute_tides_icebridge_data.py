@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_icebridge_data.py
-Written by Tyler Sutterley (07/2024)
+Written by Tyler Sutterley (08/2024)
 Calculates tidal elevations for correcting Operation IceBridge elevation data
 
 Uses OTIS format tidal solutions provided by Oregon State University and ESR
@@ -28,7 +28,8 @@ COMMAND LINE OPTIONS:
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
-    --infer-minor: Infer the height values for minor constituents
+    --infer-minor: Infer values for minor constituents
+    --minor-constituents: Minor constituents to infer
     --apply-flexure: Apply ice flexure scaling factor to height values
         Only valid for models containing flexure fields
     -M X, --mode X: Permission mode of directories and files created
@@ -69,6 +70,8 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 08/2024: allow inferring only specific minor constituents
+        added option to try automatic detection of definition file format
     Updated 07/2024: added option to crop to the domain of the input data
         added option to use JSON format definition files
         renamed format for ATLAS to ATLAS-compact
@@ -146,12 +149,13 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         ATLAS_FORMAT=None,
         GZIP=True,
         DEFINITION_FILE=None,
-        DEFINITION_FORMAT='ascii',
+        DEFINITION_FORMAT='auto',
         CROP=False,
         METHOD='spline',
         EXTRAPOLATE=False,
         CUTOFF=None,
         INFER_MINOR=False,
+        MINOR_CONSTITUENTS=None,
         APPLY_FLEXURE=False,
         VERBOSE=False,
         MODE=0o775
@@ -271,7 +275,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         deltat = np.zeros((file_lines))
     elif model.format in ('netcdf'):
         amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(dinput['lon'], dinput['lat'],
-            model.grid_file, model.model_file, type=model.type, crop=CROP, 
+            model.grid_file, model.model_file, type=model.type, crop=CROP,
             method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
             scale=model.scale, compressed=model.compressed)
         deltat = np.zeros((file_lines))
@@ -326,9 +330,11 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
         deltat=deltat, corrections=corrections)
     # calculate values for minor constituents by inferrence
+    minor_constituents = model.minor or MINOR_CONSTITUENTS
     if INFER_MINOR:
         minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
-            deltat=deltat, corrections=corrections)
+            deltat=deltat, corrections=corrections,
+            minor=minor_constituents)
         tide.data[:] += minor.data[:]
     # replace invalid values with fill value
     tide.data[tide.mask] = tide.fill_value
@@ -430,7 +436,7 @@ def arguments():
         type=pathlib.Path,
         help='Tide model definition file')
     parser.add_argument('--definition-format',
-        type=str, default='ascii', choices=('ascii', 'json'),
+        type=str, default='auto', choices=('ascii','json','auto'),
         help='Format for model definition file')
     # crop tide model to (buffered) bounds of data
     parser.add_argument('--crop',
@@ -453,7 +459,11 @@ def arguments():
     # infer minor constituents from major
     parser.add_argument('--infer-minor',
         default=False, action='store_true',
-        help='Infer the height values for minor constituents')
+        help='Infer values for minor constituents')
+    # specify minor constituents to infer
+    parser.add_argument('--minor-constituents',
+        type=str, nargs='+',
+        help='Minor constituents to infer')
     # apply flexure scaling factors to height constituents
     parser.add_argument('--apply-flexure',
         default=False, action='store_true',
@@ -489,6 +499,7 @@ def main():
             EXTRAPOLATE=args.extrapolate,
             CUTOFF=args.cutoff,
             INFER_MINOR=args.infer_minor,
+            MINOR_CONSTITUENTS=args.minor_constituents,
             APPLY_FLEXURE=args.apply_flexure,
             VERBOSE=args.verbose,
             MODE=args.mode)

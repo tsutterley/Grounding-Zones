@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tidal_histogram_ICESat2_ATL11.py
-Written by Tyler Sutterley (07/2024)
+Written by Tyler Sutterley (08/2024)
 Calculates histograms of variances between ICESat-2 ATL11
 annual land ice height data and tide predictions
 
@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 08/2024: option for automatic detection of definition format
     Updated 07/2024: use wrapper to importlib for optional dependencies
         use multiprocess h5py reader from io utilities module
         use updated ATL11 readers within icesat2_toolkit
@@ -98,7 +99,7 @@ def tidal_histogram(tile_file,
         MASK_FILE=None,
         TIDE_MODEL=None,
         DEFINITION_FILE=None,
-        DEFINITION_FORMAT='ascii',
+        DEFINITION_FORMAT='auto',
         REANALYSIS=None,
         HISTOGRAM=(-8,8,0.01),
         MODE=0o775
@@ -579,7 +580,7 @@ def arguments():
         type=pathlib.Path,
         help='Tide model definition file')
     parser.add_argument('--definition-format',
-        type=str, default='ascii', choices=('ascii', 'json'),
+        type=str, default='auto', choices=('ascii','json','auto'),
         help='Format for model definition file')
     # inverse barometer response to use
     parser.add_argument('--reanalysis','-R',

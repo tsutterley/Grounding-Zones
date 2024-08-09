@@ -23,7 +23,8 @@ COMMAND LINE OPTIONS:
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
-    --infer-minor: Infer the height values for minor constituents
+    --infer-minor: Infer values for minor constituents
+    --minor-constituents: Minor constituents to infer
     --apply-flexure: Apply ice flexure scaling factor to height values
         Only valid for models containing flexure fields
     -C, --crossovers: Run ATL11 Crossovers
@@ -63,6 +64,8 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 08/2024: project bounds for cropping non-geographic OTIS models
+        added option to allow inferring only specific minor constituents
+        added option to try automatic detection of definition file format
     Updated 07/2024: added option to crop to the domain of the input data
         added option to use JSON format definition files
         renamed format for ATLAS to ATLAS-compact
@@ -129,12 +132,13 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         ATLAS_FORMAT=None,
         GZIP=True,
         DEFINITION_FILE=None,
-        DEFINITION_FORMAT='ascii',
+        DEFINITION_FORMAT='auto',
         CROP=False,
         METHOD='spline',
         EXTRAPOLATE=False,
         CUTOFF=None,
         INFER_MINOR=False,
+        MINOR_CONSTITUENTS=None,
         APPLY_FLEXURE=False,
         CROSSOVERS=False,
         VERBOSE=False,
@@ -355,6 +359,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             hc = amp*np.exp(cph)
 
             # calculate tides for track type
+            minor_constituents = model.minor or MINOR_CONSTITUENTS
             if (track == 'AT'):
                 # calculate tides for each cycle if along-track
                 for cycle in range(n_cycles):
@@ -370,7 +375,8 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                         minor = pyTMD.predict.infer_minor(
                             ts.tide[valid,cycle], hc[valid,:], c,
                             deltat=deltat[valid,cycle],
-                            corrections=corrections)
+                            corrections=corrections,
+                            minor=minor_constituents)
                         tide[track].data[valid,cycle] += minor.data[:]
             elif (track == 'XT'):
                 # find valid time and spatial points
@@ -385,7 +391,8 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                     minor = pyTMD.predict.infer_minor(
                         ts.tide[valid], hc[valid,:], c,
                         deltat=deltat[valid],
-                        corrections=corrections)
+                        corrections=corrections,
+                        minor=minor_constituents)
                     tide[track].data[valid] += minor.data[:]
 
             # replace masked and nan values with fill value
@@ -845,7 +852,7 @@ def arguments():
         type=pathlib.Path,
         help='Tide model definition file')
     parser.add_argument('--definition-format',
-        type=str, default='ascii', choices=('ascii', 'json'),
+        type=str, default='auto', choices=('ascii','json','auto'),
         help='Format for model definition file')
     # crop tide model to (buffered) bounds of data
     parser.add_argument('--crop',
@@ -868,7 +875,11 @@ def arguments():
     # infer minor constituents from major
     parser.add_argument('--infer-minor',
         default=False, action='store_true',
-        help='Infer the height values for minor constituents')
+        help='Infer values for minor constituents')
+    # specify minor constituents to infer
+    parser.add_argument('--minor-constituents',
+        type=str, nargs='+',
+        help='Minor constituents to infer')
     # apply flexure scaling factors to height constituents
     parser.add_argument('--apply-flexure',
         default=False, action='store_true',
@@ -909,6 +920,7 @@ def main():
             EXTRAPOLATE=args.extrapolate,
             CUTOFF=args.cutoff,
             INFER_MINOR=args.infer_minor,
+            MINOR_CONSTITUENTS=args.minor_constituents,
             APPLY_FLEXURE=args.apply_flexure,
             CROSSOVERS=args.crossovers,
             VERBOSE=args.verbose,
