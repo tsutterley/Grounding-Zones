@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat_GLA12.py
-Written by Tyler Sutterley (07/2024)
+Written by Tyler Sutterley (08/2024)
 Calculates tidal elevations for correcting ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
-Uses OTIS format tidal solutions provided by Ohio State University and ESR
+Uses OTIS format tidal solutions provided by Oregon State University and ESR
     http://volkov.oce.orst.edu/tides/region.html
     https://www.esr.org/research/polar-tide-models/list-of-polar-tide-models/
     ftp://ftp.esr.org/pub/datasets/tmd/
@@ -27,7 +27,8 @@ COMMAND LINE OPTIONS:
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
-    --infer-minor: Infer the height values for minor constituents
+    --infer-minor: Infer values for minor constituents
+    --minor-constituents: Minor constituents to infer
     --apply-flexure: Apply ice flexure scaling factor to height values
         Only valid for models containing flexure fields
     -M X, --mode X: Permission mode of directories and files created
@@ -65,8 +66,14 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 08/2024: allow inferring only specific minor constituents
+        added option to try automatic detection of definition file format
     Updated 07/2024: added option to crop to the domain of the input data
         added option to use JSON format definition files
+        renamed format for ATLAS to ATLAS-compact
+        renamed format for netcdf to ATLAS-netcdf
+        renamed format for FES to FES-netcdf and added FES-ascii
+        renamed format for GOT to GOT-ascii and added GOT-netcdf
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 01/2024: made the inferrence of minor constituents an option
@@ -136,12 +143,13 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
         ATLAS_FORMAT=None,
         GZIP=True,
         DEFINITION_FILE=None,
-        DEFINITION_FORMAT='ascii',
+        DEFINITION_FORMAT='auto',
         CROP=False,
         METHOD='spline',
         EXTRAPOLATE=False,
         CUTOFF=None,
         INFER_MINOR=False,
+        MINOR_CONSTITUENTS=None,
         APPLY_FLEXURE=False,
         VERBOSE=False,
         MODE=0o775
@@ -236,25 +244,27 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
         epoch=timescale.time._j2000_epoch, standard='UTC')
 
     # read tidal constants and interpolate to grid points
-    if model.format in ('OTIS','ATLAS','TMD3'):
+    corrections, _, grid = model.format.partition('-')
+    if model.format in ('OTIS','ATLAS-compact','TMD3'):
         amp,ph,D,c = pyTMD.io.OTIS.extract_constants(lon_40HZ, lat_40HZ,
             model.grid_file, model.model_file, model.projection,
-            type=model.type, crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE,
-            cutoff=CUTOFF, grid=model.format, apply_flexure=APPLY_FLEXURE)
+            type=model.type, grid=corrections, crop=CROP, method=METHOD,
+            extrapolate=EXTRAPOLATE, cutoff=CUTOFF, apply_flexure=APPLY_FLEXURE)
         deltat = np.zeros((n_40HZ))
-    elif (model.format == 'netcdf'):
+    elif model.format in ('ATLAS-netcdf',):
         amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(lon_40HZ, lat_40HZ,
             model.grid_file, model.model_file, type=model.type,
             crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
             scale=model.scale, compressed=model.compressed)
         deltat = np.zeros((n_40HZ))
-    elif (model.format == 'GOT'):
+    elif model.format in ('GOT-ascii','GOT-netcdf'):
         amp,ph,c = pyTMD.io.GOT.extract_constants(lon_40HZ, lat_40HZ,
-            model.model_file, crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE,
-            cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
+            model.model_file, crop=CROP, crop=CROP, method=METHOD,
+            extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale,
+            compressed=model.compressed)
         # delta time (TT - UT1)
         deltat = ts.tt_ut1
-    elif (model.format == 'FES'):
+    elif model.format in ('FES-ascii','FES-netcdf'):
         amp,ph = pyTMD.io.FES.extract_constants(lon_40HZ, lat_40HZ,
             model.model_file, type=model.type, version=model.version,
             crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
@@ -273,11 +283,13 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     tide = np.ma.empty((n_40HZ),fill_value=fv)
     tide.mask = np.any(hc.mask,axis=1)
     tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
-        deltat=deltat, corrections=model.format)
+        deltat=deltat, corrections=corrections)
     # calculate values for minor constituents by inferrence
+    minor_constituents = model.minor or MINOR_CONSTITUENTS
     if INFER_MINOR:
         minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
-            deltat=deltat, corrections=model.format)
+            deltat=deltat, corrections=corrections,
+            minor=minor_constituents)
         tide.data[:] += minor.data[:]
     # replace masked and nan values with fill value
     invalid, = np.nonzero(np.isnan(tide.data) | tide.mask)
@@ -504,7 +516,7 @@ def arguments():
         help='ICESat GLA12 file to run')
     # directory with tide data
     parser.add_argument('--directory','-D',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path,
         help='Working data directory')
     # directory with output data
     parser.add_argument('--output-directory','-O',
@@ -526,7 +538,7 @@ def arguments():
         type=pathlib.Path,
         help='Tide model definition file')
     parser.add_argument('--definition-format',
-        type=str, default='ascii', choices=('ascii', 'json'),
+        type=str, default='auto', choices=('ascii','json','auto'),
         help='Format for model definition file')
     # crop tide model to (buffered) bounds of data
     parser.add_argument('--crop',
@@ -549,7 +561,11 @@ def arguments():
     # infer minor constituents from major
     parser.add_argument('--infer-minor',
         default=False, action='store_true',
-        help='Infer the height values for minor constituents')
+        help='Infer values for minor constituents')
+    # specify minor constituents to infer
+    parser.add_argument('--minor-constituents',
+        metavar='MINOR', type=str, nargs='+',
+        help='Minor constituents to infer')
     # apply flexure scaling factors to height constituents
     parser.add_argument('--apply-flexure',
         default=False, action='store_true',
@@ -586,6 +602,7 @@ def main():
             EXTRAPOLATE=args.extrapolate,
             CUTOFF=args.cutoff,
             INFER_MINOR=args.infer_minor,
+            MINOR_CONSTITUENTS=args.minor_constituents,
             APPLY_FLEXURE=args.apply_flexure,
             VERBOSE=args.verbose,
             MODE=args.mode)

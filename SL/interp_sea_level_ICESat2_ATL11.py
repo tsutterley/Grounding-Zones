@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_sea_level_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (07/2024)
 Interpolates sea level anomalies (sla), absolute dynamic topography (adt) and
     mean dynamic topography (mdt) to times and locations of ICESat-2 ATL11 data
     This data will be extrapolated onto land points
@@ -42,6 +42,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2024: only append crossovers group if there are valid crossovers
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
@@ -334,8 +335,6 @@ def interp_sea_level_ICESat2(base_dir, INPUT_FILE,
         ADT['AT'].mask = (delta_time['AT'] == delta_time['AT'].fill_value)
         # if running ATL11 crossovers
         if CROSSOVERS:
-            # add to group
-            groups.append('XT')
             # shape of across-track data
             n_cross, = IS2_atl11_mds[ptx][XT]['delta_time'].shape
             # across-track (XT) reference point, latitude, longitude and time
@@ -356,6 +355,9 @@ def interp_sea_level_ICESat2(base_dir, INPUT_FILE,
             SLA['XT'].mask = (delta_time['XT'] == delta_time['XT'].fill_value)
             ADT['XT'] = np.ma.empty((n_cross),fill_value=fv)
             ADT['XT'].mask = (delta_time['XT'] == delta_time['XT'].fill_value)
+            # add to group
+            if np.any(n_cross):
+                groups.append('XT')
 
         # calculate corrections for along-track and across-track data
         for track in groups:

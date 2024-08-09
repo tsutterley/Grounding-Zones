@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 calculate_GZ_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (07/2024)
 
 Calculates ice sheet grounding zones with ICESat-2 data following:
     Brunt et al., Annals of Glaciology, 51(55), 2010
@@ -54,6 +54,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2024: only append crossovers group if there are valid crossovers
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 08/2023: create s3 filesystem when using s3 urls as input
         use time functions from timescale.time
@@ -302,8 +303,6 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
         geoid_h = mds1[ptx]['ref_surf']['geoid_h']
         # if running ATL11 crossovers
         if CROSSOVERS:
-            # add to group
-            groups.append('XT')
             # shape of across-track data
             n_cross, = mds1[ptx][XT]['delta_time'].shape
             # across-track (XT) reference point, latitude, longitude and time
@@ -328,6 +327,9 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
             IB['XT'] = np.ma.array(mds1[ptx][XT]['dac'],
                 fill_value=attr1[ptx][XT]['dac']['_FillValue'])
             IB['XT'].mask = (IB['XT'] == IB['XT'].fill_value)
+            # add to group
+            if np.any(n_cross):
+                groups.append('XT')
 
         # read buffered grounding zone mask
         a2 = (PRD,'GROUNDING_ZONE','MASK',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
@@ -463,7 +465,7 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
         grounding_zone_data['e_mod'] = []
         grounding_zone_data['e_mod_sigma'] = []
         # grounding_zone_data['H_ice'] = []
-        # grounding_zone_data['delta_h'] = []
+        grounding_zone_data['delta_h'] = []
 
         # if creating a test plot
         valid_plot = False
@@ -474,7 +476,7 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
         for c,CYCLE in enumerate(mds1[ptx]['cycle_number']):
             # find valid points with GZ for any ATL11 cycle
             segment_mask = np.logical_not(h_corr['AT'].mask[:,c])
-            segment_mask = np.logical_not(tide_ocean['AT'].mask[:,c])
+            segment_mask &= np.logical_not(tide_ocean['AT'].mask[:,c])
             segment_mask &= (h_corr['AT'].data[:,c] > THRESHOLD)
             segment_mask &= mds1[ptx]['subsetting']['ice_gz']
             segment_mask &= quality_summary[:,c]
@@ -575,6 +577,7 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                             PGZ = np.copy(GZ)
                             model_scale = np.copy(PA[0])
                             PEMODEL = np.copy(MODEL)
+                            dHGZ = np.copy(PdH[0])
                         # use parameters if fit significance is within tolerance
                         if (GZ[1] < 400.0):
                             break
@@ -599,7 +602,7 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                     grounding_zone_data['e_mod'].append(PE[0]/1e9)
                     grounding_zone_data['e_mod_sigma'].append(PE[1]/1e9)
                     # grounding_zone_data['H_ice'].append(PT)
-                    # grounding_zone_data['delta_h'].append(PdH)
+                    grounding_zone_data['delta_h'].append(dHGZ)
 
                     # reorient input parameters to go from land ice to floating
                     flexure_mask = np.ones_like(iout,dtype=bool)
@@ -944,7 +947,20 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
             "effective Elastic modulus of ice")
         IS2_atl11_gz_attrs[ptx][GZD]['e_mod_sigma']['coordinates'] = \
             "ref_pt delta_time latitude longitude"
-
+        # estimated height change
+        IS2_atl11_gz[ptx][GZD]['delta_h'] = np.copy(grounding_zone_data['delta_h'])
+        IS2_atl11_fill[ptx][GZD]['delta_h'] = 0.0
+        IS2_atl11_dims[ptx][GZD]['delta_h'] = ['ref_pt']
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_h'] = collections.OrderedDict()
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_h']['units'] = "m"
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_h']['contentType'] = "physicalMeasurement"
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_h']['long_name'] = "Height change"
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_h']['source'] = "ATL11"
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_h']['description'] = ("Estimated grounded ice "
+            "height change")
+        IS2_atl11_gz_attrs[ptx][GZD]['delta_h']['coordinates'] = \
+            "ref_pt delta_time latitude longitude"
+        
         # if estimating flexure for crossover measurements
         if CROSSOVERS:
             # calculate mean scaling for crossovers
