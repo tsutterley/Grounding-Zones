@@ -35,7 +35,7 @@ UPDATE HISTORY:
         use multiprocess h5py reader from io utilities module
         use updated ATL11 readers within icesat2_toolkit
         use pathlib to define and operate on paths
-        use raster file to define valid grid cells in mask 
+        use raster file to define valid grid cells in mask
         include cell_area in output HDF5 file
     Written 03/2021
 """
@@ -378,7 +378,7 @@ def tidal_histogram(tile_file,
     # histogram bin
     attributes['bins'] = {}
     attributes['bins']['long_name'] = 'Histogram bins'
-    attributes['bins']['units'] = 'meters'
+    attributes['bins']['units'] = '1'
     attributes['bins']['description'] = \
         'Center of each height difference histogram bin'
     fill_value['bins'] = None
@@ -390,10 +390,11 @@ def tidal_histogram(tile_file,
     attributes['cell_area']['units'] = 'm^2'
     attributes['cell_area']['coordinates'] = 'y x'
     attributes['cell_area']['grid_mapping'] = 'crs'
-    fill_value['cell_area'] = 0    
+    fill_value['cell_area'] = 0
     # height difference histogram
     attributes['dh_hist'] = {}
     attributes['dh_hist']['long_name'] = 'Height difference histogram'
+    attributes['dh_hist']['description'] = 'Histogram of height differences'
     attributes['dh_hist']['units'] = 'meters'
     attributes['dh_hist']['coordinates'] = 'y x'
     attributes['dh_hist']['grid_mapping'] = 'crs'
@@ -613,7 +614,7 @@ def main():
     loglevels = [logging.CRITICAL, logging.INFO, logging.DEBUG]
     logging.basicConfig(level=loglevels[args.verbose])
 
-    # run program 
+    # run program
     try:
         info(args)
         tidal_histogram(args.infile,
