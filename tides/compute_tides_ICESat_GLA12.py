@@ -259,7 +259,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
         deltat = np.zeros((n_40HZ))
     elif model.format in ('GOT-ascii','GOT-netcdf'):
         amp,ph,c = pyTMD.io.GOT.extract_constants(lon_40HZ, lat_40HZ,
-            model.model_file, crop=CROP, crop=CROP, method=METHOD,
+            model.model_file, crop=CROP, method=METHOD,
             extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale,
             compressed=model.compressed)
         # delta time (TT - UT1)
