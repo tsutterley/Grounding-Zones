@@ -990,11 +990,6 @@ def arguments():
         type=pathlib.Path,
         help='Output data directory')
     # tide model to use
-    parser.add_argument('--tide','-T',
-        metavar='TIDE', type=str,
-        choices=get_available_models(),
-        help='Tide model to use in correction')
-    # tide model to use
     group.add_argument('--tide','-T',
         metavar='TIDE', type=str,
         choices=get_available_models(),
