@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_interpolate_DEM.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (08/2024)
 Determines which digital elevation model tiles for an input file
 Reads 3x3 array of tiles for points within bounding box of central mosaic tile
 Interpolates digital elevation model to coordinates
@@ -33,7 +33,8 @@ COMMAND LINE OPTIONS:
         csv (default)
         netCDF4
         HDF5
-        geotiff
+        GTiff
+        cog
     -v X, --variables X: variable names of data in csv, HDF5 or netCDF4 file
         for csv files: the order of the columns within the file
         for HDF5 and netCDF4 files: time, y, x and data variable names
@@ -84,6 +85,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 08/2024: changed from 'geotiff' to 'GTiff' and 'cog' formats
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 07/2023: using pathlib to define and operate on paths
         use geoms attribute for shapely 2.0 compliance
@@ -168,7 +170,8 @@ def arguments():
         help='Digital Elevation Model to run')
     # input and output data format
     parser.add_argument('--format','-F',
-        type=str, default='csv', choices=('csv','netCDF4','HDF5','geotiff'),
+        type=str, default='csv',
+        choices=('csv','netCDF4','HDF5','GTiff','cog'),
         help='Input and output data format')
     # variable names (for csv names of columns)
     parser.add_argument('--variables','-v',
@@ -475,7 +478,7 @@ def main():
         attrib[args.variables[2]] = dinput['attributes']['x']
         attrib[args.variables[1]] = dinput['attributes']['y']
         attrib[args.variables[0]] = dinput['attributes']['time']
-    elif (args.format == 'geotiff') and (comm.rank == 0):
+    elif (args.format in ('GTiff','cog')) and (comm.rank == 0):
         dinput = pyTMD.spatial.from_geotiff(args.infile,
             verbose=args.verbose)
         # copy global geotiff attributes for projection and grid parameters
@@ -710,9 +713,10 @@ def main():
         elif (args.format == 'HDF5'):
             pyTMD.spatial.to_HDF5(output, attrib, args.outfile,
                 verbose=args.verbose)
-        elif (args.format == 'geotiff'):
+        elif args.format in ('GTiff','cog'):
             pyTMD.spatial.to_geotiff(output, attrib, args.outfile,
-                varname='dem_h', verbose=args.verbose)
+                varname='dem_h', driver=args.format,
+                verbose=args.verbose)
         # change the permissions level to MODE
         args.outfile.chmod(mode=args.mode)
 

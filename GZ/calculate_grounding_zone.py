@@ -460,7 +460,7 @@ def arguments():
         help='Digital Elevation Model to run')
     # input and output data format
     parser.add_argument('--format','-F',
-        type=str, default='csv', choices=('csv','netCDF4','HDF5','geotiff'),
+        type=str, default='csv', choices=('csv','netCDF4','HDF5'),
         help='Input and output data format')
     # variable names (for csv names of columns)
     parser.add_argument('--variables','-v',

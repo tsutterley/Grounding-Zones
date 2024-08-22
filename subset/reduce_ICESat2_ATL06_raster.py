@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 reduce_ICESat2_ATL06_raster.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (08/2024)
 
 Create masks for reducing ICESat-2 ATL06 data using raster imagery
 
@@ -10,7 +10,8 @@ COMMAND LINE OPTIONS:
     -F X, --format X: Input raster file format
         netCDF4
         HDF5
-        geotiff
+        GTiff
+        cog
     -v X, --variables X: variable names of data in HDF5 or netCDF4 file
         x, y and data variable names
     -P X, --projection X: spatial projection as EPSG code or PROJ4 string
@@ -43,6 +44,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2024: changed from 'geotiff' to 'GTiff' and 'cog' formats
     Updated 05/2024: use wrapper to importlib for optional dependencies
         moved from icesat2_toolkit to Grounding-Zones package
     Updated 04/2024: use timescale for temporal operations
@@ -578,7 +580,8 @@ def arguments():
         type=pathlib.Path,
         help='Input raster file')
     parser.add_argument('--format','-F',
-        type=str, default='geotiff', choices=('netCDF4','HDF5','geotiff'),
+        type=str, default='GTiff',
+        choices=('netCDF4','HDF5','GTiff','cog'),
         help='Input raster file format')
     # variable names of data in HDF5 or netCDF4 file
     parser.add_argument('--variables','-v',

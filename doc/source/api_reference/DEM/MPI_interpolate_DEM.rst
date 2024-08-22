@@ -2,7 +2,7 @@
 MPI_interpolate_DEM.py
 ======================
 
-- Determines which digital elevation model tiles for an input file (ascii, netCDF4, HDF5, geotiff)
+- Determines which digital elevation model tiles for an input file (ascii, netCDF4, HDF5, GTiff, cog)
 - Reads 3\ |times|\ 3 array of tiles for points within bounding box of central mosaic tile
 - Interpolates digital elevation model to coordinates
 

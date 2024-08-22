@@ -241,13 +241,13 @@ def tidal_histogram(tile_file,
         SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = R2.findall(ATL11).pop()
         # read tide model corrections
         if TIDE_MODEL:
-            # ATL11 tide correction HDF5 file
+            # read ATL11 tide correction HDF5 file
             a3 = (PRD,TIDE_MODEL,'_TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
             FILE3 = d1.joinpath(file_format.format(*a3))
             f3 = gz.io.multiprocess_h5py(FILE3, mode='r')
         # read inverse barometer correction
         if REANALYSIS:
-            # read inverse barometer HDF5 file
+            # read ATL11 inverse barometer HDF5 file
             a4 = (PRD,REANALYSIS,'IB',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
             FILE4 = d1.joinpath(file_format.format(*a4))
             f4 = gz.io.multiprocess_h5py(FILE4, mode='r')
@@ -273,15 +273,15 @@ def tidal_histogram(tile_file,
                 )
             # read tide model corrections
             if TIDE_MODEL:
-                # read data and reduce to indices
+                # read tide data and reduce to indices
                 temp = f3[ptx]['cycle_stats']['tide_ocean'][:].copy()
                 tide_ocean = temp[indices,:]
             else:
                 tide_ocean = np.zeros((file_length,ncycles))
             # read inverse barometer correction
             if REANALYSIS:
-                # read data and reduce to indices
-                temp = f3[ptx]['cycle_stats']['ib'][:].copy()
+                # read IB data and reduce to indices
+                temp = f4[ptx]['cycle_stats']['ib'][:].copy()
                 IB = temp[indices,:]
             else:
                 # reduce DAC to indices
@@ -303,7 +303,7 @@ def tidal_histogram(tile_file,
                 # reference heights to geoid
                 h1 -= mds[ptx]['ref_surf']['geoid_h'][indices]
                 h2 -= mds[ptx]['ref_surf']['geoid_h'][indices]
-                # correct heights for DAC
+                # correct heights for DAC/IB
                 h1 -= IB[:,k]
                 h2 -= IB[:,k+1]
                 # correct heights for ocean tides
