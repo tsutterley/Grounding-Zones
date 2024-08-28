@@ -152,7 +152,7 @@ def compute_SET_ICESat(INPUT_FILE,
         eps=1e-12, itmax=10)
 
     # convert input coordinates to cartesian
-    X, Y, Z = pyTMD.spatial.to_cartesian(lon_40HZ, lat_40HZ, h=elev_40HZ,
+    X, Y, Z = pyTMD.spatial.to_cartesian(lon_40HZ, lat_40HZ,
         a_axis=wgs84.a_axis, flat=wgs84.flat)
     # compute ephemerides for lunisolar coordinates
     SX, SY, SZ = pyTMD.astro.solar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
@@ -169,9 +169,9 @@ def compute_SET_ICESat(INPUT_FILE,
     dln, dlt, drad = pyTMD.spatial.to_geodetic(
         X + dxi[:,0], Y + dxi[:,1], Z + dxi[:,2],
         a_axis=wgs84.a_axis, flat=wgs84.flat)
-    # remove effects of original topography
+    # create masked array of solid earth tide displacements
     tide_se = np.ma.zeros((n_40HZ),fill_value=fv)
-    tide_se.data[:] = drad - elev_40HZ
+    tide_se.data[:] = drad.copy()
     # replace fill values
     tide_se.mask = np.isnan(tide_se.data) | (elev_40HZ == fv)
     tide_se.data[tide_se.mask] = tide_se.fill_value

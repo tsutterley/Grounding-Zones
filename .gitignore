@@ -9,6 +9,9 @@
 *.pyc
 *.m~
 *.m~~
+# Cython Files #
+################
+_*.c
 # Packages #
 ############
 *.7z
@@ -19,6 +22,12 @@
 *.rar
 *.tar
 *.zip
+# Data Files #
+##############
+*.nc
+*.h5
+*.hdf
+*.tif
 # Logs and databases #
 ######################
 *.log
@@ -37,8 +46,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-.pytest_cache
-pythonenv*/
+setup-miniconda-patched-environment.yml
 # OS generated files #
 ######################
 .DS_Store
@@ -49,7 +57,7 @@ pythonenv*/
 ehthumbs.db
 Thumbs.db
 # LaTeX and Vim #
-######################
+#################
 *.aux
 *.bbl
 *.blg
@@ -80,6 +88,10 @@ Thumbs.db
 *.sw*
 *.hidden
 None*.png
+# JPL ephemerides #
+# #################
+*.bpc
+*.bsp
 # Jupyter Checkpoints #
 #######################
 .ipynb_checkpoints

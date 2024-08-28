@@ -187,7 +187,7 @@ def compute_SET_icebridge_data(arg,
 
     # convert input coordinates to cartesian
     X, Y, Z = pyTMD.spatial.to_cartesian(dinput['lon'], dinput['lat'],
-        h=dinput['data'], a_axis=wgs84.a_axis, flat=wgs84.flat)
+        a_axis=wgs84.a_axis, flat=wgs84.flat)
     # compute ephemerides for lunisolar coordinates
     SX, SY, SZ = pyTMD.astro.solar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
     LX, LY, LZ = pyTMD.astro.lunar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
@@ -203,8 +203,8 @@ def compute_SET_icebridge_data(arg,
     dln, dlt, drad = pyTMD.spatial.to_geodetic(
         X + dxi[:,0], Y + dxi[:,1], Z + dxi[:,2],
         a_axis=wgs84.a_axis, flat=wgs84.flat)
-    # remove effects of original topography
-    dinput['tide_earth'] = drad - dinput['data']
+    # save solid earth tide displacements to output dictionary
+    dinput['tide_earth'] = drad.copy()
     # calculate permanent tide offset (meters)
     dinput['tide_earth_free2mean'] = 0.06029 - \
         0.180873*np.sin(dinput['lat']*np.pi/180.0)**2

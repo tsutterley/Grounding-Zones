@@ -217,9 +217,8 @@ def compute_OPT_icebridge_data(arg,
     # elevation
     h1 = dinput['data'][:]
 
-    # degrees to radians and arcseconds to radians
+    # degrees to radians
     dtr = np.pi/180.0
-    atr = np.pi/648000.0
     # earth and physical parameters for ellipsoid
     wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
     # mean equatorial gravitational acceleration [m/s^2]
@@ -233,15 +232,47 @@ def compute_OPT_icebridge_data(arg,
 
     # convert from geodetic latitude to geocentric latitude
     # calculate X, Y and Z from geodetic latitude and longitude
-    X,Y,Z = pyTMD.spatial.to_cartesian(lon, lat, h=h1,
+    X,Y,Z = pyTMD.spatial.to_cartesian(lon, lat,
         a_axis=wgs84.a_axis, flat=wgs84.flat)
     # calculate geocentric latitude and convert to degrees
     latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))/dtr
+    theta = dtr*(90.0 - latitude_geocentric)
+    phi = dtr*lon
 
-    # pole tide displacement scale factor
-    Hp = np.sqrt(8.0*np.pi/15.0)*(wgs84.omega**2*wgs84.a_axis**4)/wgs84.GM
-    K = 4.0*np.pi*wgs84.G*rho_w*Hp*wgs84.a_axis/(3.0*ge)
-    K1 = 4.0*np.pi*wgs84.G*rho_w*Hp*wgs84.a_axis**3/(3.0*wgs84.GM)
+    # read ocean pole tide map from Desai (2002)
+    ur, un, ue = pyTMD.io.IERS.extract_coefficients(lon,
+        latitude_geocentric, method=METHOD)
+    # convert to cartesian coordinates
+    R = np.zeros((3, 3, file_lines))
+    R[0,0,:] = np.cos(phi)*np.cos(theta)
+    R[0,1,:] = -np.sin(phi)
+    R[0,2,:] = np.cos(phi)*np.sin(theta)
+    R[1,0,:] = np.sin(phi)*np.cos(theta)
+    R[1,1,:] = np.cos(phi)
+    R[1,2,:] = np.sin(phi)*np.sin(theta)
+    R[2,0,:] = -np.sin(theta)
+    R[2,2,:] = np.cos(theta)
+
+    # calculate pole tide displacements in Cartesian coordinates
+    # coefficients reordered to N, E, R to match IERS rotation matrix
+    UXYZ = np.einsum('ti...,jit...->tj...', np.c_[un, ue, ur], R)
+
+    # calculate ocean pole tides in cartesian coordinates
+    XYZ = np.c_[X, Y, Z]
+    dxi = pyTMD.predict.ocean_pole_tide(ts.tide, XYZ, UXYZ,
+        deltat=ts.tt_ut1,
+        a_axis=wgs84.a_axis,
+        gamma_0=ge,
+        GM=wgs84.GM,
+        omega=wgs84.omega,
+        rho_w=rho_w,
+        g2=gamma,
+        convention=CONVENTION
+    )
+    # calculate radial component of ocean pole tides
+    dln,dlt,drad = pyTMD.spatial.to_geodetic(
+        X + dxi[:,0], Y + dxi[:,1], Z + dxi[:,2],
+        a_axis=wgs84.a_axis, flat=wgs84.flat)
 
     # output ocean pole tide HDF5 file
     # form: rg_NASA_OCEAN_POLE_TIDE_WGS84_fl1yyyymmddjjjjj.H5
@@ -262,36 +293,9 @@ def compute_OPT_icebridge_data(arg,
     # open output HDF5 file
     fid = h5py.File(output_file, mode='w')
 
-    # read ocean pole tide map from Desai (2002)
-    iur, iun, iue, ilon, ilat = pyTMD.io.ocean_pole_tide()
-    # interpolate ocean pole tide map from Desai (2002)
-    if (METHOD == 'spline'):
-        # use scipy bivariate splines to interpolate to output points
-        f1 = scipy.interpolate.RectBivariateSpline(ilon, ilat[::-1],
-            iur[:,::-1].real, kx=1, ky=1)
-        f2 = scipy.interpolate.RectBivariateSpline(ilon, ilat[::-1],
-            iur[:,::-1].imag, kx=1, ky=1)
-        UR = np.zeros((file_lines),dtype=np.clongdouble)
-        UR.real = f1.ev(lon,latitude_geocentric)
-        UR.imag = f2.ev(lon,latitude_geocentric)
-    else:
-        # use scipy regular grid to interpolate values for a given method
-        r1 = scipy.interpolate.RegularGridInterpolator((ilon,ilat[::-1]),
-            iur[:,::-1], method=METHOD)
-        UR = r1.__call__(np.c_[lon,latitude_geocentric])
-
-    # calculate angular coordinates of mean/secular pole at time
-    mpx, mpy, fl = timescale.eop.iers_mean_pole(time_decimal,
-        convention=CONVENTION)
-    # read and interpolate IERS daily polar motion values
-    px, py = timescale.eop.iers_polar_motion(MJD, k=3, s=0)
-    # calculate differentials from mean/secular pole positions
-    mx = px - mpx
-    my = -(py - mpy)
-    # calculate radial displacement at time
+    # convert to masked array
     Urad = np.ma.zeros((file_lines),fill_value=fill_value)
-    Urad.data[:] = K*atr*np.real((mx*gamma.real + my*gamma.imag)*UR.real +
-        (my*gamma.real - mx*gamma.imag)*UR.imag)
+    Urad.data[:] = drad.copy()
     # replace fill values
     Urad.mask = np.isnan(Urad.data)
     Urad.data[Urad.mask] = Urad.fill_value
