@@ -426,7 +426,8 @@ def arguments():
         choices=get_available_models(),
         help='Tide model to use in correction')
     parser.add_argument('--atlas-format',
-        type=str, choices=('OTIS','netcdf'), default='netcdf',
+        type=str, choices=('OTIS','ATLAS-netcdf'),
+        default='ATLAS-netcdf',
         help='ATLAS tide model format')
     parser.add_argument('--gzip','-G',
         default=False, action='store_true',
