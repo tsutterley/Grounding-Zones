@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_SET_ICESat_GLA12.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (08/2024)
 Calculates radial solid Earth tide displacements for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
     elevation data following IERS Convention (2010) guidelines
@@ -34,6 +34,7 @@ PROGRAM DEPENDENCIES:
     predict.py: calculates solid Earth tides
 
 UPDATE HISTORY:
+    Updated 08/2024: use rotation matrix to convert from cartesian to spherical
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 01/2024: refactored lunisolar ephemerides functions
@@ -161,17 +162,34 @@ def compute_SET_ICESat(INPUT_FILE,
     XYZ = np.c_[X, Y, Z]
     SXYZ = np.c_[SX, SY, SZ]
     LXYZ = np.c_[LX, LY, LZ]
+
+    # geocentric latitude (radians)
+    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))
+    # geocentric colatitude (radians)
+    theta = (np.pi/2.0 - latitude_geocentric)
+    # calculate longitude (radians)
+    phi = np.arctan2(Y, X)
+
+    # rotation matrix for converting from cartesian coordinates
+    R = np.zeros((n_40HZ, 3, 3))
+    R[:,0,0] = np.cos(phi)*np.cos(theta)
+    R[:,1,0] = -np.sin(phi)
+    R[:,2,0] = np.cos(phi)*np.sin(theta)
+    R[:,0,1] = np.sin(phi)*np.cos(theta)
+    R[:,1,1] = np.cos(phi)
+    R[:,2,1] = np.sin(phi)*np.sin(theta)
+    R[:,0,2] = -np.sin(theta)
+    R[:,2,2] = np.cos(theta)
+
     # predict solid earth tides (cartesian)
     dxi = pyTMD.predict.solid_earth_tide(tide_time,
         XYZ, SXYZ, LXYZ, a_axis=wgs84.a_axis,
         tide_system=TIDE_SYSTEM)
-    # calculate radial component of solid earth tides
-    dln, dlt, drad = pyTMD.spatial.to_geodetic(
-        X + dxi[:,0], Y + dxi[:,1], Z + dxi[:,2],
-        a_axis=wgs84.a_axis, flat=wgs84.flat)
+    # calculate components of solid earth tides
+    SE = np.einsum('ti...,tji...->tj...', dxi, R)
     # create masked array of solid earth tide displacements
     tide_se = np.ma.zeros((n_40HZ),fill_value=fv)
-    tide_se.data[:] = drad.copy()
+    tide_se.data[:] = SE[:,2].copy()
     # replace fill values
     tide_se.mask = np.isnan(tide_se.data) | (elev_40HZ == fv)
     tide_se.data[tide_se.mask] = tide_se.fill_value

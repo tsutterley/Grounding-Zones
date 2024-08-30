@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPT_ICESat_GLA12.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (08/2024)
 Calculates radial load pole tide displacements for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
     elevation data following IERS Convention (2010) guidelines
@@ -45,6 +45,8 @@ REFERENCES:
         doi: 10.1007/s00190-015-0848-7
 
 UPDATE HISTORY:
+    Updated 08/2024: use prediction function for cartesian tidal displacements
+        use rotation matrix to convert from cartesian to spherical
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
@@ -181,14 +183,27 @@ def compute_LPT_ICESat(INPUT_FILE,
     # calculate X, Y and Z from geodetic latitude and longitude
     X,Y,Z = pyTMD.spatial.to_cartesian(lon_40HZ, lat_40HZ,
         a_axis=wgs84.a_axis, flat=wgs84.flat)
-    # calculate geocentric latitude and convert to degrees
-    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))/dtr
-    # geocentric colatitude in radians
-    theta = dtr*(90.0 - latitude_geocentric)
+    # geocentric latitude (radians)
+    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))
+    # geocentric colatitude (radians)
+    theta = (np.pi/2.0 - latitude_geocentric)
+    # calculate longitude (radians)
+    phi = np.arctan2(Y, X)
 
     # compute normal gravity at spatial location
     # p. 80, Eqn.(2-199)
     gamma_0 = wgs84.gamma_0(theta)
+
+    # rotation matrix for converting from cartesian coordinates
+    R = np.zeros((n_40HZ, 3, 3))
+    R[:,0,0] = np.cos(phi)*np.cos(theta)
+    R[:,1,0] = -np.sin(phi)
+    R[:,2,0] = np.cos(phi)*np.sin(theta)
+    R[:,0,1] = np.sin(phi)*np.cos(theta)
+    R[:,1,1] = np.cos(phi)
+    R[:,2,1] = np.sin(phi)*np.sin(theta)
+    R[:,0,2] = -np.sin(theta)
+    R[:,2,2] = np.cos(theta)
 
     # calculate load pole tides in cartesian coordinates
     XYZ = np.c_[X, Y, Z]
@@ -200,14 +215,12 @@ def compute_LPT_ICESat(INPUT_FILE,
         l2=lb2,
         convention=CONVENTION
     )
-    # calculate radial component of load pole tides
-    dln,dlt,drad = pyTMD.spatial.to_geodetic(
-        X + dxi[:,0], Y + dxi[:,1], Z + dxi[:,2],
-        a_axis=wgs84.a_axis, flat=wgs84.flat)
+    # calculate components of load pole tides
+    S = np.einsum('ti...,tji...->tj...', dxi, R)
 
     # convert to masked array
     Srad = np.ma.zeros((n_40HZ),fill_value=fv)
-    Srad.data[:] = drad.copy()
+    Srad.data[:] = S[:,2].copy()
     # replace fill values
     Srad.mask = np.isnan(Srad.data)
     Srad.data[Srad.mask] = Srad.fill_value
