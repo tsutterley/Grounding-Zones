@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2024)
+Written by Tyler Sutterley (09/2024)
 Calculates tidal elevations for correcting ICESat-2 annual land ice height data
 
 Uses OTIS format tidal solutions provided by Oregon State University and ESR
@@ -63,6 +63,8 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 09/2024: use JSON database for known model parameters
+        drop support for the ascii definition file format
     Updated 08/2024: project bounds for cropping non-geographic OTIS models
         added option to allow inferring only specific minor constituents
         added option to try automatic detection of definition file format
@@ -129,10 +131,8 @@ timescale = gz.utilities.import_dependency('timescale')
 def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         OUTPUT_DIRECTORY=None,
         TIDE_MODEL=None,
-        ATLAS_FORMAT=None,
         GZIP=True,
         DEFINITION_FILE=None,
-        DEFINITION_FORMAT='auto',
         CROP=False,
         METHOD='spline',
         EXTRAPOLATE=False,
@@ -151,11 +151,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE,
-            format=DEFINITION_FORMAT)
+        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.io.model(tide_dir, format=ATLAS_FORMAT,
-            compressed=GZIP).elevation(TIDE_MODEL)
+        model = pyTMD.io.model(tide_dir, compressed=GZIP).elevation(TIDE_MODEL)
 
     # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
@@ -841,10 +839,6 @@ def arguments():
         metavar='TIDE', type=str,
         choices=get_available_models(),
         help='Tide model to use in correction')
-    parser.add_argument('--atlas-format',
-        type=str, choices=('OTIS','ATLAS-netcdf'),
-        default='ATLAS-netcdf',
-        help='ATLAS tide model format')
     parser.add_argument('--gzip','-G',
         default=False, action='store_true',
         help='Tide model files are gzip compressed')
@@ -852,9 +846,6 @@ def arguments():
     group.add_argument('--definition-file',
         type=pathlib.Path,
         help='Tide model definition file')
-    parser.add_argument('--definition-format',
-        type=str, default='auto', choices=('ascii','json','auto'),
-        help='Format for model definition file')
     # crop tide model to (buffered) bounds of data
     parser.add_argument('--crop',
         default=False, action='store_true',
@@ -912,10 +903,8 @@ def main():
         compute_tides_ICESat2(args.directory, FILE,
             OUTPUT_DIRECTORY=args.output_directory,
             TIDE_MODEL=args.tide,
-            ATLAS_FORMAT=args.atlas_format,
             GZIP=args.gzip,
             DEFINITION_FILE=args.definition_file,
-            DEFINITION_FORMAT=args.definition_format,
             CROP=args.crop,
             METHOD=args.interpolate,
             EXTRAPOLATE=args.extrapolate,

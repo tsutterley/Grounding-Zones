@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2024)
+Written by Tyler Sutterley (09/2024)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
@@ -35,6 +35,8 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 09/2024: use JSON database for known model parameters
+        drop support for the ascii definition file format
     Updated 08/2024: option for automatic detection of definition format
     Updated 07/2024: added option to use JSON format definition files
     Updated 05/2024: use wrapper to importlib for optional dependencies
@@ -87,7 +89,6 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         OUTPUT_DIRECTORY=None,
         TIDE_MODEL=None,
         DEFINITION_FILE=None,
-        DEFINITION_FORMAT='auto',
         REANALYSIS=None,
         VERBOSE=False,
         MODE=0o775
@@ -99,8 +100,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
 
     # get tide model parameters
     if DEFINITION_FILE is not None:
-        model = pyTMD.io.model(tide_dir, verify=False).from_file(DEFINITION_FILE,
-            format=DEFINITION_FORMAT)
+        model = pyTMD.io.model(tide_dir, verify=False).from_file(DEFINITION_FILE)
     else:
         model = pyTMD.io.model(tide_dir, verify=False).elevation(TIDE_MODEL)
 
@@ -998,9 +998,6 @@ def arguments():
     group.add_argument('--definition-file',
         type=pathlib.Path,
         help='Tide model definition file')
-    parser.add_argument('--definition-format',
-        type=str, default='auto', choices=('ascii','json','auto'),
-        help='Format for model definition file')
     # inverse barometer response to use
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,
@@ -1029,7 +1026,6 @@ def main():
             OUTPUT_DIRECTORY=args.output_directory,
             TIDE_MODEL=args.tide,
             DEFINITION_FILE=args.definition_file,
-            DEFINITION_FORMAT=args.definition_format,
             REANALYSIS=args.reanalysis,
             VERBOSE=args.verbose,
             MODE=args.mode)

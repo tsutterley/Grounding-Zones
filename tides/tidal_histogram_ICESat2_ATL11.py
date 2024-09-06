@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tidal_histogram_ICESat2_ATL11.py
-Written by Tyler Sutterley (08/2024)
+Written by Tyler Sutterley (09/2024)
 Calculates histograms of variances between ICESat-2 ATL11
 annual land ice height data and tide predictions
 
@@ -30,6 +30,8 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 09/2024: use JSON database for known model parameters
+        drop support for the ascii definition file format
     Updated 08/2024: option for automatic detection of definition format
     Updated 07/2024: use wrapper to importlib for optional dependencies
         use multiprocess h5py reader from io utilities module
@@ -99,7 +101,6 @@ def tidal_histogram(tile_file,
         MASK_FILE=None,
         TIDE_MODEL=None,
         DEFINITION_FILE=None,
-        DEFINITION_FORMAT='auto',
         REANALYSIS=None,
         HISTOGRAM=(-8,8,0.01),
         MODE=0o775
@@ -149,7 +150,7 @@ def tidal_histogram(tile_file,
     # get tide model parameters from definition file
     if DEFINITION_FILE is not None:
         model = pyTMD.io.model(None, verify=False).from_file(
-            DEFINITION_FILE, format=DEFINITION_FORMAT)
+            DEFINITION_FILE)
         TIDE_MODEL = model.name
 
     # read the input file
@@ -580,9 +581,6 @@ def arguments():
     group.add_argument('--definition-file',
         type=pathlib.Path,
         help='Tide model definition file')
-    parser.add_argument('--definition-format',
-        type=str, default='auto', choices=('ascii','json','auto'),
-        help='Format for model definition file')
     # inverse barometer response to use
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,
@@ -625,7 +623,6 @@ def main():
             MASK_FILE=args.mask_file,
             TIDE_MODEL=args.tide,
             DEFINITION_FILE=args.definition_file,
-            DEFINITION_FORMAT=args.definition_format,
             REANALYSIS=args.reanalysis,
             HISTOGRAM=args.histogram,
             MODE=args.mode)
