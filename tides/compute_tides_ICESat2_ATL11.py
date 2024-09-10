@@ -65,6 +65,8 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 09/2024: use JSON database for known model parameters
         drop support for the ascii definition file format
+        use model class attributes for file format and corrections
+        add command line option to select nodal corrections type
     Updated 08/2024: project bounds for cropping non-geographic OTIS models
         added option to allow inferring only specific minor constituents
         added option to try automatic detection of definition file format
@@ -137,6 +139,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         METHOD='spline',
         EXTRAPOLATE=False,
         CUTOFF=None,
+        CORRECTIONS=None,
         INFER_MINOR=False,
         MINOR_CONSTITUENTS=None,
         APPLY_FLEXURE=False,
@@ -218,11 +221,10 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             BOUNDS[3] = np.maximum(BOUNDS[3], np.max(lat))
 
     # read tidal constants
-    corrections, _, grid = model.format.partition('-')
     if model.format in ('OTIS','ATLAS-compact','TMD3'):
         constituents = pyTMD.io.OTIS.read_constants(model.grid_file,
             model.model_file, model.projection, type=model.type,
-            grid=corrections, crop=CROP, bounds=BOUNDS,
+            grid=model.file_format, crop=CROP, bounds=BOUNDS,
             apply_flexure=APPLY_FLEXURE)
         # available model constituents
         c = constituents.fields
@@ -234,7 +236,8 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         c = constituents.fields
     elif model.format in ('GOT-ascii','GOT-netcdf'):
         constituents = pyTMD.io.GOT.read_constants(model.model_file,
-            compressed=model.compressed, grid=grid, crop=CROP, bounds=BOUNDS)
+            compressed=model.compressed, grid=model.file_format,
+            crop=CROP, bounds=BOUNDS)
         # available model constituents
         c = constituents.fields
     elif model.format in ('FES-ascii','FES-netcdf'):
@@ -356,8 +359,10 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             # calculate constituent oscillation
             hc = amp*np.exp(cph)
 
-            # calculate tides for track type
-            minor_constituents = model.minor or MINOR_CONSTITUENTS
+            # nodal corrections to apply
+            nodal_corrections = CORRECTIONS or model.corrections
+            # minor constituents to infer
+            minor_constituents = MINOR_CONSTITUENTS or model.minor
             if (track == 'AT'):
                 # calculate tides for each cycle if along-track
                 for cycle in range(n_cycles):
@@ -367,13 +372,14 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                     # predict tidal elevations and infer minor corrections
                     tide[track].data[valid,cycle] = pyTMD.predict.drift(
                         ts.tide[valid,cycle], hc[valid,:], c,
-                        deltat=deltat[valid,cycle], corrections=corrections)
+                        deltat=deltat[valid,cycle],
+                        corrections=nodal_corrections)
                     # calculate values for minor constituents by inferrence
                     if INFER_MINOR:
                         minor = pyTMD.predict.infer_minor(
                             ts.tide[valid,cycle], hc[valid,:], c,
                             deltat=deltat[valid,cycle],
-                            corrections=corrections,
+                            corrections=nodal_corrections,
                             minor=minor_constituents)
                         tide[track].data[valid,cycle] += minor.data[:]
             elif (track == 'XT'):
@@ -383,13 +389,14 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                 # predict tidal elevations and infer minor corrections
                 tide[track].data[valid] = pyTMD.predict.drift(
                     ts.tide[valid], hc[valid,:], c,
-                    deltat=deltat[valid], corrections=corrections)
+                    deltat=deltat[valid],
+                    corrections=nodal_corrections)
                 # calculate values for minor constituents by inferrence
                 if INFER_MINOR:
                     minor = pyTMD.predict.infer_minor(
                         ts.tide[valid], hc[valid,:], c,
                         deltat=deltat[valid],
-                        corrections=corrections,
+                        corrections=nodal_corrections,
                         minor=minor_constituents)
                     tide[track].data[valid] += minor.data[:]
 
@@ -864,6 +871,11 @@ def arguments():
     parser.add_argument('--cutoff','-c',
         type=np.float64, default=10.0,
         help='Extrapolation cutoff in kilometers')
+    # specify nodal corrections type
+    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3')
+    parser.add_argument('--nodal-corrections',
+        metavar='CORRECTIONS', type=str, choices=nodal_choices,
+        help='Nodal corrections to apply')
     # infer minor constituents from major
     parser.add_argument('--infer-minor',
         default=False, action='store_true',
@@ -909,6 +921,7 @@ def main():
             METHOD=args.interpolate,
             EXTRAPOLATE=args.extrapolate,
             CUTOFF=args.cutoff,
+            CORRECTIONS=args.nodal_corrections,
             INFER_MINOR=args.infer_minor,
             MINOR_CONSTITUENTS=args.minor_constituents,
             APPLY_FLEXURE=args.apply_flexure,
