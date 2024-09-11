@@ -389,7 +389,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         IS2_atl12_fill[gtx]['ssh_segments']['longitude'] = None
         IS2_atl12_dims[gtx]['ssh_segments']['longitude'] = ['delta_time']
         IS2_atl12_tide_attrs[gtx]['ssh_segments']['longitude'] = {}
-        IS2_atl12_tide_attrs[gtx]['ssh_segments            ']['longitude']['units'] = "degrees_east"
+        IS2_atl12_tide_attrs[gtx]['ssh_segments']['longitude']['units'] = "degrees_east"
         IS2_atl12_tide_attrs[gtx]['ssh_segments']['longitude']['contentType'] = "physicalMeasurement"
         IS2_atl12_tide_attrs[gtx]['ssh_segments']['longitude']['long_name'] = "Longitude"
         IS2_atl12_tide_attrs[gtx]['ssh_segments']['longitude']['standard_name'] = "longitude"
