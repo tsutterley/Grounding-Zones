@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interp_IB_response_ICESat2_ATL11.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (07/2024)
 Calculates and interpolates inverse-barometer responses to times and
     locations of ICESat-2 ATL11 annual land ice height data
     This data will be interpolated for all valid points
@@ -50,6 +50,7 @@ REFERENCES:
         Rev. A, 84 pp., (1994)
 
 UPDATE HISTORY:
+    Updated 07/2024: only append crossovers group if there are valid crossovers
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 08/2023: create s3 filesystem when using s3 urls as input
@@ -419,8 +420,6 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
         TPX['AT'].mask = np.copy(delta_time['AT'].mask)
         # if running ATL11 crossovers
         if CROSSOVERS:
-            # add to group
-            groups.append('XT')
             # shape of across-track data
             n_cross, = IS2_atl11_mds[ptx][XT]['delta_time'].shape
             # across-track (XT) reference point, latitude, longitude and time
@@ -440,6 +439,9 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
             # across-track (AT) conventional TOPEX/POSEIDON IB corrections
             TPX['XT'] = np.ma.zeros((n_cross),fill_value=fv)
             TPX['XT'].mask = np.copy(delta_time['XT'].mask)
+            # add to group
+            if np.any(n_cross):
+                groups.append('XT')
 
         # calculate corrections for along-track and across-track data
         for track in groups:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 mosaic_tide_adjustment.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (08/2024)
 
 Creates a mosaic of interpolated tidal adjustment scale factors
 
@@ -18,6 +18,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the output mosaic
 
 UPDATE HISTORY:
+    Updated 08/2024: changed from 'geotiff' to 'GTiff' and 'cog' formats
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 12/2023: don't have a default tide model in arguments
     Updated 11/2023: mask individual tiles before building mosaic
@@ -101,7 +102,7 @@ def mosaic_tide_adjustment(base_dir, output_file,
         # read mask from geotiff file
         # flip to be monotonically increasing in y dimension
         MASK = pathlib.Path(MASK).expanduser().absolute()
-        raster = gz.io.raster().from_file(MASK, format='geotiff').flip()
+        raster = gz.io.raster().from_file(MASK, format='GTiff').flip()
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413, S=3031)[HEM]

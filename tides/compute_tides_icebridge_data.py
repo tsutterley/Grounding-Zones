@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 u"""
 compute_tides_icebridge_data.py
-Written by Tyler Sutterley (07/2024)
+Written by Tyler Sutterley (09/2024)
 Calculates tidal elevations for correcting Operation IceBridge elevation data
 
-Uses OTIS format tidal solutions provided by Ohio State University and ESR
+Uses OTIS format tidal solutions provided by Oregon State University and ESR
     http://volkov.oce.orst.edu/tides/region.html
     https://www.esr.org/research/polar-tide-models/list-of-polar-tide-models/
     ftp://ftp.esr.org/pub/datasets/tmd/
@@ -17,7 +17,6 @@ INPUTS:
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -T X, --tide X: Tide model to use in correction
-    --atlas-format X: ATLAS tide model format (OTIS, netcdf)
     --gzip, -G: Tide model files are gzip compressed
     --definition-file X: Model definition file for use as correction
     -I X, --interpolate X: Interpolation method
@@ -28,7 +27,8 @@ COMMAND LINE OPTIONS:
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
-    --infer-minor: Infer the height values for minor constituents
+    --infer-minor: Infer values for minor constituents
+    --minor-constituents: Minor constituents to infer
     --apply-flexure: Apply ice flexure scaling factor to height values
         Only valid for models containing flexure fields
     -M X, --mode X: Permission mode of directories and files created
@@ -69,8 +69,18 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 09/2024: use JSON database for known model parameters
+        drop support for the ascii definition file format
+        use model class attributes for file format and corrections
+        add command line option to select nodal corrections type
+    Updated 08/2024: allow inferring only specific minor constituents
+        added option to try automatic detection of definition file format
     Updated 07/2024: added option to crop to the domain of the input data
         added option to use JSON format definition files
+        renamed format for ATLAS to ATLAS-compact
+        renamed format for netcdf to ATLAS-netcdf
+        renamed format for FES to FES-netcdf and added FES-ascii
+        renamed format for GOT to GOT-ascii and added GOT-netcdf
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 01/2024: made the inferrence of minor constituents an option
@@ -139,15 +149,15 @@ timescale = gz.utilities.import_dependency('timescale')
 # PURPOSE: read Operation IceBridge data
 # compute tides at points and times using tidal model driver algorithms
 def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
-        ATLAS_FORMAT=None,
         GZIP=True,
         DEFINITION_FILE=None,
-        DEFINITION_FORMAT='ascii',
         CROP=False,
         METHOD='spline',
         EXTRAPOLATE=False,
         CUTOFF=None,
+        CORRECTIONS=None,
         INFER_MINOR=False,
+        MINOR_CONSTITUENTS=None,
         APPLY_FLEXURE=False,
         VERBOSE=False,
         MODE=0o775
@@ -159,11 +169,9 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE,
-            format=DEFINITION_FORMAT)
+        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.io.model(tide_dir, format=ATLAS_FORMAT,
-            compressed=GZIP).elevation(TIDE_MODEL)
+        model = pyTMD.io.model(tide_dir, compressed=GZIP).elevation(TIDE_MODEL)
 
     # extract file name and subsetter indices lists
     match_object = re.match(r'(.*?)(\[(.*?)\])?$', arg)
@@ -258,25 +266,26 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         epoch=timescale.time._j2000_epoch, standard='UTC')
 
     # read tidal constants and interpolate to grid points
-    if model.format in ('OTIS','ATLAS','TMD3'):
+    if model.format in ('OTIS','ATLAS-compact','TMD3'):
         amp,ph,D,c = pyTMD.io.OTIS.extract_constants(dinput['lon'], dinput['lat'],
             model.grid_file, model.model_file, model.projection,
-            type=model.type, crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE,
-            cutoff=CUTOFF, grid=model.format, apply_flexure=APPLY_FLEXURE)
+            type=model.type, grid=model.file_format, crop=CROP, method=METHOD,
+            extrapolate=EXTRAPOLATE, cutoff=CUTOFF, apply_flexure=APPLY_FLEXURE)
         deltat = np.zeros((file_lines))
     elif model.format in ('netcdf'):
         amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(dinput['lon'], dinput['lat'],
-            model.grid_file, model.model_file, type=model.type, crop=CROP, 
+            model.grid_file, model.model_file, type=model.type, crop=CROP,
             method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
             scale=model.scale, compressed=model.compressed)
         deltat = np.zeros((file_lines))
-    elif (model.format == 'GOT'):
+    elif model.format in ('GOT-ascii','GOT-netcdf'):
         amp,ph,c = pyTMD.io.GOT.extract_constants(dinput['lon'], dinput['lat'],
-            model.model_file, crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE,
-            cutoff=CUTOFF, scale=model.scale, compressed=model.compressed)
+            model.model_file, grid=model.file_format, crop=CROP, method=METHOD,
+            extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale,
+            compressed=model.compressed)
         # delta time (TT - UT1)
         deltat = ts.tt_ut1
-    elif (model.format == 'FES'):
+    elif model.format in ('FES-ascii','FES-netcdf'):
         amp,ph = pyTMD.io.FES.extract_constants(dinput['lon'], dinput['lat'],
             model.model_file, type=model.type, version=model.version,
             crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
@@ -313,16 +322,21 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     # open output HDF5 file
     fid = h5py.File(output_file, mode='w')
 
+    # nodal corrections to apply
+    nodal_corrections = CORRECTIONS or model.corrections
+    # minor constituents to infer
+    minor_constituents = MINOR_CONSTITUENTS or model.minor
     # predict tidal elevations at time and infer minor corrections
     fill_value = -9999.0
     tide = np.ma.empty((file_lines),fill_value=fill_value)
     tide.mask = np.any(hc.mask,axis=1)
     tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
-        deltat=deltat, corrections=model.format)
+        deltat=deltat, corrections=nodal_corrections)
     # calculate values for minor constituents by inferrence
     if INFER_MINOR:
         minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
-            deltat=deltat, corrections=model.format)
+            deltat=deltat, corrections=nodal_corrections,
+            minor=minor_constituents)
         tide.data[:] += minor.data[:]
     # replace invalid values with fill value
     tide.data[tide.mask] = tide.fill_value
@@ -413,9 +427,6 @@ def arguments():
         metavar='TIDE', type=str,
         choices=get_available_models(),
         help='Tide model to use in correction')
-    parser.add_argument('--atlas-format',
-        type=str, choices=('OTIS','netcdf'), default='netcdf',
-        help='ATLAS tide model format')
     parser.add_argument('--gzip','-G',
         default=False, action='store_true',
         help='Tide model files are gzip compressed')
@@ -423,9 +434,6 @@ def arguments():
     group.add_argument('--definition-file',
         type=pathlib.Path,
         help='Tide model definition file')
-    parser.add_argument('--definition-format',
-        type=str, default='ascii', choices=('ascii', 'json'),
-        help='Format for model definition file')
     # crop tide model to (buffered) bounds of data
     parser.add_argument('--crop',
         default=False, action='store_true',
@@ -444,10 +452,19 @@ def arguments():
     parser.add_argument('--cutoff','-c',
         type=np.float64, default=10.0,
         help='Extrapolation cutoff in kilometers')
+    # specify nodal corrections type
+    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3')
+    parser.add_argument('--nodal-corrections',
+        metavar='CORRECTIONS', type=str, choices=nodal_choices,
+        help='Nodal corrections to apply')
     # infer minor constituents from major
     parser.add_argument('--infer-minor',
         default=False, action='store_true',
-        help='Infer the height values for minor constituents')
+        help='Infer values for minor constituents')
+    # specify minor constituents to infer
+    parser.add_argument('--minor-constituents',
+        metavar='MINOR', type=str, nargs='+',
+        help='Minor constituents to infer')
     # apply flexure scaling factors to height constituents
     parser.add_argument('--apply-flexure',
         default=False, action='store_true',
@@ -474,15 +491,15 @@ def main():
     for arg in args.infile:
         compute_tides_icebridge_data(args.directory, arg,
             TIDE_MODEL=args.tide,
-            ATLAS_FORMAT=args.atlas_format,
             GZIP=args.gzip,
             DEFINITION_FILE=args.definition_file,
-            DEFINITION_FORMAT=args.definition_format,
             CROP=args.crop,
             METHOD=args.interpolate,
             EXTRAPOLATE=args.extrapolate,
             CUTOFF=args.cutoff,
+            CORRECTIONS=args.nodal_corrections,
             INFER_MINOR=args.infer_minor,
+            MINOR_CONSTITUENTS=args.minor_constituents,
             APPLY_FLEXURE=args.apply_flexure,
             VERBOSE=args.verbose,
             MODE=args.mode)

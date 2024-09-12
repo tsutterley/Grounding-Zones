@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_SET_icebridge_data.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (08/2024)
 Calculates radial solid Earth tide displacements for correcting Operation
     IceBridge elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
@@ -37,6 +37,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 08/2024: use rotation matrix to convert from cartesian to spherical
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 01/2024: refactored lunisolar ephemerides functions
@@ -187,7 +188,7 @@ def compute_SET_icebridge_data(arg,
 
     # convert input coordinates to cartesian
     X, Y, Z = pyTMD.spatial.to_cartesian(dinput['lon'], dinput['lat'],
-        h=dinput['data'], a_axis=wgs84.a_axis, flat=wgs84.flat)
+        a_axis=wgs84.a_axis, flat=wgs84.flat)
     # compute ephemerides for lunisolar coordinates
     SX, SY, SZ = pyTMD.astro.solar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
     LX, LY, LZ = pyTMD.astro.lunar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
@@ -195,16 +196,33 @@ def compute_SET_icebridge_data(arg,
     XYZ = np.c_[X, Y, Z]
     SXYZ = np.c_[SX, SY, SZ]
     LXYZ = np.c_[LX, LY, LZ]
+
+    # geocentric latitude (radians)
+    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))
+    # geocentric colatitude (radians)
+    theta = (np.pi/2.0 - latitude_geocentric)
+    # calculate longitude (radians)
+    phi = np.arctan2(Y, X)
+
+    # rotation matrix for converting from cartesian coordinates
+    R = np.zeros((file_lines, 3, 3))
+    R[:,0,0] = np.cos(phi)*np.cos(theta)
+    R[:,1,0] = -np.sin(phi)
+    R[:,2,0] = np.cos(phi)*np.sin(theta)
+    R[:,0,1] = np.sin(phi)*np.cos(theta)
+    R[:,1,1] = np.cos(phi)
+    R[:,2,1] = np.sin(phi)*np.sin(theta)
+    R[:,0,2] = -np.sin(theta)
+    R[:,2,2] = np.cos(theta)
+
     # predict solid earth tides (cartesian)
     dxi = pyTMD.predict.solid_earth_tide(tide_time,
         XYZ, SXYZ, LXYZ, a_axis=wgs84.a_axis,
         tide_system=TIDE_SYSTEM)
-    # calculate radial component of solid earth tides
-    dln, dlt, drad = pyTMD.spatial.to_geodetic(
-        X + dxi[:,0], Y + dxi[:,1], Z + dxi[:,2],
-        a_axis=wgs84.a_axis, flat=wgs84.flat)
-    # remove effects of original topography
-    dinput['tide_earth'] = drad - dinput['data']
+    # calculate components of solid earth tides
+    SE = np.einsum('ti...,tji...->tj...', dxi, R)
+    # save solid earth tide displacements to output dictionary
+    dinput['tide_earth'] = SE[:,2].copy()
     # calculate permanent tide offset (meters)
     dinput['tide_earth_free2mean'] = 0.06029 - \
         0.180873*np.sin(dinput['lat']*np.pi/180.0)**2

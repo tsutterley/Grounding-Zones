@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_LPT_icebridge_data.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (08/2024)
 Calculates load pole tide displacements for correcting Operation IceBridge
     elevation data following IERS Convention (2010) guidelines
     http://maia.usno.navy.mil/conventions/2010officialinfo.php
@@ -41,6 +41,8 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 08/2024: use prediction function for cartesian tidal displacements
+        use rotation matrix to convert from cartesian to spherical
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 05/2023: use timescale class for time conversion operations
@@ -196,40 +198,56 @@ def compute_LPT_icebridge_data(arg,
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
     ts = timescale.time.Timescale().from_deltatime(dinput['time'],
         epoch=timescale.time._j2000_epoch, standard='UTC')
-    # convert dynamic time to Modified Julian Days (MJD)
-    MJD = ts.tt - 2400000.5
-    # convert Julian days to calendar dates
-    Y,M,D,h,m,s = timescale.time.convert_julian(ts.tt, format='tuple')
-    # calculate time in year-decimal format
-    time_decimal = timescale.time.convert_calendar_decimal(Y,M,day=D,
-        hour=h,minute=m,second=s)
-    # elevation
-    h1 = np.copy(dinput['data'][:])
 
     # degrees to radians
     dtr = np.pi/180.0
-    atr = np.pi/648000.0
     # earth and physical parameters for ellipsoid
     wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
-    # tidal love number appropriate for the load tide
+    # tidal love/shida numbers appropriate for the load tide
     hb2 = 0.6207
+    lb2 = 0.0847
     # bad value
     fill_value = -9999.0
 
     # convert from geodetic latitude to geocentric latitude
     # calculate X, Y and Z from geodetic latitude and longitude
-    X,Y,Z = pyTMD.spatial.to_cartesian(lon, lat, h=h1,
+    X,Y,Z = pyTMD.spatial.to_cartesian(lon, lat,
         a_axis=wgs84.a_axis, flat=wgs84.flat)
     rr = np.sqrt(X**2.0 + Y**2.0 + Z**2.0)
-    # calculate geocentric latitude and convert to degrees
-    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))/dtr
-    # colatitude and longitude in radians
-    theta = dtr*(90.0 - latitude_geocentric)
-    phi = lon*dtr
+    # geocentric latitude (radians)
+    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))
+    # geocentric colatitude (radians)
+    theta = (np.pi/2.0 - latitude_geocentric)
+    # calculate longitude (radians)
+    phi = np.arctan2(Y, X)
 
-    # compute normal gravity at spatial location and elevation of points.
-    # Normal gravity at height h. p. 82, Eqn.(2-215)
-    gamma_h = wgs84.gamma_h(theta, h1)
+    # compute normal gravity at spatial location
+    # p. 80, Eqn.(2-199)
+    gamma_0 = wgs84.gamma_0(theta)
+
+    # rotation matrix for converting from cartesian coordinates
+    R = np.zeros((file_lines, 3, 3))
+    R[:,0,0] = np.cos(phi)*np.cos(theta)
+    R[:,1,0] = -np.sin(phi)
+    R[:,2,0] = np.cos(phi)*np.sin(theta)
+    R[:,0,1] = np.sin(phi)*np.cos(theta)
+    R[:,1,1] = np.cos(phi)
+    R[:,2,1] = np.sin(phi)*np.sin(theta)
+    R[:,0,2] = -np.sin(theta)
+    R[:,2,2] = np.cos(theta)
+
+    # calculate load pole tides in cartesian coordinates
+    XYZ = np.c_[X, Y, Z]
+    dxi = pyTMD.predict.load_pole_tide(ts.tide, XYZ,
+        deltat=ts.tt_ut1,
+        gamma_0=gamma_0,
+        omega=wgs84.omega,
+        h2=hb2,
+        l2=lb2,
+        convention=CONVENTION
+    )
+    # calculate components of load pole tides
+    S = np.einsum('ti...,tji...->tj...', dxi, R)
 
     # output load pole tide HDF5 file
     # form: rg_NASA_LOAD_POLE_TIDE_WGS84_fl1yyyymmddjjjjj.H5
@@ -250,18 +268,9 @@ def compute_LPT_icebridge_data(arg,
     # open output HDF5 file
     fid = h5py.File(output_file, mode='w')
 
-    # calculate angular coordinates of mean/secular pole at time
-    mpx, mpy, fl = timescale.eop.iers_mean_pole(time_decimal,
-        convention=CONVENTION)
-    # read and interpolate IERS daily polar motion values
-    px, py = timescale.eop.iers_polar_motion(MJD, k=3, s=0)
-    # calculate differentials from mean/secular pole positions
-    mx = px - mpx
-    my = -(py - mpy)
-    # calculate radial displacement at time
-    dfactor = -hb2*atr*(wgs84.omega**2*rr**2)/(2.0*gamma_h)
+    # convert to masked array
     Srad = np.ma.zeros((file_lines),fill_value=fill_value)
-    Srad.data[:] = dfactor*np.sin(2.0*theta)*(mx*np.cos(phi) + my*np.sin(phi))
+    Srad.data[:] = S[:,2].copy()
     # replace fill values
     Srad.mask = np.isnan(Srad.data)
     Srad.data[Srad.mask] = Srad.fill_value

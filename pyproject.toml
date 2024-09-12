@@ -1,0 +1,102 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Grounding-Zones"
+description = "Python Tools for Estimating Ice Sheet Grounding Zone Locations with ICESat-2"
+keywords = [
+    "ICESat-2 laser altimetry",
+    "Elastic Bending",
+    "Grounding Zones",
+    "Ice Shelves",
+    "Ice Sheets",
+]
+authors = [
+    {name = "Tyler Sutterley"},
+    {name = "Karen Alley"},
+    {name = "Kelly Brunt"},
+    {name = "Susan Howard"},
+    {name = "Laurie Padman"},
+    {name = "Matt Siegfried"},
+    {email = "tsutterl@uw.edu"}
+]
+maintainers = [{ name = "Grounding-Zones contributors" }]
+license = {file = "LICENSE"}
+readme = "README.rst"
+version = "1.0.0"
+
+requires-python = "~=3.6"
+dependencies = [
+    "lxml",
+    "numpy",
+    "pyproj",
+    "python-dateutil",
+    "pyTMD",
+    "scipy>=1.10.1",
+    "timescale>=0.0.3",
+]
+
+
+classifiers=[
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.urls]
+Homepage = "https://grounding-zones.readthedocs.io"
+Documentation = "https://grounding-zones.readthedocs.io"
+Repository = "https://github.com/tsutterley/Grounding-Zones"
+Issues = "https://github.com/tsutterley/Grounding-Zones/issues"
+
+[project.optional-dependencies]
+doc = ["docutils", "fontconfig", "freetype", "graphviz", "numpydoc", "sphinx", "sphinx-argparse>=0.4", "sphinx_rtd_theme"]
+all = ["cartopy", "earthengine-api", "gdal", "h5py", "matplotlib", "mpi4py", "notebook", "pyyaml", "scikit-learn", "shapely", "ATM1b-QFIT", "geoid-toolkit", "icesat2-toolkit", "spatial-interpolators"]
+dev = ["flake8", "pytest>=4.6", "pytest-cov"]
+
+[tool.setuptools.packages.find]
+exclude = ["test*", "run*"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+norecursedirs = ".git"
+python_files = [
+    "test*.py"
+]
+testpaths = [
+    "test"
+]
+
+[tool.coverage.run]
+branch = true
+source = [
+    "Grounding-Zones",
+    "test",
+]
+omit = [
+    "setup.py",
+    "conf.py",
+    "DAC/*",
+    "DEM/*",
+    "geoid/*",
+    "GZ/*",
+    "SL/*",
+    "scripts/*",
+    "subset/*",
+    "tides/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+precision = 2

@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL03.py
-Written by Tyler Sutterley (07/2024)
+Written by Tyler Sutterley (09/2024)
 Calculates tidal elevations for correcting ICESat-2 photon height data
 Calculated at ATL03 segment level using reference photon geolocation and time
 Segment level corrections can be applied to the individual photon events (PEs)
 
-Uses OTIS format tidal solutions provided by Ohio State University and ESR
+Uses OTIS format tidal solutions provided by Oregon State University and ESR
     http://volkov.oce.orst.edu/tides/region.html
     https://www.esr.org/research/polar-tide-models/list-of-polar-tide-models/
     ftp://ftp.esr.org/pub/datasets/tmd/
@@ -17,7 +17,6 @@ COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -O X, --output-directory X: input/output data directory
     -T X, --tide X: Tide model to use in correction
-    --atlas-format X: ATLAS tide model format (OTIS, netcdf)
     --gzip, -G: Tide model files are gzip compressed
     --definition-file X: Model definition file for use as correction
     -I X, --interpolate X: Interpolation method
@@ -28,7 +27,8 @@ COMMAND LINE OPTIONS:
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
-    --infer-minor: Infer the height values for minor constituents
+    --infer-minor: Infer values for minor constituents
+    --minor-constituents: Minor constituents to infer
     --apply-flexure: Apply ice flexure scaling factor to height values
         Only valid for models containing flexure fields
     -M X, --mode X: Permission mode of directories and files created
@@ -66,8 +66,19 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 09/2024: use JSON database for known model parameters
+        drop support for the ascii definition file format
+        use model class attributes for file format and corrections
+        add command line option to select nodal corrections type
+    Updated 08/2024: project bounds for cropping non-geographic OTIS models
+        added option to allow inferring only specific minor constituents
+        added option to try automatic detection of definition file format
     Updated 07/2024: added option to crop to the domain of the input data
         added option to use JSON format definition files
+        renamed format for ATLAS to ATLAS-compact
+        renamed format for netcdf to ATLAS-netcdf
+        renamed format for FES to FES-netcdf and added FES-ascii
+        renamed format for GOT to GOT-ascii and added GOT-netcdf
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
     Updated 01/2024: made the inferrence of minor constituents an option
@@ -136,15 +147,15 @@ timescale = gz.utilities.import_dependency('timescale')
 def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         OUTPUT_DIRECTORY=None,
         TIDE_MODEL=None,
-        ATLAS_FORMAT=None,
         GZIP=True,
         DEFINITION_FILE=None,
-        DEFINITION_FORMAT='ascii',
         CROP=False,
         METHOD='spline',
         EXTRAPOLATE=False,
         CUTOFF=None,
+        CORRECTIONS=None,
         INFER_MINOR=False,
+        MINOR_CONSTITUENTS=None,
         APPLY_FLEXURE=False,
         VERBOSE=False,
         MODE=0o775
@@ -156,11 +167,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE,
-            format=DEFINITION_FORMAT)
+        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.io.model(tide_dir, format=ATLAS_FORMAT,
-            compressed=GZIP).elevation(TIDE_MODEL)
+        model = pyTMD.io.model(tide_dir, compressed=GZIP).elevation(TIDE_MODEL)
 
     # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
@@ -202,44 +211,47 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
     IS2_atl03_mds,IS2_atl03_attrs,IS2_atl03_beams = \
         is2tk.io.ATL03.read_main(INPUT_FILE, ATTRIBUTES=True)
 
-    # read orbit info for bounding polygons
-    bounding_lon = IS2_atl03_mds['orbit_info']['bounding_polygon_lon1']
-    bounding_lat = IS2_atl03_mds['orbit_info']['bounding_polygon_lat1']
-    # convert bounding polygon coordinates to bounding box
+    # transform bounding box coordinates
+    if model.projection:
+        transformer = pyTMD.crs().get(model.projection)
+    # find geospatial ranges for bounding box
     BOUNDS = [np.inf, -np.inf, np.inf, -np.inf]
-    BOUNDS[0] = np.minimum(BOUNDS[0], np.min(bounding_lon))
-    BOUNDS[1] = np.maximum(BOUNDS[1], np.max(bounding_lon))
-    BOUNDS[2] = np.minimum(BOUNDS[2], np.min(bounding_lat))
-    BOUNDS[3] = np.maximum(BOUNDS[3], np.max(bounding_lat))
-    # check if bounding polygon is in multiple parts
-    if 'bounding_polygon_lon2' in IS2_atl03_mds['orbit_info']:
-        bounding_lon = IS2_atl03_mds['orbit_info']['bounding_polygon_lon2']
-        bounding_lat = IS2_atl03_mds['orbit_info']['bounding_polygon_lat2']
-        BOUNDS[0] = np.minimum(BOUNDS[0], np.min(bounding_lon))
-        BOUNDS[1] = np.maximum(BOUNDS[1], np.max(bounding_lon))
-        BOUNDS[2] = np.minimum(BOUNDS[2], np.min(bounding_lat))
-        BOUNDS[3] = np.maximum(BOUNDS[3], np.max(bounding_lat))
+    for gtx in IS2_atl03_beams:
+        lon = IS2_atl03_mds[gtx]['geolocation']['reference_photon_lon']
+        lat = IS2_atl03_mds[gtx]['geolocation']['reference_photon_lat']
+        if model.projection:
+            x, y = transformer.transform(lon, lat)
+            BOUNDS[0] = np.minimum(BOUNDS[0], np.min(x))
+            BOUNDS[1] = np.maximum(BOUNDS[1], np.max(x))
+            BOUNDS[2] = np.minimum(BOUNDS[2], np.min(y))
+            BOUNDS[3] = np.maximum(BOUNDS[3], np.max(y))
+        else:
+            BOUNDS[0] = np.minimum(BOUNDS[0], np.min(lon))
+            BOUNDS[1] = np.maximum(BOUNDS[1], np.max(lon))
+            BOUNDS[2] = np.minimum(BOUNDS[2], np.min(lat))
+            BOUNDS[3] = np.maximum(BOUNDS[3], np.max(lat))
 
     # read tidal constants
-    if model.format in ('OTIS','ATLAS','TMD3'):
+    if model.format in ('OTIS','ATLAS-compact','TMD3'):
         constituents = pyTMD.io.OTIS.read_constants(model.grid_file,
             model.model_file, model.projection, type=model.type,
-            grid=model.format, crop=CROP, bounds=BOUNDS,
+            grid=model.file_format, crop=CROP, bounds=BOUNDS,
             apply_flexure=APPLY_FLEXURE)
         # available model constituents
         c = constituents.fields
-    elif (model.format == 'netcdf'):
+    elif model.format in ('ATLAS-netcdf',):
         constituents = pyTMD.io.ATLAS.read_constants(model.grid_file,
             model.model_file, type=model.type, compressed=model.compressed,
             crop=CROP, bounds=BOUNDS)
         # available model constituents
         c = constituents.fields
-    elif (model.format == 'GOT'):
+    elif model.format in ('GOT-ascii','GOT-netcdf'):
         constituents = pyTMD.io.GOT.read_constants(model.model_file,
-            compressed=model.compressed, crop=CROP, bounds=BOUNDS)
+            compressed=model.compressed, grid=model.file_format,
+            crop=CROP, bounds=BOUNDS)
         # available model constituents
         c = constituents.fields
-    elif (model.format == 'FES'):
+    elif model.format in ('FES-ascii','FES-netcdf'):
         constituents = pyTMD.io.FES.read_constants(model.model_file,
             type=model.type, version=model.version, compressed=model.compressed,
             crop=CROP, bounds=BOUNDS)
@@ -291,25 +303,25 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
 
         # interpolate tidal constants to grid points
-        if model.format in ('OTIS','ATLAS','TMD3'):
+        if model.format in ('OTIS','ATLAS-compact','TMD3'):
             amp,ph,D = pyTMD.io.OTIS.interpolate_constants(lon, lat,
                 constituents, model.projection, type=model.type,
                 method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
             # use delta time at 2000.0 to match TMD outputs
             deltat = np.zeros((n_seg))
-        elif (model.format == 'netcdf'):
+        elif model.format in ('ATLAS-netcdf',):
             amp,ph,D = pyTMD.io.ATLAS.interpolate_constants(lon, lat,
                 constituents, type=model.type, method=METHOD,
                 extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
             # use delta time at 2000.0 to match TMD outputs
             deltat = np.zeros((n_seg))
-        elif (model.format == 'GOT'):
+        elif model.format in ('GOT-ascii','GOT-netcdf'):
             amp,ph = pyTMD.io.GOT.interpolate_constants(lon, lat,
                 constituents, method=METHOD, extrapolate=EXTRAPOLATE,
                 cutoff=CUTOFF, scale=model.scale)
             # delta time (TT - UT1)
             deltat = ts.tt_ut1
-        elif (model.format == 'FES'):
+        elif model.format in ('FES-ascii','FES-netcdf'):
             amp,ph = pyTMD.io.FES.interpolate_constants(lon, lat,
                 constituents, method=METHOD, extrapolate=EXTRAPOLATE,
                 cutoff=CUTOFF, scale=model.scale)
@@ -321,15 +333,20 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         # calculate constituent oscillation
         hc = amp*np.exp(cph)
 
+        # nodal corrections to apply
+        nodal_corrections = CORRECTIONS or model.corrections
+        # minor constituents to infer
+        minor_constituents = MINOR_CONSTITUENTS or model.minor
         # predict tidal elevations at time
         tide = np.ma.empty((n_seg),fill_value=fv)
         tide.mask = np.any(hc.mask,axis=1)
         tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
-            deltat=deltat, corrections=model.format)
+            deltat=deltat, corrections=nodal_corrections)
         # calculate values for minor constituents by inferrence
         if INFER_MINOR:
             minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
-                deltat=deltat, corrections=model.format)
+                deltat=deltat, corrections=nodal_corrections,
+                minor=minor_constituents)
             tide.data[:] += minor.data[:]
         # replace masked and nan values with fill value
         invalid, = np.nonzero(np.isnan(tide.data) | tide.mask)
@@ -627,7 +644,7 @@ def arguments():
         help='ICESat-2 ATL03 file to run')
     # directory with tide data
     parser.add_argument('--directory','-D',
-        type=pathlib.Path, default=pathlib.Path.cwd(),
+        type=pathlib.Path,
         help='Working data directory')
     # directory with output data
     parser.add_argument('--output-directory','-O',
@@ -638,9 +655,6 @@ def arguments():
         metavar='TIDE', type=str,
         choices=get_available_models(),
         help='Tide model to use in correction')
-    parser.add_argument('--atlas-format',
-        type=str, choices=('OTIS','netcdf'), default='netcdf',
-        help='ATLAS tide model format')
     parser.add_argument('--gzip','-G',
         default=False, action='store_true',
         help='Tide model files are gzip compressed')
@@ -648,9 +662,6 @@ def arguments():
     group.add_argument('--definition-file',
         type=pathlib.Path,
         help='Tide model definition file')
-    parser.add_argument('--definition-format',
-        type=str, default='ascii', choices=('ascii', 'json'),
-        help='Format for model definition file')
     # crop tide model to (buffered) bounds of data
     parser.add_argument('--crop',
         default=False, action='store_true',
@@ -669,10 +680,19 @@ def arguments():
     parser.add_argument('--cutoff','-c',
         type=np.float64, default=10.0,
         help='Extrapolation cutoff in kilometers')
+    # specify nodal corrections type
+    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3')
+    parser.add_argument('--nodal-corrections',
+        metavar='CORRECTIONS', type=str, choices=nodal_choices,
+        help='Nodal corrections to apply')
     # infer minor constituents from major
     parser.add_argument('--infer-minor',
         default=False, action='store_true',
-        help='Infer the height values for minor constituents')
+        help='Infer values for minor constituents')
+    # specify minor constituents to infer
+    parser.add_argument('--minor-constituents',
+        metavar='MINOR', type=str, nargs='+',
+        help='Minor constituents to infer')
     # apply flexure scaling factors to height constituents
     parser.add_argument('--apply-flexure',
         default=False, action='store_true',
@@ -700,15 +720,15 @@ def main():
         compute_tides_ICESat2(args.directory, FILE,
             OUTPUT_DIRECTORY=args.output_directory,
             TIDE_MODEL=args.tide,
-            ATLAS_FORMAT=args.atlas_format,
             GZIP=args.gzip,
             DEFINITION_FILE=args.definition_file,
-            DEFINITION_FORMAT=args.definition_format,
             CROP=args.crop,
             METHOD=args.interpolate,
             EXTRAPOLATE=args.extrapolate,
             CUTOFF=args.cutoff,
+            CORRECTIONS=args.nodal_corrections,
             INFER_MINOR=args.infer_minor,
+            MINOR_CONSTITUENTS=args.minor_constituents,
             APPLY_FLEXURE=args.apply_flexure,
             VERBOSE=args.verbose,
             MODE=args.mode)
