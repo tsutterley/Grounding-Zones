@@ -24,7 +24,6 @@ authors = [
 maintainers = [{ name = "Grounding-Zones contributors" }]
 license = {file = "LICENSE"}
 readme = "README.rst"
-version = "1.0.0"
 
 requires-python = "~=3.6"
 dependencies = [
@@ -37,6 +36,7 @@ dependencies = [
     "timescale>=0.0.3",
 ]
 
+dynamic = ["version"]
 
 classifiers=[
     "Development Status :: 3 - Alpha",
