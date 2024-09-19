@@ -175,3 +175,5 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/tides/fit_tides_ICESat2_ATL11.rst
     api_reference/tides/interpolate_tide_adjustment.rst
     api_reference/tides/mosaic_tide_adjustment.rst
+    api_reference/tides/tidal_constants_ICESat2_ATL11.rst
+    api_reference/tides/tidal_histogram_ICESat2_ATL11.rst

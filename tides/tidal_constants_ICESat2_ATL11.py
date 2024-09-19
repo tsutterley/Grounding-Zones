@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 u"""
-tidal_histogram_ICESat2_ATL11.py
+tidal_constants_ICESat2_ATL11.py
 Written by Tyler Sutterley (09/2024)
-Calculates histograms of variances between ICESat-2 ATL11
-annual land ice height data and tide predictions
+Calculates amplitudes and phases of tidal constituents using
+data from the ICESat-2 ATL11 annual land ice height product
 
 COMMAND LINE OPTIONS:
     -O X, --output-directory X: input/output data directory
@@ -11,7 +11,7 @@ COMMAND LINE OPTIONS:
     -W X, --width: Width of tile grid
     -S X, --spacing X: Output grid spacing
     -T X, --tide X: Tide model used in correction
-    -B X, --histogram X: lower end, upper end and spacing of histogram
+    --constants X: Tidal constituents to estimate
     -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
 
@@ -30,17 +30,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
-    Updated 09/2024: use JSON database for known model parameters
-        drop support for the ascii definition file format
-        get model name from file definition or from JSON database
-    Updated 08/2024: option for automatic detection of definition format
-    Updated 07/2024: use wrapper to importlib for optional dependencies
-        use multiprocess h5py reader from io utilities module
-        use updated ATL11 readers within icesat2_toolkit
-        use pathlib to define and operate on paths
-        use raster file to define valid grid cells in mask
-        include cell_area in output HDF5 file
-    Written 03/2021
+    Written 09/2024
 """
 from __future__ import print_function
 
@@ -61,6 +51,7 @@ h5py = gz.utilities.import_dependency('h5py')
 is2tk = gz.utilities.import_dependency('icesat2_toolkit')
 pyproj = gz.utilities.import_dependency('pyproj')
 pyTMD = gz.utilities.import_dependency('pyTMD')
+timescale = gz.utilities.import_dependency('timescale')
 
 # PURPOSE: keep track of threads
 def info(args):
@@ -93,8 +84,8 @@ def read_raster_file(raster_file, **kwargs):
     # return the mask object
     return dinput
 
-# PURPOSE: calculates histograms of tide differences
-def tidal_histogram(tile_file,
+# PURPOSE: estimates tidal constants from ICESat-2 ATL11 data
+def tidal_constants(tile_file,
         OUTPUT_DIRECTORY=None,
         HEM='S',
         W=80e3,
@@ -102,8 +93,9 @@ def tidal_histogram(tile_file,
         MASK_FILE=None,
         TIDE_MODEL=None,
         DEFINITION_FILE=None,
+        CONSTANTS=[],
         REANALYSIS=None,
-        HISTOGRAM=(-8,8,0.01),
+        RUNS=0,
         MODE=0o775
     ):
 
@@ -147,6 +139,8 @@ def tidal_histogram(tile_file,
     crs_to_cf = crs2.to_cf()
     flat = 1.0/crs_to_cf['inverse_flattening']
     reference_latitude = crs_to_cf['standard_parallel']
+    # degrees to radians
+    dtr = np.pi/180.0
 
     # get tide model parameters from definition file
     if DEFINITION_FILE is not None:
@@ -194,7 +188,7 @@ def tidal_histogram(tile_file,
     # calculate cell areas (m^2)
     cell_area = dx*dy*mask*ps_scale
 
-    # total point count
+    # total height count for all cycles
     npts = 0
     # read the HDF5 file
     f1 = gz.io.multiprocess_h5py(tile_file, mode='r')
@@ -207,24 +201,20 @@ def tidal_histogram(tile_file,
         for ptx, subgroup in f1[ATL11].items():
             indices = subgroup['index'][:].copy()
             ncycles = len(subgroup['cycle_number'])
-            npts += (ncycles-1)*len(indices)
+            npts += ncycles*len(indices)
     # close the tile file
     f1.close()
     # log total number of points
     logging.info(f'Total Points: {npts:d}')
 
-    # histogram parameters
-    vmin,vmax,w = np.copy(HISTOGRAM)
-    b1 = np.arange(vmin,vmax+w,w)
-    b2 = (b1[1:] + b1[0:-1])/2.0
-    nbins = np.int64((vmax-vmin)/w)
-
     # allocate for combined variables
     d = {}
     d['longitude'] = np.zeros((npts), dtype=np.float64)
     d['latitude'] = np.zeros((npts), dtype=np.float64)
-    d['dh_corr'] = np.ma.zeros((npts), dtype=np.float64)
-    d['dh_sigma'] = np.ma.zeros((npts), dtype=np.float64)
+    # save heights relative to geoid
+    d['h_corr'] = np.zeros((npts), dtype=np.float64)
+    d['h_sigma'] = np.zeros((npts), dtype=np.float64)
+    d['delta_time'] = np.zeros((npts), dtype=np.float64)
     d['mask'] = np.zeros((npts), dtype=bool)
 
     # height threshold (filter points below 0m elevation)
@@ -261,13 +251,16 @@ def tidal_histogram(tile_file,
         for ptx, subgroup in f1[ATL11].items():
             # indices within tile
             indices = subgroup['index'][:].copy()
-            cycle_number = subgroup['cycle_number'][:].copy()
             file_length = len(indices)
             # read dataset
             mds, attrs = is2tk.io.ATL11.read_pair(f2, ptx,
                 ATTRIBUTES=True, REFERENCE=True, KEEP=True)
             # invalid value for heights
             invalid = attrs[ptx]['h_corr']['_FillValue']
+            # reduce delta times and convert to timescale object
+            delta_time = mds[ptx]['delta_time'][indices,:].copy()
+            ts = timescale.from_deltatime(delta_time,
+                standard='GPS', epoch=(2018,1,1,0,0,0))
             # combine errors (ignore overflow at invalid points)
             with np.errstate(over='ignore'):
                 error = np.sqrt(
@@ -289,42 +282,38 @@ def tidal_histogram(tile_file,
             else:
                 # reduce DAC to indices
                 IB = mds[ptx]['cycle_stats']['dac'][indices,:]
-            # for each cycle
-            for k in range(ncycles-1):
-                # copy annual land ice height variables
-                h1 = np.ma.array(mds[ptx]['h_corr'][indices,k],
+
+            # copy annual land ice height variables
+            for k in range(ncycles):
+                # height variables for cycle k
+                h = np.ma.array(mds[ptx]['h_corr'][indices,k].copy(),
                     fill_value=invalid)
-                h2 = np.ma.array(mds[ptx]['h_corr'][indices,k+1],
-                    fill_value=invalid)
-                e1, e2 = error[:,k], error[:,k+1]
                 # create masks for height variables
-                h1.mask = (h1.data == h1.fill_value)
-                h2.mask = (h2.data == h2.fill_value)
+                h.mask = (h.data == h.fill_value)
                 # quality summary for height variables
                 qs1 = mds[ptx]['quality_summary'][indices,k]
-                qs2 = mds[ptx]['quality_summary'][indices,k+1]
+                # quasi-freeboard: WGS84 elevation - geoid height
                 # reference heights to geoid
-                h1 -= mds[ptx]['ref_surf']['geoid_h'][indices]
-                h2 -= mds[ptx]['ref_surf']['geoid_h'][indices]
+                h -= mds[ptx]['ref_surf']['geoid_h'][indices]
                 # correct heights for DAC/IB
-                h1 -= IB[:,k]
-                h2 -= IB[:,k+1]
+                h -= IB[:,k]
                 # correct heights for ocean tides
-                h1 -= tide_ocean[:,k]
-                h2 -= tide_ocean[:,k+1]
-                # calculate tide-corrected height differences
-                d['dh_corr'][c:c+file_length] = (h2 - h1)
-                d['dh_sigma'][c:c+file_length] = np.sqrt(e1**2 + e2**2)
+                h -= tide_ocean[:,k]
+                # save to output dictionary
+                d['h_corr'][c:c+file_length] = h.copy()
+                d['h_sigma'][c:c+file_length] = error[:,k].copy()
+                # convert times to days since 1992-01-01
+                # converted from UT1 to TT time
+                d['delta_time'][c:c+file_length] = ts[:,k].tide + ts[:,k].tt_ut1
                 # add longitude, and latitude
                 for i in ['longitude','latitude']:
                     d[i][c:c+file_length] = mds[ptx][i][indices].copy()
                 # mask for reducing to valid values
                 d['mask'][c:c+file_length] = \
-                    np.logical_not(h1.mask) & np.logical_not(h2.mask) & \
+                    np.logical_not(h.mask) & \
                     (tide_ocean[:,k] != invalid) & \
-                    (tide_ocean[:,k+1] != invalid) & \
-                    (h1 > THRESHOLD) & (h2 > THRESHOLD) & \
-                    (qs1 == 0) & (qs2 == 0)
+                    (h > THRESHOLD) & \
+                    (qs1 == 0)
                 # add to counter
                 c += file_length
         # close the input dataset(s)
@@ -378,13 +367,6 @@ def tidal_histogram(tile_file,
     for att_name in ['long_name', 'standard_name', 'units']:
         attributes['x'][att_name] = cs_to_cf[0][att_name]
         attributes['y'][att_name] = cs_to_cf[1][att_name]
-    # histogram bin
-    attributes['bins'] = {}
-    attributes['bins']['long_name'] = 'Histogram bins'
-    attributes['bins']['units'] = '1'
-    attributes['bins']['description'] = \
-        'Center of each height difference histogram bin'
-    fill_value['bins'] = None
     # ice area
     attributes['cell_area'] = {}
     attributes['cell_area']['long_name'] = 'Cell area'
@@ -394,21 +376,26 @@ def tidal_histogram(tile_file,
     attributes['cell_area']['coordinates'] = 'y x'
     attributes['cell_area']['grid_mapping'] = 'crs'
     fill_value['cell_area'] = 0
-    # height difference histogram
-    attributes['dh_hist'] = {}
-    attributes['dh_hist']['long_name'] = 'Height difference histogram'
-    attributes['dh_hist']['description'] = 'Histogram of height differences'
-    attributes['dh_hist']['units'] = 'meters'
-    attributes['dh_hist']['coordinates'] = 'y x'
-    attributes['dh_hist']['grid_mapping'] = 'crs'
-    fill_value['dh_hist'] = invalid
-    # data count
-    attributes['count'] = {}
-    attributes['count']['long_name'] = 'Number of data points'
-    attributes['count']['units'] = '1'
-    attributes['count']['coordinates'] = 'y x'
-    attributes['count']['grid_mapping'] = 'crs'
-    fill_value['count'] = 0
+    # amplitude and phase of harmonic constants
+    attributes['amplitude'] = {}
+    attributes['amplitude']['long_name'] = 'Amplitude of harmonic constants'
+    attributes['amplitude']['units'] = 'meters'
+    attributes['amplitude']['coordinates'] = 'y x'
+    attributes['amplitude']['grid_mapping'] = 'crs'
+    fill_value['amplitude'] = invalid
+    attributes['phase'] = {}
+    attributes['phase']['long_name'] = 'Phase lag of harmonic constants'
+    attributes['phase']['units'] = 'degrees'
+    attributes['phase']['coordinates'] = 'y x'
+    attributes['phase']['grid_mapping'] = 'crs'
+    attributes['phase']['valid_min'] = 0
+    attributes['phase']['valid_max'] = 360
+    fill_value['phase'] = invalid
+    # harmonic constituents
+    attributes['constituents'] = {}
+    attributes['long_name'] = 'Tidal constituents'
+    attributes['description'] = 'Tidal constituents listed in order of solution'
+    fill_value['constituents'] = None
 
     # allocate for output variables
     output = {}
@@ -417,15 +404,16 @@ def tidal_histogram(tile_file,
     # coordinates
     output['x'] = np.copy(x)
     output['y'] = np.copy(y)
-    output['bins'] = np.copy(b2)
     # cell area (possibly masked for non-ice areas)
     output['cell_area'] = np.copy(cell_area)
-    # allocate for histogram variables
-    output['dh_hist'] = np.ma.zeros((ny, nx, nbins), fill_value=invalid)
-    output['count'] = np.zeros((ny, nx), dtype=np.int64)
-    hist = np.zeros((nbins), dtype=np.float64)
+    # allocate for tidal harmonic constants
+    nc = len(CONSTANTS)
+    output['amplitude'] = np.ma.zeros((ny, nx, nc), fill_value=invalid)
+    output['phase'] = np.ma.zeros((ny, nx, nc), fill_value=invalid)
+    output['constituents'] = np.array(CONSTANTS, dtype='|S8')
+    count = np.zeros((ny, nx), dtype=np.int64)
 
-    # calculate histogram over each raster pixel
+    # calculate over each raster pixel
     for xi in np.arange(xmin, xmin + W, dx):
         for yi in np.arange(ymin, ymin + W, dy):
             # grid indices
@@ -434,7 +422,7 @@ def tidal_histogram(tile_file,
             # clip unique points to coordinates
             clipped = np.nonzero((d['x'] >= xi) & (d['x'] < xi+dx) &
                 (d['y'] >= yi) & (d['y'] < yi+dy) &
-                d['mask'] & (d['dh_sigma'] <= MAX_ERROR))
+                d['mask'] & (d['h_sigma'] <= MAX_ERROR))
             # skip iteration if there are no (valid) points
             if not np.any(clipped):
                 continue
@@ -442,52 +430,36 @@ def tidal_histogram(tile_file,
             u = {}
             for key,val in d.items():
                 u[key] = val[clipped]
-            # calculate histogram
-            hh,hb = np.histogram(u['dh_corr'].compressed(), bins=b1)
-            # add to histogram
-            output['dh_hist'][indy, indx] += hh.astype(np.float64)
-            output['count'][indy, indx] += np.sum(hh)
-            hist += hh.astype(np.float64)
+            # check that there are enough values for fit
+            n = len(u['h_corr'])
+            if (n <= 2*nc):
+                continue
+            # add to count
+            count[indy, indx] += n
+            # iterate over monte carlo runs
+            hci = np.zeros((RUNS, nc), dtype=np.complex128)
+            for i in range(RUNS):
+                # solve for harmonic constants
+                h_rand = u['h_corr'] + np.random.normal(0, u['h_sigma'])
+                amp, ph = pyTMD.solve.constants(u['delta_time'], h_rand,
+                    constituents=CONSTANTS, corrections=model.corrections)
+                # calculate complex harmonic constants for iteration
+                cph = -1j*dtr*ph
+                hci[i, :] = amp*np.exp(cph)
+            # calculate mean value of complex harmonic constants
+            hc = np.mean(hci, axis=0)
+            # calculate phase in degrees
+            ph = np.arctan2(-np.imag(hc), np.real(hc))/dtr
+            ph[ph < 0] += 360.0
+            # add to output variables
+            output['amplitude'][indy, indx, :] = np.abs(hc)
+            output['phase'][indy, indx, :] = ph.copy()
 
     # find and replace invalid values
-    indy, indx = np.nonzero(output['count'] == 0)
+    indy, indx = np.nonzero(count == 0)
     # update values for invalid points
-    output['dh_hist'][indy, indx, :] = invalid
-
-    # calculate histogram statistics
-    N = np.sum(hist)
-    # histogram mean and standard deviation
-    hmean = np.average(b2, weights=hist)
-    hvariance = np.average((b2-hmean)**2, weights=hist)
-    hstdev = np.sqrt(hvariance)
-    # histogram skewness and excess kurtosis
-    hskewness = np.average((b2-hmean)**3, weights=hist)/(hstdev**3)
-    hkurtosis = np.average((b2-hmean)**4, weights=hist)/(hstdev**4)
-    hkurtosis_excess = hkurtosis - 3.0
-    # omnibus chi-squared test of normality
-    mu1 = np.sqrt(6.0*N*(N-1.0)/(N-2.0)/(N+1.0)/(N+3.0))
-    mu2 = 2.0*mu1*np.sqrt((N*N-1.0)/(N-3.0)/(N+5.0))
-    chi2 = (hskewness/mu1)**2 + (hkurtosis_excess/mu2)**2
-    pvalue = 1.0 - scipy.stats.chi2.cdf(chi2,2)
-    # cumulative probability distribution function of histogram
-    cpdf = np.cumsum(hist/np.sum(hist))
-    # calculate percentiles for IQR and RDE
-    # IQR: first and third quartiles (25th and 75th percentiles)
-    # RDE: 16th and 84th percentiles
-    # median: 50th percentile
-    Q1,Q3,P16,P84,hmedian = np.interp([0.25,0.75,0.16,0.84,0.5],cpdf,b2)
-    # calculate interquartile range
-    hIQR = Q3 - Q1
-    # calculate robust dispersion estimator (RDE)
-    hRDE = P84 - P16
-    # add statistics attributes
-    attributes['dh_hist']['mean'] = hmean
-    attributes['dh_hist']['median'] = hmedian
-    attributes['dh_hist']['stdev'] = hstdev
-    attributes['dh_hist']['skewness'] = hskewness
-    attributes['dh_hist']['kurtosis'] = hkurtosis_excess
-    attributes['dh_hist']['IQR'] = hIQR
-    attributes['dh_hist']['RDE'] = hRDE
+    output['amplitude'][indy, indx, :] = invalid
+    output['phase'][indy, indx, :] = invalid
 
     # open output HDF5 file in append mode
     output_file = OUTPUT_DIRECTORY.joinpath(tile_file_formatted)
@@ -542,8 +514,9 @@ def get_available_models():
 # PURPOSE: create arguments parser
 def arguments():
     parser = argparse.ArgumentParser(
-        description="""Calculates histograms of variances between ICESat-2
-            ATL11 annual land ice height data and tide predictions
+        description="""Calculates amplitudes and phases of
+            tidal constituents using data from the ICESat-2
+            ATL11 annual land ice height product
             """,
         fromfile_prefix_chars="@"
     )
@@ -583,15 +556,19 @@ def arguments():
     group.add_argument('--definition-file',
         type=pathlib.Path,
         help='Tide model definition file')
+    # tidal harmonic constants to solve for
+    constants = ['m2','s2','n2','k2','k1','o1','p1','q1','mf','mm']
+    parser.add_argument('--constants',
+        type=str, nargs='+', default=constants,
+        help='Tidal harmonic constants to solve from heights')
     # inverse barometer response to use
     parser.add_argument('--reanalysis','-R',
         metavar='REANALYSIS', type=str,
         help='Reanalysis model to use in inverse-barometer correction')
-    # histogram parameters
-    parser.add_argument('--histogram','-B',
-        type=float, nargs=3, metavar=('VMIN','VMAX','W'),
-        default=(-8,8,0.01),
-        help='Histogram bin lower end, upper end and spacing')
+    # number of monte carlo runs
+    parser.add_argument('--runs',
+        type=int, default=100,
+        help='Number of Monte Carlo runs')
     # verbose output of processing run
     # print information about processing run
     parser.add_argument('--verbose','-V',
@@ -617,7 +594,7 @@ def main():
     # run program
     try:
         info(args)
-        tidal_histogram(args.infile,
+        tidal_constants(args.infile,
             OUTPUT_DIRECTORY=args.output_directory,
             HEM=args.hemisphere,
             W=args.width,
@@ -625,8 +602,9 @@ def main():
             MASK_FILE=args.mask_file,
             TIDE_MODEL=args.tide,
             DEFINITION_FILE=args.definition_file,
+            CONSTANTS=args.constants,
             REANALYSIS=args.reanalysis,
-            HISTOGRAM=args.histogram,
+            RUNS=args.runs,
             MODE=args.mode)
     except Exception as exc:
         # if there has been an error exception
