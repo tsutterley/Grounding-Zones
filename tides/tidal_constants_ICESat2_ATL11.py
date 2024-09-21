@@ -142,12 +142,15 @@ def tidal_constants(tile_file,
     # degrees to radians
     dtr = np.pi/180.0
 
-    # get tide model parameters from definition file
+    # get tide model parameters from definition file or model name
     if DEFINITION_FILE is not None:
         model = pyTMD.io.model(None, verify=False).from_file(
             DEFINITION_FILE)
-    else:
+    elif TIDE_MODEL is not None:
         model = pyTMD.io.model(None, verify=False).elevation(TIDE_MODEL)
+    else:
+        # default for uncorrected heights
+        model = type('model', (), dict(name=None, corrections='GOT'))
 
     # read the input file
     if MASK_FILE is not None:
