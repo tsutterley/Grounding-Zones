@@ -73,6 +73,7 @@ UPDATE HISTORY:
         drop support for the ascii definition file format
         use model class attributes for file format and corrections
         add command line option to select nodal corrections type
+        use model attribute for inferring minor long period constituents
     Updated 08/2024: allow inferring only specific minor constituents
         added option to try automatic detection of definition file format
     Updated 07/2024: added option to crop to the domain of the input data
@@ -336,7 +337,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     if INFER_MINOR:
         minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
             deltat=deltat, corrections=nodal_corrections,
-            minor=minor_constituents)
+            minor=minor_constituents, frequency=model.frequency)
         tide.data[:] += minor.data[:]
     # replace invalid values with fill value
     tide.data[tide.mask] = tide.fill_value

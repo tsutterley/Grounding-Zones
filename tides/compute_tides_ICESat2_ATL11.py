@@ -67,6 +67,7 @@ UPDATE HISTORY:
         drop support for the ascii definition file format
         use model class attributes for file format and corrections
         add command line option to select nodal corrections type
+        use model attribute for inferring minor long period constituents
     Updated 08/2024: project bounds for cropping non-geographic OTIS models
         added option to allow inferring only specific minor constituents
         added option to try automatic detection of definition file format
@@ -380,7 +381,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                             ts.tide[valid,cycle], hc[valid,:], c,
                             deltat=deltat[valid,cycle],
                             corrections=nodal_corrections,
-                            minor=minor_constituents)
+                            minor=minor_constituents, frequency=model.frequency)
                         tide[track].data[valid,cycle] += minor.data[:]
             elif (track == 'XT'):
                 # find valid time and spatial points
@@ -397,7 +398,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
                         ts.tide[valid], hc[valid,:], c,
                         deltat=deltat[valid],
                         corrections=nodal_corrections,
-                        minor=minor_constituents)
+                        minor=minor_constituents, frequency=model.frequency)
                     tide[track].data[valid] += minor.data[:]
 
             # replace masked and nan values with fill value
