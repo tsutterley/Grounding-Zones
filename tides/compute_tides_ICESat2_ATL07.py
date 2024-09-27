@@ -329,7 +329,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         if INFER_MINOR:
             minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
                 deltat=deltat, corrections=nodal_corrections,
-                minor=minor_constituents, frequency=model.frequency)
+                minor=minor_constituents)
             tide.data[:] += minor.data[:]
         # replace masked and nan values with fill value
         invalid, = np.nonzero(np.isnan(tide.data) | tide.mask)

@@ -66,7 +66,6 @@ UPDATE HISTORY:
         drop support for the ascii definition file format
         use model class attributes for file format and corrections
         add command line option to select nodal corrections type
-        use model attribute for inferring minor long period constituents
     Updated 08/2024: project bounds for cropping non-geographic OTIS models
         added option to allow inferring only specific minor constituents
         added option to try automatic detection of definition file format
@@ -339,7 +338,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         if INFER_MINOR:
             minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
                 deltat=deltat, corrections=nodal_corrections,
-                minor=minor_constituents, frequency=model.frequency)
+                minor=minor_constituents)
             tide.data[:] += minor.data[:]
         # replace masked and nan values with fill value
         invalid, = np.nonzero(np.isnan(tide.data) | tide.mask)
