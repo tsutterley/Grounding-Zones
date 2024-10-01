@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_icebridge_data.py
-Written by Tyler Sutterley (09/2024)
+Written by Tyler Sutterley (10/2024)
 Calculates tidal elevations for correcting Operation IceBridge elevation data
 
 Uses OTIS format tidal solutions provided by Oregon State University and ESR
@@ -69,6 +69,7 @@ PROGRAM DEPENDENCIES:
     read_ATM1b_QFIT_binary.py: read ATM1b QFIT binary files (NSIDC version 1)
 
 UPDATE HISTORY:
+    Updated 10/2024: compute delta times based on corrections type
     Updated 09/2024: use JSON database for known model parameters
         drop support for the ascii definition file format
         use model class attributes for file format and corrections
@@ -271,20 +272,16 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
             model.grid_file, model.model_file, model.projection,
             type=model.type, grid=model.file_format, crop=CROP, method=METHOD,
             extrapolate=EXTRAPOLATE, cutoff=CUTOFF, apply_flexure=APPLY_FLEXURE)
-        deltat = np.zeros((file_lines))
     elif model.format in ('netcdf'):
         amp,ph,D,c = pyTMD.io.ATLAS.extract_constants(dinput['lon'], dinput['lat'],
             model.grid_file, model.model_file, type=model.type, crop=CROP,
             method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF,
             scale=model.scale, compressed=model.compressed)
-        deltat = np.zeros((file_lines))
     elif model.format in ('GOT-ascii','GOT-netcdf'):
         amp,ph,c = pyTMD.io.GOT.extract_constants(dinput['lon'], dinput['lat'],
             model.model_file, grid=model.file_format, crop=CROP, method=METHOD,
             extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale,
             compressed=model.compressed)
-        # delta time (TT - UT1)
-        deltat = ts.tt_ut1
     elif model.format in ('FES-ascii','FES-netcdf'):
         amp,ph = pyTMD.io.FES.extract_constants(dinput['lon'], dinput['lat'],
             model.model_file, type=model.type, version=model.version,
@@ -292,8 +289,6 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
             scale=model.scale, compressed=model.compressed)
         # available model constituents
         c = model.constituents
-        # delta time (TT - UT1)
-        deltat = ts.tt_ut1
 
     # calculate complex phase in radians for Euler's
     cph = -1j*ph*np.pi/180.0
@@ -326,6 +321,14 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     nodal_corrections = CORRECTIONS or model.corrections
     # minor constituents to infer
     minor_constituents = MINOR_CONSTITUENTS or model.minor
+    # delta time (TT - UT1) for tide model
+    if nodal_corrections in ('OTIS','ATLAS','TMD3','netcdf'):
+        # use delta time at 2000.0 to match TMD outputs
+        deltat = np.zeros_like(ts.tt_ut1)
+    else:
+        # use interpolated delta times
+        deltat = ts.tt_ut1
+
     # predict tidal elevations at time and infer minor corrections
     fill_value = -9999.0
     tide = np.ma.empty((file_lines),fill_value=fill_value)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL07.py
-Written by Tyler Sutterley (09/2024)
+Written by Tyler Sutterley (10/2024)
 Calculates tidal elevations for correcting ICESat-2 sea ice height data
 
 Uses OTIS format tidal solutions provided by Oregon State University and ESR
@@ -60,6 +60,7 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 10/2024: compute delta times based on corrections type
     Updated 09/2024: use JSON database for known model parameters
         drop support for the ascii definition file format
         use model class attributes for file format and corrections
@@ -290,26 +291,18 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             amp,ph,D = pyTMD.io.OTIS.interpolate_constants(val['longitude'],
                 val['latitude'], constituents, type=model.type,
                 method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
-            # use delta time at 2000.0 to match TMD outputs
-            deltat = np.zeros((n_seg))
         elif model.format in ('ATLAS-netcdf',):
             amp,ph,D = pyTMD.io.ATLAS.interpolate_constants(val['longitude'],
                 val['latitude'], constituents, type=model.type, method=METHOD,
                 extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
-            # use delta time at 2000.0 to match TMD outputs
-            deltat = np.zeros((n_seg))
         elif model.format in ('GOT-ascii','GOT-netcdf'):
             amp,ph = pyTMD.io.GOT.interpolate_constants(val['longitude'],
                 val['latitude'], constituents, method=METHOD,
                 extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
-            # delta time (TT - UT1)
-            deltat = ts.tt_ut1
         elif model.format in ('FES-ascii','FES-netcdf'):
             amp,ph = pyTMD.io.FES.interpolate_constants(val['longitude'],
                 val['latitude'], constituents, method=METHOD,
                 extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
-            # delta time (TT - UT1)
-            deltat = ts.tt_ut1
 
         # calculate complex phase in radians for Euler's
         cph = -1j*ph*np.pi/180.0
@@ -320,6 +313,14 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         nodal_corrections = CORRECTIONS or model.corrections
         # minor constituents to infer
         minor_constituents = MINOR_CONSTITUENTS or model.minor
+        # delta time (TT - UT1) for tide model
+        if nodal_corrections in ('OTIS','ATLAS','TMD3','netcdf'):
+            # use delta time at 2000.0 to match TMD outputs
+            deltat = np.zeros_like(ts.tt_ut1)
+        else:
+            # use interpolated delta times
+            deltat = ts.tt_ut1
+
         # predict tidal elevations at time
         tide = np.ma.empty((n_seg))
         tide.mask = np.any(hc.mask,axis=1)
