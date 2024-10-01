@@ -331,7 +331,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             # interpolate tidal constants to grid points
             if model.format in ('OTIS','ATLAS-compact','TMD3'):
                 amp,ph,D = pyTMD.io.OTIS.interpolate_constants(longitude[track],
-                    latitude[track], constituents, model.projection, type=model.type,
+                    latitude[track], constituents, type=model.type,
                     method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
                 # use delta time at 2000.0 to match TMD outputs
                 deltat = np.zeros_like(ts.tt_ut1)
