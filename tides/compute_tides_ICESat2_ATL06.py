@@ -63,6 +63,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 10/2024: compute delta times based on corrections type
+        added option to append equilibrium amplitudes for node tides
     Updated 09/2024: use JSON database for known model parameters
         drop support for the ascii definition file format
         use model class attributes for file format and corrections
@@ -156,6 +157,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         CORRECTIONS=None,
         INFER_MINOR=False,
         MINOR_CONSTITUENTS=None,
+        APPEND_NODE=False,
         APPLY_FLEXURE=False,
         VERBOSE=False,
         MODE=0o775
@@ -232,31 +234,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             BOUNDS[3] = np.maximum(BOUNDS[3], np.max(lat))
 
     # read tidal constants
-    if model.format in ('OTIS','ATLAS-compact','TMD3'):
-        constituents = pyTMD.io.OTIS.read_constants(model.grid_file,
-            model.model_file, model.projection, type=model.type,
-            grid=model.file_format, crop=CROP, bounds=BOUNDS,
-            apply_flexure=APPLY_FLEXURE)
-        # available model constituents
-        c = constituents.fields
-    elif model.format in ('ATLAS-netcdf',):
-        constituents = pyTMD.io.ATLAS.read_constants(model.grid_file,
-            model.model_file, type=model.type, compressed=model.compressed,
-            crop=CROP, bounds=BOUNDS)
-        # available model constituents
-        c = constituents.fields
-    elif model.format in ('GOT-ascii','GOT-netcdf'):
-        constituents = pyTMD.io.GOT.read_constants(model.model_file,
-            compressed=model.compressed, grid=model.file_format,
-            crop=CROP, bounds=BOUNDS)
-        # available model constituents
-        c = constituents.fields
-    elif model.format in ('FES-ascii','FES-netcdf'):
-        constituents = pyTMD.io.FES.read_constants(model.model_file,
-            type=model.type, version=model.version, compressed=model.compressed,
-            crop=CROP, bounds=BOUNDS)
-        # available model constituents
-        c = model.constituents
+    model.read_constants(type=model.type, crop=CROP, bounds=BOUNDS,
+        append_node=APPEND_NODE, apply_flexure=APPLY_FLEXURE)
+    c = model._constituents.fields
 
     # copy variables for outputting to HDF5 file
     IS2_atl06_tide = {}
@@ -296,22 +276,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
 
         # interpolate tidal constants to grid points
-        if model.format in ('OTIS','ATLAS-compact','TMD3'):
-            amp,ph,D = pyTMD.io.OTIS.interpolate_constants(val['longitude'],
-                val['latitude'], constituents, type=model.type,
-                method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
-        elif model.format in ('ATLAS-netcdf',):
-            amp,ph,D = pyTMD.io.ATLAS.interpolate_constants(val['longitude'],
-                val['latitude'], constituents, type=model.type, method=METHOD,
-                extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
-        elif model.format in ('GOT-ascii','GOT-netcdf'):
-            amp,ph = pyTMD.io.GOT.interpolate_constants(val['longitude'],
-                val['latitude'], constituents, method=METHOD,
-                extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
-        elif model.format in ('FES-ascii','FES-netcdf'):
-            amp,ph = pyTMD.io.FES.interpolate_constants(val['longitude'],
-                val['latitude'], constituents, method=METHOD,
-                extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
+        amp, ph = model.interpolate_constants(val['longitude'],
+            val['latitude'], type=model.type, method=METHOD,
+            extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
 
         # calculate complex phase in radians for Euler's
         cph = -1j*ph*np.pi/180.0
@@ -697,6 +664,10 @@ def arguments():
     parser.add_argument('--minor-constituents',
         metavar='MINOR', type=str, nargs='+',
         help='Minor constituents to infer')
+    # append equilibrium amplitudes for node tides
+    parser.add_argument('--append-node',
+        default=False, action='store_true',
+        help='Append equilibrium amplitudes for node tides')
     # apply flexure scaling factors to height constituents
     parser.add_argument('--apply-flexure',
         default=False, action='store_true',
@@ -733,6 +704,7 @@ def main():
             CORRECTIONS=args.nodal_corrections,
             INFER_MINOR=args.infer_minor,
             MINOR_CONSTITUENTS=args.minor_constituents,
+            APPEND_NODE=args.append_node,
             APPLY_FLEXURE=args.apply_flexure,
             VERBOSE=args.verbose,
             MODE=args.mode)

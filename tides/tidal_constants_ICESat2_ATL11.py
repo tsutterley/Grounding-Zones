@@ -84,6 +84,41 @@ def read_raster_file(raster_file, **kwargs):
     # return the mask object
     return dinput
 
+def build_constraints(
+        ht: np.ndarray,
+        CONSTANTS=[],
+    ):
+    """
+    Builds the constraints for the harmonic constants fit
+
+    Parameters
+    ----------
+    ht: np.ndarray
+        elevation time series (meters)
+    CONSTANTS: list, default []
+        tidal constituent ID(s)
+
+    Returns
+    -------
+    lb: np.ndarray
+        Lower bounds for the fit
+    ub: dict
+        Upper bounds for the fit
+    """
+    # parameter bounds
+    nc = len(CONSTANTS)
+    lb = np.full((2*nc + 1), -np.inf)
+    ub = np.full((2*nc + 1), np.inf)
+    # bounds for mean surface
+    lb[0] = np.min(ht) - np.std(ht)
+    ub[0] = np.max(ht) + np.std(ht)
+    # bounds for constituent terms
+    for k,c in enumerate(CONSTANTS):
+        lb[2*k+1] = 0.0
+        ub[2*k+1] = np.ptp(ht) + np.std(ht)
+    # return the constraints
+    return (lb, ub)
+
 # PURPOSE: estimates tidal constants from ICESat-2 ATL11 data
 def tidal_constants(tile_file,
         OUTPUT_DIRECTORY=None,
@@ -316,6 +351,7 @@ def tidal_constants(tile_file,
                     np.logical_not(h.mask) & \
                     (tide_ocean[:,k] != invalid) & \
                     (h > THRESHOLD) & \
+                    (error[:,k] <= MAX_ERROR) & \
                     (qs1 == 0)
                 # add to counter
                 c += file_length
@@ -424,8 +460,7 @@ def tidal_constants(tile_file,
             indx = int((xi - xmin)//dx)
             # clip unique points to coordinates
             clipped = np.nonzero((d['x'] >= xi) & (d['x'] < xi+dx) &
-                (d['y'] >= yi) & (d['y'] < yi+dy) &
-                d['mask'] & (d['h_sigma'] <= MAX_ERROR))
+                (d['y'] >= yi) & (d['y'] < yi+dy) & d['mask'])
             # skip iteration if there are no (valid) points
             if not np.any(clipped):
                 continue
@@ -444,8 +479,10 @@ def tidal_constants(tile_file,
             for i in range(RUNS):
                 # solve for harmonic constants
                 h_rand = u['h_corr'] + np.random.normal(0, u['h_sigma'])
+                bounds = build_constraints(h_rand, CONSTANTS)
                 amp, ph = pyTMD.solve.constants(u['delta_time'], h_rand,
-                    constituents=CONSTANTS, corrections=model.corrections)
+                    constituents=CONSTANTS, corrections=model.corrections,
+                    bounds=bounds, solver='lstsq')
                 # calculate complex harmonic constants for iteration
                 cph = -1j*dtr*ph
                 hci[i, :] = amp*np.exp(cph)
