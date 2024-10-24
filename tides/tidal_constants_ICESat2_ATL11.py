@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tidal_constants_ICESat2_ATL11.py
-Written by Tyler Sutterley (09/2024)
+Written by Tyler Sutterley (10/2024)
 Calculates amplitudes and phases of tidal constituents using
 data from the ICESat-2 ATL11 annual land ice height product
 
@@ -11,7 +11,13 @@ COMMAND LINE OPTIONS:
     -W X, --width: Width of tile grid
     -S X, --spacing X: Output grid spacing
     -T X, --tide X: Tide model used in correction
+    --nodal-corrections: Nodal corrections to use
+        OTIS
+        FES
+        GOT
+        perth3
     --constants X: Tidal constituents to estimate
+    -R X, --reanalysis X: Reanalysis model for inverse-barometer correction
     -M X, --mode X: Permission mode of directories and files created
     -V, --verbose: Output information about each created file
 
@@ -30,6 +36,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 10/2024: add option to select nodal corrections type
     Written 09/2024
 """
 from __future__ import print_function
@@ -128,6 +135,7 @@ def tidal_constants(tile_file,
         MASK_FILE=None,
         TIDE_MODEL=None,
         DEFINITION_FILE=None,
+        CORRECTIONS=None,
         CONSTANTS=[],
         REANALYSIS=None,
         RUNS=0,
@@ -186,6 +194,8 @@ def tidal_constants(tile_file,
     else:
         # default for uncorrected heights
         model = type('model', (), dict(name=None, corrections='GOT'))
+    # nodal corrections to apply
+    nodal_corrections = CORRECTIONS or model.corrections
 
     # read the input file
     if MASK_FILE is not None:
@@ -481,7 +491,7 @@ def tidal_constants(tile_file,
                 h_rand = u['h_corr'] + np.random.normal(0, u['h_sigma'])
                 bounds = build_constraints(h_rand, CONSTANTS)
                 amp, ph = pyTMD.solve.constants(u['delta_time'], h_rand,
-                    constituents=CONSTANTS, corrections=model.corrections,
+                    constituents=CONSTANTS, corrections=nodal_corrections,
                     bounds=bounds, solver='lstsq')
                 # calculate complex harmonic constants for iteration
                 cph = -1j*dtr*ph
@@ -596,6 +606,11 @@ def arguments():
     group.add_argument('--definition-file',
         type=pathlib.Path,
         help='Tide model definition file')
+    # specify nodal corrections type
+    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3')
+    parser.add_argument('--nodal-corrections',
+        metavar='CORRECTIONS', type=str, choices=nodal_choices,
+        help='Nodal corrections to use')
     # tidal harmonic constants to solve for
     constants = ['m2','s2','n2','k2','k1','o1','p1','q1','mf','mm']
     parser.add_argument('--constants',
@@ -642,6 +657,7 @@ def main():
             MASK_FILE=args.mask_file,
             TIDE_MODEL=args.tide,
             DEFINITION_FILE=args.definition_file,
+            CORRECTIONS=args.nodal_corrections,
             CONSTANTS=args.constants,
             REANALYSIS=args.reanalysis,
             RUNS=args.runs,
