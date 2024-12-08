@@ -118,7 +118,8 @@ def tidal_histogram(tile_file,
     if OUTPUT_DIRECTORY is None:
         OUTPUT_DIRECTORY = tile_file.parent
     # create output directory if non-existent
-    OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
+    if not OUTPUT_DIRECTORY.exists():
+        OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
     # file format for mask and tide prediction files
     file_format = '{0}_{1}{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
     # extract tile centers from filename
