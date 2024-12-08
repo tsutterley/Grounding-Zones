@@ -111,7 +111,7 @@ def tile_data_ICESat2_ATL11(tile_file,
     logging.info(f'Total Points: {npts:d}')
 
     # root group attributes
-    attributes = {}
+    attributes = dict(ROOT={})
     attributes['ROOT']['x_center'] = xc
     attributes['ROOT']['y_center'] = xc
     if TIDE_MODEL:
@@ -240,7 +240,7 @@ def tile_data_ICESat2_ATL11(tile_file,
                 mask[c:c+file_length] = \
                     np.logical_not(h.mask) & \
                     (tide_ocean[:,k] != invalid) & \
-                    (h > THRESHOLD) & \
+                    (h > THRESHOLD[0]) & (h <= THRESHOLD[1]) & \
                     (error[:,k] <= MAX_ERROR) & \
                     (qs1 == 0)
                 # add to counter
