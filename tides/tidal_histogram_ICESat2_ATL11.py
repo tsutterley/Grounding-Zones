@@ -496,7 +496,7 @@ def tidal_histogram(tile_file,
     output_file = OUTPUT_DIRECTORY.joinpath(tile_file_formatted)
     logging.info(output_file)
     fileID = gz.io.multiprocess_h5py(output_file, mode='a')
-    # create fit_statistics group if non-existent
+    # create tide model group if non-existent
     group = model.name if model.name else 'uncorrected'
     if group not in fileID:
         g1 = fileID.create_group(group)
