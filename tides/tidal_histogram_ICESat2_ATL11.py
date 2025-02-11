@@ -453,6 +453,10 @@ def tidal_histogram(tile_file,
             output['count'][indy, indx] += np.sum(hh)
             hist += hh.astype(np.float64)
 
+    # exit if there are no valid points
+    if np.sum(output['count']) == 0:
+        raise ValueError('No valid points found for tile')
+
     # find and replace invalid values
     indy, indx = np.nonzero(output['count'] == 0)
     # update values for invalid points

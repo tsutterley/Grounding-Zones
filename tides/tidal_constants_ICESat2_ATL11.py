@@ -506,6 +506,10 @@ def tidal_constants(tile_file,
             output['amplitude'][indy, indx, :] = np.abs(hc)
             output['phase'][indy, indx, :] = ph.copy()
 
+    # exit if there are no valid points
+    if np.sum(output['count']) == 0:
+        raise ValueError('No valid points found for tile')
+
     # find and replace invalid values
     indy, indx = np.nonzero(count == 0)
     # update values for invalid points
