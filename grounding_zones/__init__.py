@@ -15,6 +15,7 @@ import grounding_zones.crs
 import grounding_zones.fit
 from grounding_zones import io
 from grounding_zones.mosaic import mosaic
+import grounding_zones.spatial
 import grounding_zones.utilities
 import grounding_zones.version
 

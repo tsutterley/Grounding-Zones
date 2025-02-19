@@ -243,7 +243,7 @@ def reduce_ICESat_GLA12_raster(INPUT_FILE,
 
     # read raster image for spatial coordinates and data
     MASK = pathlib.Path(MASK).expanduser().absolute()
-    dinput = pyTMD.spatial.from_file(MASK, FORMAT,
+    dinput = gz.spatial.from_file(MASK, FORMAT,
         xname=VARIABLES[0], yname=VARIABLES[1], varname=VARIABLES[2])
     # raster extents
     xmin,xmax,ymin,ymax = np.copy(dinput['attributes']['extent'])

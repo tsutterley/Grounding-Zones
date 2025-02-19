@@ -457,11 +457,11 @@ def main():
 
     # read input file to extract time, spatial coordinates and data
     if (args.format == 'csv') and (comm.rank == 0):
-        dinput = pyTMD.spatial.from_ascii(args.infile,
+        dinput = gz.spatial.from_ascii(args.infile,
             columns=args.variables, header=args.header,
             verbose=args.verbose)
     elif (args.format == 'netCDF4') and (comm.rank == 0):
-        dinput = pyTMD.spatial.from_netCDF4(args.infile,
+        dinput = gz.spatial.from_netCDF4(args.infile,
             xname=args.variables[2], yname=args.variables[1],
             timename=args.variables[0], varname=args.variables[3],
             verbose=args.verbose)
@@ -470,7 +470,7 @@ def main():
         attrib[args.variables[1]] = dinput['attributes']['y']
         attrib[args.variables[0]] = dinput['attributes']['time']
     elif (args.format == 'HDF5') and (comm.rank == 0):
-        dinput = pyTMD.spatial.from_HDF5(args.infile,
+        dinput = gz.spatial.from_HDF5(args.infile,
             xname=args.variables[2], yname=args.variables[1],
             timename=args.variables[0], varname=args.variables[3],
             verbose=args.verbose)
@@ -479,7 +479,7 @@ def main():
         attrib[args.variables[1]] = dinput['attributes']['y']
         attrib[args.variables[0]] = dinput['attributes']['time']
     elif (args.format in ('GTiff','cog')) and (comm.rank == 0):
-        dinput = pyTMD.spatial.from_geotiff(args.infile,
+        dinput = gz.spatial.from_geotiff(args.infile,
             verbose=args.verbose)
         # copy global geotiff attributes for projection and grid parameters
         for att_name in ['projection','wkt','spacing','extent']:
@@ -703,18 +703,18 @@ def main():
 
         # output interpolated DEM to file
         if (args.format == 'csv'):
-            pyTMD.spatial.to_ascii(output, attrib, args.outfile,
+            gz.spatial.to_ascii(output, attrib, args.outfile,
                 delimiter=',', columns=[args.variables[0],
                 args.variables[1],args.variables[2],'dem_h'],
                 verbose=args.verbose)
         elif (args.format == 'netCDF4'):
-            pyTMD.spatial.to_netCDF4(output, attrib, args.outfile,
+            gz.spatial.to_netCDF4(output, attrib, args.outfile,
                 verbose=args.verbose)
         elif (args.format == 'HDF5'):
-            pyTMD.spatial.to_HDF5(output, attrib, args.outfile,
+            gz.spatial.to_HDF5(output, attrib, args.outfile,
                 verbose=args.verbose)
         elif args.format in ('GTiff','cog'):
-            pyTMD.spatial.to_geotiff(output, attrib, args.outfile,
+            gz.spatial.to_geotiff(output, attrib, args.outfile,
                 varname='dem_h', driver=args.format,
                 verbose=args.verbose)
         # change the permissions level to MODE

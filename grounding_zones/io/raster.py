@@ -32,6 +32,7 @@ from __future__ import print_function, annotations
 import collections
 import numpy as np
 import scipy.interpolate
+import grounding_zones.spatial
 from grounding_zones.utilities import import_dependency
 
 # attempt imports
@@ -69,7 +70,7 @@ class raster:
         **kwargs: dict
             Keyword arguments for file reader
         """
-        dinput = pyTMD.spatial.from_file(
+        dinput = grounding_zones.spatial.from_file(
             filename=input_file,
             format=format,
             **kwargs

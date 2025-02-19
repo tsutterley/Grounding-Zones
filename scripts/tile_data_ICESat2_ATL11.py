@@ -295,7 +295,7 @@ def tile_data_ICESat2_ATL11(tile_file,
         fileID.close()
     elif (FORMAT == 'parquet'):
         # write to parquet
-        pyTMD.spatial.to_parquet(d, attributes, output_file,
+        gz.spatial.to_parquet(d, attributes, output_file,
             geoparquet=False, crs=4326)
 
     # change the permissions mode
