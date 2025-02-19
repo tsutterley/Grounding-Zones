@@ -351,26 +351,26 @@ def calculate_grounding_zone(base_dir, input_file, output_file,
     dem_file = f'{input_file.stem}_{DEM_MODEL}{input_file.suffix}'
     f2 = input_file.with_name(dem_file)
     if (FORMAT == 'csv'):
-        d1 = pyTMD.spatial.from_ascii(input_file, columns=VARIABLES,
+        d1 = gz.spatial.from_ascii(input_file, columns=VARIABLES,
             header=HEADER, verbose=VERBOSE)
         v2 = [VARIABLES[0], VARIABLES[1], VARIABLES[2], 'dem_h']
-        d2 = pyTMD.spatial.from_ascii(f2, columns=v2,
+        d2 = gz.spatial.from_ascii(f2, columns=v2,
             header=0, verbose=VERBOSE)
     elif (FORMAT == 'netCDF4'):
-        d1 = pyTMD.spatial.from_netCDF4(input_file,
+        d1 = gz.spatial.from_netCDF4(input_file,
             xname=VARIABLES[2], yname=VARIABLES[1],
             timename=VARIABLES[0], varname=VARIABLES[3],
             verbose=VERBOSE)
-        d2 = pyTMD.spatial.from_netCDF4(f2,
+        d2 = gz.spatial.from_netCDF4(f2,
             xname=VARIABLES[2], yname=VARIABLES[1],
             timename=VARIABLES[0], varname='dem_h',
             verbose=VERBOSE)
     elif (FORMAT == 'HDF5'):
-        d1 = pyTMD.spatial.from_HDF5(input_file,
+        d1 = gz.spatial.from_HDF5(input_file,
             xname=VARIABLES[2], yname=VARIABLES[1],
             timename=VARIABLES[0], varname=VARIABLES[3],
             verbose=VERBOSE)
-        d2 = pyTMD.spatial.from_HDF5(f2,
+        d2 = gz.spatial.from_HDF5(f2,
             xname=VARIABLES[2], yname=VARIABLES[1],
             timename=VARIABLES[0], varname='dem_h',
             verbose=VERBOSE)

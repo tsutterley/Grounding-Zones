@@ -8,6 +8,7 @@ dependencies:
   - graphviz
   - lxml
   - matplotlib
+  - myst-nb
   - numpy
   - numpydoc
   - pip
@@ -15,7 +16,9 @@ dependencies:
   - python-dateutil
   - scipy
   - sphinx
+  - sphinx-argparse>=0.4
+  - sphinxcontrib-bibtex
+  - sphinx-design
   - sphinx_rtd_theme
   - pip:
-     - sphinx-argparse>=0.4
      - ..

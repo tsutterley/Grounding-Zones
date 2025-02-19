@@ -2,9 +2,13 @@
 Contribution Guidelines
 =======================
 
-We welcome and invite contributions from anyone at any career stage and with any amount of coding experience towards the development of this software.
-We appreciate any and all contributions made to the project.
-You will be recognized for your work by being listed as one of the `project contributors <./Citations.html#contributors>`_.
+``Grounding-Zones`` is an open source project.
+We welcome any help in maintaining and developing the software and documentation.
+Anyone at any career stage and with any level of coding experience can contribute towards the development of ``Grounding-Zones``.
+You will be recognized for your work by being listed as one of the `project contributors <../project/Contributors.html>`_.
+
+If you have found a problem in ``Grounding-Zones``, or you would like to suggest an improvement or modification,
+please submit a `GitHub issue <https://github.com/tsutterley/Grounding-Zone/issues>`_ and we will get back to you.
 
 Ways to Contribute
 ------------------

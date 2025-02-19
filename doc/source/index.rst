@@ -10,7 +10,6 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     getting_started/Install.rst
     getting_started/Parallel-HDF5.rst
     getting_started/Contributing.rst
-    getting_started/Citations.rst
 
 .. toctree::
     :maxdepth: 1
@@ -24,6 +23,7 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/crs.rst
     api_reference/fit.rst
     api_reference/mosaic.rst
+    api_reference/spatial.rst
     api_reference/utilities.rst
 
 .. toctree::
@@ -152,6 +152,7 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     :caption: Tides
 
     api_reference/tides/adjust_tides_ICESat2_ATL11.rst
+    api_reference/tides/compute_LPET_elevations.rst
     api_reference/tides/compute_LPET_icebridge_data.rst
     api_reference/tides/compute_LPET_ICESat_GLA12.rst
     api_reference/tides/compute_LPET_ICESat2_ATL03.rst
@@ -160,10 +161,15 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/tides/compute_LPET_ICESat2_ATL10.rst
     api_reference/tides/compute_LPET_ICESat2_ATL11.rst
     api_reference/tides/compute_LPET_ICESat2_ATL12.rst
+    api_reference/tides/compute_LPT_displacements.rst
     api_reference/tides/compute_LPT_icebridge_data.rst
     api_reference/tides/compute_LPT_ICESat_GLA12.rst
+    api_reference/tides/compute_OPT_displacements.rst
     api_reference/tides/compute_OPT_icebridge_data.rst
     api_reference/tides/compute_OPT_ICESat_GLA12.rst
+    api_reference/tides/compute_SET_displacements.rst
+    api_reference/tides/compute_tidal_currents.rst
+    api_reference/tides/compute_tidal_elevations.rst
     api_reference/tides/compute_tides_icebridge_data.rst
     api_reference/tides/compute_tides_ICESat_GLA12.rst
     api_reference/tides/compute_tides_ICESat2_ATL03.rst
@@ -175,3 +181,21 @@ Python Tools for Estimating Ice Sheet Grounding Zone Locations with data from NA
     api_reference/tides/fit_tides_ICESat2_ATL11.rst
     api_reference/tides/interpolate_tide_adjustment.rst
     api_reference/tides/mosaic_tide_adjustment.rst
+    api_reference/tides/tidal_constants_ICESat2_ATL11.rst
+    api_reference/tides/tidal_histogram_ICESat2_ATL11.rst
+
+.. toctree::
+    :maxdepth: 1
+    :hidden:
+    :caption: Project Details
+
+    project/Contributors.rst
+    project/Licenses.rst
+    project/Citations.rst
+
+.. toctree::
+    :maxdepth: 1
+    :hidden:
+    :caption: Bibliography
+
+    project/Bibliography.rst

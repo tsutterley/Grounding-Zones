@@ -252,8 +252,8 @@ def main():
     elev_TPX = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'][:].copy()
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
-    topex = pyTMD.datum(ellipsoid='TOPEX', units='MKS')
-    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
+    topex = pyTMD.spatial.datum(ellipsoid='TOPEX', units='MKS')
+    wgs84 = pyTMD.spatial.datum(ellipsoid='WGS84', units='MKS')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
     lat_40HZ, elev_40HZ = pyTMD.spatial.convert_ellipsoid(lat_TPX, elev_TPX,
         topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat,

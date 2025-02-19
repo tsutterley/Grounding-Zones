@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tides_ICESat2_ATL03.py
-Written by Tyler Sutterley (09/2024)
+Written by Tyler Sutterley (10/2024)
 Calculates tidal elevations for correcting ICESat-2 photon height data
 Calculated at ATL03 segment level using reference photon geolocation and time
 Segment level corrections can be applied to the individual photon events (PEs)
@@ -66,6 +66,8 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 10/2024: compute delta times based on corrections type
+        added option to append equilibrium amplitudes for node tides
     Updated 09/2024: use JSON database for known model parameters
         drop support for the ascii definition file format
         use model class attributes for file format and corrections
@@ -156,6 +158,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         CORRECTIONS=None,
         INFER_MINOR=False,
         MINOR_CONSTITUENTS=None,
+        APPEND_NODE=False,
         APPLY_FLEXURE=False,
         VERBOSE=False,
         MODE=0o775
@@ -232,31 +235,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             BOUNDS[3] = np.maximum(BOUNDS[3], np.max(lat))
 
     # read tidal constants
-    if model.format in ('OTIS','ATLAS-compact','TMD3'):
-        constituents = pyTMD.io.OTIS.read_constants(model.grid_file,
-            model.model_file, model.projection, type=model.type,
-            grid=model.file_format, crop=CROP, bounds=BOUNDS,
-            apply_flexure=APPLY_FLEXURE)
-        # available model constituents
-        c = constituents.fields
-    elif model.format in ('ATLAS-netcdf',):
-        constituents = pyTMD.io.ATLAS.read_constants(model.grid_file,
-            model.model_file, type=model.type, compressed=model.compressed,
-            crop=CROP, bounds=BOUNDS)
-        # available model constituents
-        c = constituents.fields
-    elif model.format in ('GOT-ascii','GOT-netcdf'):
-        constituents = pyTMD.io.GOT.read_constants(model.model_file,
-            compressed=model.compressed, grid=model.file_format,
-            crop=CROP, bounds=BOUNDS)
-        # available model constituents
-        c = constituents.fields
-    elif model.format in ('FES-ascii','FES-netcdf'):
-        constituents = pyTMD.io.FES.read_constants(model.model_file,
-            type=model.type, version=model.version, compressed=model.compressed,
-            crop=CROP, bounds=BOUNDS)
-        # available model constituents
-        c = model.constituents
+    model.read_constants(type=model.type, crop=CROP, bounds=BOUNDS,
+        append_node=APPEND_NODE, apply_flexure=APPLY_FLEXURE)
+    c = model._constituents.fields
 
     # copy variables for outputting to HDF5 file
     IS2_atl03_tide = {}
@@ -303,30 +284,9 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
             epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
 
         # interpolate tidal constants to grid points
-        if model.format in ('OTIS','ATLAS-compact','TMD3'):
-            amp,ph,D = pyTMD.io.OTIS.interpolate_constants(lon, lat,
-                constituents, model.projection, type=model.type,
-                method=METHOD, extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
-            # use delta time at 2000.0 to match TMD outputs
-            deltat = np.zeros((n_seg))
-        elif model.format in ('ATLAS-netcdf',):
-            amp,ph,D = pyTMD.io.ATLAS.interpolate_constants(lon, lat,
-                constituents, type=model.type, method=METHOD,
-                extrapolate=EXTRAPOLATE, cutoff=CUTOFF, scale=model.scale)
-            # use delta time at 2000.0 to match TMD outputs
-            deltat = np.zeros((n_seg))
-        elif model.format in ('GOT-ascii','GOT-netcdf'):
-            amp,ph = pyTMD.io.GOT.interpolate_constants(lon, lat,
-                constituents, method=METHOD, extrapolate=EXTRAPOLATE,
-                cutoff=CUTOFF, scale=model.scale)
-            # delta time (TT - UT1)
-            deltat = ts.tt_ut1
-        elif model.format in ('FES-ascii','FES-netcdf'):
-            amp,ph = pyTMD.io.FES.interpolate_constants(lon, lat,
-                constituents, method=METHOD, extrapolate=EXTRAPOLATE,
-                cutoff=CUTOFF, scale=model.scale)
-            # delta time (TT - UT1)
-            deltat = ts.tt_ut1
+        amp, ph = model.interpolate_constants(lon, lat,
+            type=model.type, method=METHOD,
+            extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
 
         # calculate complex phase in radians for Euler's
         cph = -1j*ph*np.pi/180.0
@@ -337,6 +297,14 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         nodal_corrections = CORRECTIONS or model.corrections
         # minor constituents to infer
         minor_constituents = MINOR_CONSTITUENTS or model.minor
+        # delta time (TT - UT1) for tide model
+        if nodal_corrections in ('OTIS','ATLAS','TMD3','netcdf'):
+            # use delta time at 2000.0 to match TMD outputs
+            deltat = np.zeros_like(ts.tt_ut1)
+        else:
+            # use interpolated delta times
+            deltat = ts.tt_ut1
+
         # predict tidal elevations at time
         tide = np.ma.empty((n_seg),fill_value=fv)
         tide.mask = np.any(hc.mask,axis=1)
@@ -693,6 +661,10 @@ def arguments():
     parser.add_argument('--minor-constituents',
         metavar='MINOR', type=str, nargs='+',
         help='Minor constituents to infer')
+    # append equilibrium amplitudes for node tides
+    parser.add_argument('--append-node',
+        default=False, action='store_true',
+        help='Append equilibrium amplitudes for node tides')
     # apply flexure scaling factors to height constituents
     parser.add_argument('--apply-flexure',
         default=False, action='store_true',
@@ -729,6 +701,7 @@ def main():
             CORRECTIONS=args.nodal_corrections,
             INFER_MINOR=args.infer_minor,
             MINOR_CONSTITUENTS=args.minor_constituents,
+            APPEND_NODE=args.append_node,
             APPLY_FLEXURE=args.apply_flexure,
             VERBOSE=args.verbose,
             MODE=args.mode)

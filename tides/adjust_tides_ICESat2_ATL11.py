@@ -130,7 +130,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
                                     CROSSOVERS=True)
 
     # read tide adjustment file
-    adjustment = pyTMD.spatial.from_HDF5(adjustment_file,
+    adjustment = gz.spatial.from_HDF5(adjustment_file,
         field_mapping=dict(x='x', y='y', data='tide_adj_scale'))
     # tide adjustment grid spacing
     dx = np.abs(adjustment['x'][1] - adjustment['x'][0])

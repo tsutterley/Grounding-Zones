@@ -32,6 +32,7 @@ PROGRAM DEPENDENCIES:
 UPDATE HISTORY:
     Updated 09/2024: use JSON database for known model parameters
         drop support for the ascii definition file format
+        get model name from file definition or from JSON database
     Updated 08/2024: option for automatic detection of definition format
     Updated 07/2024: use wrapper to importlib for optional dependencies
         use multiprocess h5py reader from io utilities module
@@ -117,7 +118,8 @@ def tidal_histogram(tile_file,
     if OUTPUT_DIRECTORY is None:
         OUTPUT_DIRECTORY = tile_file.parent
     # create output directory if non-existent
-    OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
+    if not OUTPUT_DIRECTORY.exists():
+        OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
     # file format for mask and tide prediction files
     file_format = '{0}_{1}{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
     # extract tile centers from filename
@@ -147,11 +149,15 @@ def tidal_histogram(tile_file,
     flat = 1.0/crs_to_cf['inverse_flattening']
     reference_latitude = crs_to_cf['standard_parallel']
 
-    # get tide model parameters from definition file
+    # get tide model parameters from definition file or model name
     if DEFINITION_FILE is not None:
         model = pyTMD.io.model(None, verify=False).from_file(
             DEFINITION_FILE)
-        TIDE_MODEL = model.name
+    elif TIDE_MODEL is not None:
+        model = pyTMD.io.model(None, verify=False).elevation(TIDE_MODEL)
+    else:
+        # default for uncorrected heights
+        model = type('model', (), dict(name=None, corrections='GOT'))
 
     # read the input file
     if MASK_FILE is not None:
@@ -241,9 +247,9 @@ def tidal_histogram(tile_file,
         f2 = gz.io.multiprocess_h5py(FILE2, mode='r')
         SUB,PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = R2.findall(ATL11).pop()
         # read tide model corrections
-        if TIDE_MODEL:
+        if model.name:
             # read ATL11 tide correction HDF5 file
-            a3 = (PRD,TIDE_MODEL,'_TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
+            a3 = (PRD,model.name,'_TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
             FILE3 = d1.joinpath(file_format.format(*a3))
             f3 = gz.io.multiprocess_h5py(FILE3, mode='r')
         # read inverse barometer correction
@@ -273,7 +279,7 @@ def tidal_histogram(tile_file,
                     mds[ptx]['h_corr_sigma_systematic'][indices,:]**2
                 )
             # read tide model corrections
-            if TIDE_MODEL:
+            if model.name:
                 # read tide data and reduce to indices
                 temp = f3[ptx]['cycle_stats']['tide_ocean'][:].copy()
                 tide_ocean = temp[indices,:]
@@ -327,7 +333,7 @@ def tidal_histogram(tile_file,
                 c += file_length
         # close the input dataset(s)
         f2.close()
-        if TIDE_MODEL:
+        if model.name:
             f3.close()
         if REANALYSIS:
             f4.close()
@@ -447,6 +453,10 @@ def tidal_histogram(tile_file,
             output['count'][indy, indx] += np.sum(hh)
             hist += hh.astype(np.float64)
 
+    # exit if there are no valid points
+    if np.sum(output['count']) == 0:
+        raise ValueError('No valid points found for tile')
+
     # find and replace invalid values
     indy, indx = np.nonzero(output['count'] == 0)
     # update values for invalid points
@@ -491,8 +501,8 @@ def tidal_histogram(tile_file,
     output_file = OUTPUT_DIRECTORY.joinpath(tile_file_formatted)
     logging.info(output_file)
     fileID = gz.io.multiprocess_h5py(output_file, mode='a')
-    # create fit_statistics group if non-existent
-    group = TIDE_MODEL if TIDE_MODEL else 'uncorrected'
+    # create tide model group if non-existent
+    group = model.name if model.name else 'uncorrected'
     if group not in fileID:
         g1 = fileID.create_group(group)
     else:

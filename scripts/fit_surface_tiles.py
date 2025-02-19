@@ -208,7 +208,8 @@ def fit_surface_tiles(tile_files,
     if OUTPUT_DIRECTORY is None:
         OUTPUT_DIRECTORY = tile_file.parents[1]
     # create output directory if non-existent
-    OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
+    if not OUTPUT_DIRECTORY.exists():
+        OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
     # extract tile centers from filename
     tile_centers = R1.findall(tile_file.name).pop()
     xc, yc = 1000.0*np.array(tile_centers, dtype=np.float64)

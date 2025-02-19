@@ -228,7 +228,8 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
     if OUTPUT_DIRECTORY is None:
         OUTPUT_DIRECTORY = INPUT_FILE.parent
     # create output directory if it doesn't exist
-    OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
+    if not OUTPUT_DIRECTORY.exists():
+        OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
     # full path to output file
     OUTPUT_FILE = OUTPUT_DIRECTORY.joinpath(FILENAME)
     # plot counter

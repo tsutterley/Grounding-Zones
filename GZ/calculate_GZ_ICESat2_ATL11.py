@@ -191,7 +191,8 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
     if OUTPUT_DIRECTORY is None:
         OUTPUT_DIRECTORY = INPUT_FILE.parent
     # create output directory if it doesn't exist
-    OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
+    if not OUTPUT_DIRECTORY.exists():
+        OUTPUT_DIRECTORY.mkdir(mode=MODE, parents=True, exist_ok=True)
     # file format for associated auxiliary files
     file_format = '{0}_{1}_{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
     # set the hemisphere flag based on ICESat-2 granule
