@@ -14,25 +14,6 @@ extension routines for the sets of
 `read-ICESat-2 <https://github.com/tsutterley/read-ICESat-2>`__ and
 `pyTMD <https://github.com/tsutterley/pyTMD>`__ tools.
 
-Contributors
-############
-
-.. include:: ../../../CONTRIBUTORS.rst
-
-Development
-###########
-
-``Grounding-Zones`` is an open source project.
-We welcome any help in maintaining and developing the software and documentation.
-Anyone at any career stage and with any level of coding experience can contribute.
-Please see the `Contribution Guidelines <./Contributing.html>`_ for more information.
-
-Problem Reports
-###############
-
-If you have found a problem in this software, or you would like to suggest an improvement or modification,
-please submit a `GitHub issue <https://github.com/tsutterley/Grounding-Zones/issues>`_ and we will get back to you.
-
 Dependencies
 ############
 

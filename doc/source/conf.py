@@ -33,8 +33,9 @@ with open(os.path.abspath('../../version.txt')) as fh:
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    "sphinx.ext.autodoc",
     "numpydoc",
+    'sphinxcontrib.bibtex',
+    "sphinx.ext.autodoc",
     "sphinx.ext.graphviz",
     "sphinx.ext.viewcode",
     "sphinxarg.ext"
@@ -53,10 +54,12 @@ master_doc = 'index'
 
 # -- Configuration options ---------------------------------------------------
 autosummary_generate = True
-numfig = True
 autodoc_member_order = 'bysource'
 numpydoc_show_class_members = False
 pygments_style = 'native'
+bibtex_bibfiles = ['_assets/gz-refs.bib']
+bibtex_default_style = 'plain'
+numfig = True
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -65,6 +68,11 @@ html_short_title = "Grounding-Zones"
 html_show_sourcelink = False
 html_show_sphinx = True
 html_show_copyright = True
+
+numfig_format = {
+    'figure': 'Figure %s:',
+    'table': 'Table %s:',
+}
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.

@@ -494,7 +494,7 @@ def arguments():
         help='Spatial projection as EPSG code or PROJ4 string')
     # ellipsoid for calculating load pole tide parameters
     parser.add_argument('--ellipsoid','-E',
-        type=str, choices=pyTMD._ellipsoids, default='WGS84',
+        type=str, choices=pyTMD.spatial._ellipsoids, default='WGS84',
         help='Ellipsoid for calculating load pole tide parameters')
     # Earth orientation parameters
     parser.add_argument('--convention','-c',

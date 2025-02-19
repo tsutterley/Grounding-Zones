@@ -441,7 +441,7 @@ def arguments():
         help='Spatial projection as EPSG code or PROJ4 string')
     # ellipsoid for calculating astronomical parameters
     parser.add_argument('--ellipsoid','-E',
-        type=str, choices=pyTMD._ellipsoids, default='WGS84',
+        type=str, choices=pyTMD.spatial._ellipsoids, default='WGS84',
         help='Ellipsoid for calculating astronomical parameters')
     # permanent tide system for output values
     parser.add_argument('--tide-system','-p',
