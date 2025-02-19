@@ -223,7 +223,7 @@ def compute_OPT_icebridge_data(arg,
     # degrees to radians
     dtr = np.pi/180.0
     # earth and physical parameters for ellipsoid
-    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
+    wgs84 = pyTMD.spatial.datum(ellipsoid='WGS84', units='MKS')
     # mean equatorial gravitational acceleration [m/s^2]
     ge = 9.7803278
     # density of sea water [kg/m^3]

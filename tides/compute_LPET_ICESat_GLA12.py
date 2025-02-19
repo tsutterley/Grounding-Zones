@@ -141,8 +141,8 @@ def compute_LPET_ICESat(INPUT_FILE,
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
-    topex = pyTMD.datum(ellipsoid='TOPEX', units='MKS')
-    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
+    topex = pyTMD.spatial.datum(ellipsoid='TOPEX', units='MKS')
+    wgs84 = pyTMD.spatial.datum(ellipsoid='WGS84', units='MKS')
     # convert from Topex/Poseidon to WGS84 Ellipsoids
     lat_40HZ, elev_40HZ = pyTMD.spatial.convert_ellipsoid(
         lat_TPX, elev_TPX,

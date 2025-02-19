@@ -202,7 +202,7 @@ def compute_LPT_icebridge_data(arg,
     # degrees to radians
     dtr = np.pi/180.0
     # earth and physical parameters for ellipsoid
-    wgs84 = pyTMD.datum(ellipsoid='WGS84', units='MKS')
+    wgs84 = pyTMD.spatial.datum(ellipsoid='WGS84', units='MKS')
     # tidal love/shida numbers appropriate for the load tide
     hb2 = 0.6207
     lb2 = 0.0847

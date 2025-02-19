@@ -265,7 +265,7 @@ def compute_OPT_displacements(input_file, output_file,
     # degrees to radians
     dtr = np.pi/180.0
     # earth and physical parameters for ellipsoid
-    units = pyTMD.datum(ellipsoid=ELLIPSOID, units='MKS')
+    units = pyTMD.spatial.datum(ellipsoid=ELLIPSOID, units='MKS')
     # mean equatorial gravitational acceleration [m/s^2]
     ge = 9.7803278
     # density of sea water [kg/m^3]
