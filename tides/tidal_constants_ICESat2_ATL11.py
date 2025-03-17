@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tidal_constants_ICESat2_ATL11.py
-Written by Tyler Sutterley (10/2024)
+Written by Tyler Sutterley (03/2025)
 Calculates amplitudes and phases of tidal constituents using
 data from the ICESat-2 ATL11 annual land ice height product
 
@@ -36,6 +36,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 03/2025: added check to see if any mask points are valid
     Updated 10/2024: add option to select nodal corrections type
     Written 09/2024
 """
@@ -202,6 +203,9 @@ def tidal_constants(tile_file,
     if MASK_FILE is not None:
         bounds = [xmin-dx, xmax+dx, ymin-dy, ymax+dy]
         m = read_raster_file(MASK_FILE, bounds=bounds)
+        # check if there is any data
+        if not np.any(m['data']):
+            raise ValueError('No data found in trimmed mask file')
         # calculate polar stereographic distortion
         # interpolate raster to output grid
         DX, DY = m['attributes']['spacing']
