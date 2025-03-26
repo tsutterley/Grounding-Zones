@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 mosaic_tide_adjustment.py
-Written by Tyler Sutterley (08/2024)
+Written by Tyler Sutterley (03/2025)
 
 Creates a mosaic of interpolated tidal adjustment scale factors
 
@@ -18,6 +18,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the output mosaic
 
 UPDATE HISTORY:
+    Updated 03/2025: put program execution within a try/except statement
     Updated 08/2024: changed from 'geotiff' to 'GTiff' and 'cog' formats
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 12/2023: don't have a default tide model in arguments
@@ -31,16 +32,28 @@ UPDATE HISTORY:
     Updated 03/2020: made output filename a command line option
     Written 03/2020
 """
+import sys
+import os
 import re
 import logging
 import pathlib
 import argparse
+import traceback
 import numpy as np
 import grounding_zones as gz
 
 # attempt imports
 h5py = gz.utilities.import_dependency('h5py')
 pyproj = gz.utilities.import_dependency('pyproj')
+
+# PURPOSE: keep track of threads
+def info(args):
+    logging.debug(pathlib.Path(sys.argv[0]).name)
+    logging.debug(args)
+    logging.debug(f'module name: {__name__}')
+    if hasattr(os, 'getppid'):
+        logging.debug(f'parent process: {os.getppid():d}')
+    logging.debug(f'process id: {os.getpid():d}')
 
 # PURPOSE: mosaic interpolated tiles to a complete grid
 def mosaic_tide_adjustment(base_dir, output_file,
@@ -282,13 +295,22 @@ def main():
     logging.basicConfig(level=loglevel)
 
     # run tide mosaic program
-    mosaic_tide_adjustment(args.directory, args.output_file,
-        HEM=args.hemisphere,
-        RANGE=args.range,
-        CROP=args.crop,
-        MASK=args.mask,
-        TIDE_MODEL=args.tide,
-        MODE=args.mode)
+    try:
+        info(args)
+        mosaic_tide_adjustment(args.directory, args.output_file,
+            HEM=args.hemisphere,
+            RANGE=args.range,
+            CROP=args.crop,
+            MASK=args.mask,
+            TIDE_MODEL=args.tide,
+            MODE=args.mode
+        )
+    except Exception as exc:
+        # if there has been an error exception
+        # print the type, value, and stack trace of the
+        # current exception being handled
+        logging.critical(f'process id {os.getpid():d} failed')
+        logging.error(traceback.format_exc())
 
 # run main program
 if __name__ == '__main__':
