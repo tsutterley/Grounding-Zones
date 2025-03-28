@@ -447,8 +447,9 @@ def tidal_constants(tile_file,
     fill_value['phase'] = invalid
     # harmonic constituents
     attributes['constituents'] = {}
-    attributes['long_name'] = 'Tidal constituents'
-    attributes['description'] = 'Tidal constituents listed in order of solution'
+    attributes['constituents']['long_name'] = 'Tidal constituents'
+    attributes['constituents']['description'] = \
+        'Tidal constituents listed in order of solution'
     fill_value['constituents'] = None
 
     # allocate for output variables
