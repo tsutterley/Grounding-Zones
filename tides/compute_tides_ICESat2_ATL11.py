@@ -841,7 +841,7 @@ def arguments():
         type=np.float64, default=10.0,
         help='Extrapolation cutoff in kilometers')
     # specify nodal corrections type
-    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3')
+    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3', 'group')
     parser.add_argument('--nodal-corrections',
         metavar='CORRECTIONS', type=str, choices=nodal_choices,
         help='Nodal corrections to apply')

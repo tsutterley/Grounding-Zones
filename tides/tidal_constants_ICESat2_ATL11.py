@@ -617,7 +617,7 @@ def arguments():
         type=pathlib.Path,
         help='Tide model definition file')
     # specify nodal corrections type
-    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3')
+    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3', 'group')
     parser.add_argument('--nodal-corrections',
         metavar='CORRECTIONS', type=str, choices=nodal_choices,
         help='Nodal corrections to use')
