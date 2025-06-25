@@ -22,8 +22,8 @@ COMMAND LINE OPTIONS:
     --iteration: Number of iterations for surface fit
     --order-time: Temporal fit polynomial order
     --order-space: Spatial fit polynomial order
-    -R X, --relative X: Relative period for time-variable fit
-    -K X, --knots X: Temporal knots for spline fit
+    --relative X: Relative period for time-variable fit
+    --knots X: Temporal knots for spline fit
     -V, --verbose: Verbose output of run
     -M X, --mode X: Permissions mode of the directories and files
 
@@ -63,7 +63,7 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 07/2024: ignore overflow errors in ATL06/11 error calculations
-    Updated 06/2024: renamed GLAH12 quality summary variable to d_qa_sum
+    Updated 06/2024: renamed GLAH12 quality summary variable to qa_sum_flg
     Updated 05/2024: switched from individual mask files to a
         common raster mask option for non-ice points
         moved multiprocess h5py reader to io utilities module
@@ -512,7 +512,7 @@ def fit_surface_tiles(tile_files,
                     # mask for reducing to valid values
                     d['mask'][c:c+file_length] = \
                         (f2[group][subgroup]['d_elev'][indices] != invalid) & \
-                        (f3[group]['Quality']['d_qa_sum'][indices] == 0)
+                        (f3[group]['Quality']['qa_sum_flg'][indices] == 0)
                     # add to mission variable
                     d['mission'][c:c+file_length] = mission[short_name]
                     # add to counter
@@ -920,10 +920,10 @@ def arguments():
     parser.add_argument('--order-space',
         type=int, default=3,
         help='Spatial fit polynomial order')
-    parser.add_argument('--relative','-R',
+    parser.add_argument('--relative',
         type=float, nargs='+',
         help='Relative period for time-variable fit')
-    parser.add_argument('--knots','-K',
+    parser.add_argument('--knots',
         type=float, nargs='+',
         help='Temporal knots for spline fit and output time series')
     # verbose output of processing run

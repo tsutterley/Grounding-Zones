@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_SET_ICESat_GLA12.py
-Written by Tyler Sutterley (08/2024)
+Written by Tyler Sutterley (07/2025)
 Calculates radial solid Earth tide displacements for correcting
     ICESat/GLAS L2 GLA12 Antarctic and Greenland Ice Sheet
     elevation data following IERS Convention (2010) guidelines
@@ -34,6 +34,7 @@ PROGRAM DEPENDENCIES:
     predict.py: calculates solid Earth tides
 
 UPDATE HISTORY:
+    Updated 07/2025: revert free-to-mean conversion to April 2023 version
     Updated 08/2024: use rotation matrix to convert from cartesian to spherical
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
@@ -169,6 +170,10 @@ def compute_SET_ICESat(INPUT_FILE,
     theta = (np.pi/2.0 - latitude_geocentric)
     # calculate longitude (radians)
     phi = np.arctan2(Y, X)
+    # legendre polynomial of degree 2 (unnormalized)
+    P2 = 0.5*(3.0*np.cos(theta)**2 - 1.0)
+    # body tide love number for degree 2
+    h2 = 0.609
 
     # rotation matrix for converting from cartesian coordinates
     R = np.zeros((n_40HZ, 3, 3))
@@ -194,8 +199,7 @@ def compute_SET_ICESat(INPUT_FILE,
     tide_se.mask = np.isnan(tide_se.data) | (elev_40HZ == fv)
     tide_se.data[tide_se.mask] = tide_se.fill_value
     # calculate permanent tide offset (meters)
-    tide_se_free2mean = 0.06029 - \
-        0.180873*np.sin(lat_40HZ*np.pi/180.0)**2
+    tide_se_free2mean = 0.3146*np.sqrt(5.0/(4.0*np.pi))*h2*P2
 
     # copy variables for outputting to HDF5 file
     IS_gla12_tide = dict(Data_40HZ={})

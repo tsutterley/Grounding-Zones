@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 filter_ICESat_GLA12.py
-Written by Tyler Sutterley (06/2024)
+Written by Tyler Sutterley (06/2025)
 Calculates quality summary flags for ICESat/GLAS L2 GLA12
     Antarctic and Greenland Ice Sheet elevation data
 
@@ -49,7 +49,7 @@ L. S. Sorensen, S. B. Simonsen, K. Nielsen, P. Lucas-Picher,
     https://doi.org/10.5194/tc-5-173-2011
 
 UPDATE HISTORY:
-    Updated 06/2024: renamed GLAH12 quality summary variable to d_qa_sum
+    Updated 06/2025: renamed GLAH12 quality summary variable to qa_sum_flg
     Updated 05/2024: use wrapper to importlib for optional dependencies
         add note for the reflectivities culled by Ben in pointCollection
         write 40HZ reference track number in output files
@@ -300,18 +300,18 @@ def filter_ICESat_GLA12(INPUT_FILE,
     f.close()
 
     # create quality summary with valid points == 0
-    IS_gla12_mask['Data_40HZ']['Quality']['d_qa_sum'] = quality_mask.astype('b')
+    IS_gla12_mask['Data_40HZ']['Quality']['qa_sum_flg'] = quality_mask.astype('b')
 
     # attributes for quality summary
-    IS_gla12_attrs['Data_40HZ']['Quality']['d_qa_sum'] = {}
-    IS_gla12_attrs['Data_40HZ']['Quality']['d_qa_sum']['long_name'] = \
+    IS_gla12_attrs['Data_40HZ']['Quality']['qa_sum_flg'] = {}
+    IS_gla12_attrs['Data_40HZ']['Quality']['qa_sum_flg']['long_name'] = \
         "GLA12_Quality_Summary"
-    IS_gla12_attrs['Data_40HZ']['Quality']['d_qa_sum']['units'] = "1"
-    IS_gla12_attrs['Data_40HZ']['Quality']['d_qa_sum']['valid_min'] = 0
-    IS_gla12_attrs['Data_40HZ']['Quality']['d_qa_sum']['valid_max'] = 1
-    IS_gla12_attrs['Data_40HZ']['Quality']['d_qa_sum']['contentType'] = \
+    IS_gla12_attrs['Data_40HZ']['Quality']['qa_sum_flg']['units'] = "1"
+    IS_gla12_attrs['Data_40HZ']['Quality']['qa_sum_flg']['valid_min'] = 0
+    IS_gla12_attrs['Data_40HZ']['Quality']['qa_sum_flg']['valid_max'] = 1
+    IS_gla12_attrs['Data_40HZ']['Quality']['qa_sum_flg']['contentType'] = \
         "qualityInformation"
-    IS_gla12_attrs['Data_40HZ']['Quality']['d_qa_sum']['description'] = ("The "
+    IS_gla12_attrs['Data_40HZ']['Quality']['qa_sum_flg']['description'] = ("The "
         "quality summary parameter indicates the best-quality subset of all GLA12 "
         "data. A zero in this parameter implies that no data-quality tests have "
         "found a problem with the elevation and that the data can be corrected for "
@@ -319,11 +319,11 @@ def filter_ICESat_GLA12(INPUT_FILE,
         "problem has been found. This flag can be used for obtaining high-quality "
         "data, but will likely miss a significant fraction of usable data, "
         "particularly in cloudy, rough, or low-surface-reflectance conditions.")
-    IS_gla12_attrs['Data_40HZ']['Quality']['d_qa_sum']['coordinates'] = \
+    IS_gla12_attrs['Data_40HZ']['Quality']['qa_sum_flg']['coordinates'] = \
         "DS_UTCTime_40"
-    IS_gla12_attrs['Data_40HZ']['Quality']['d_qa_sum']['flag_meanings'] = \
+    IS_gla12_attrs['Data_40HZ']['Quality']['qa_sum_flg']['flag_meanings'] = \
         "best_quality potential_problem"
-    IS_gla12_attrs['Data_40HZ']['Quality']['d_qa_sum']['flag_values'] = [0,1]
+    IS_gla12_attrs['Data_40HZ']['Quality']['qa_sum_flg']['flag_values'] = [0,1]
 
     # add global attributes for input GLA12 file
     IS_gla12_attrs['lineage'] = GRANULE

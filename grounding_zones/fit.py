@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 fit.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (06/2025)
 
 Utilities for creating models from surface elevation data
 
@@ -10,6 +10,7 @@ PYTHON DEPENDENCIES:
     scipy: Scientific Tools for Python (https://docs.scipy.org/doc/)
 
 UPDATE HISTORY:
+    Updated 06/2025: added boundary case for constant temporal fit
     Updated 05/2024: add function to build the complete design matrix
         add function to build the constraints for the least-squares fit
         add function to validate the columns in the design matrix
@@ -959,7 +960,11 @@ def _build_constraints(t_in, x_in, y_in, d_in, **kwargs):
     ub[0] = dmax + dsigma
     # time-variable constraints
     FIT_TYPE = kwargs['FIT_TYPE'].lower()
-    if (FIT_TYPE == 'polynomial') and (n_time > 1):
+    if (n_time == 1):
+        # no constraints for constant time-variable fit
+        pass
+    elif (FIT_TYPE == 'polynomial') and (n_time > 1):
+        # bounds for polynomial fit
         lb[1] = (dmin - dmax - 2.0*dsigma)/(tmax - tmin)
         ub[1] = (dmax - dmin + 2.0*dsigma)/(tmax - tmin)
     elif (FIT_TYPE == 'chebyshev'):
