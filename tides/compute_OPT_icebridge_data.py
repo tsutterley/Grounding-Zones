@@ -301,7 +301,7 @@ def compute_OPT_icebridge_data(arg,
     Urad = np.ma.zeros((file_lines),fill_value=fill_value)
     Urad.data[:] = U[:,2].copy()
     # replace fill values
-    Urad.mask = np.isnan(Urad.data)
+    Urad.mask = np.isnan(Urad.data) | np.any(dxi.mask, axis=1)
     Urad.data[Urad.mask] = Urad.fill_value
     # copy radial displacement to output variable
     dinput['tide_oc_pole'] = Urad.copy()

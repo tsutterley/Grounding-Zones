@@ -245,7 +245,7 @@ def compute_OPT_ICESat(INPUT_FILE,
     Urad = np.ma.zeros((n_40HZ),fill_value=fv)
     Urad.data[:] = U[:,2].copy()
     # replace fill values
-    Urad.mask = np.isnan(Urad.data)
+    Urad.mask = np.isnan(Urad.data) | np.any(dxi.mask, axis=1)
     Urad.data[Urad.mask] = Urad.fill_value
 
     # copy variables for outputting to HDF5 file

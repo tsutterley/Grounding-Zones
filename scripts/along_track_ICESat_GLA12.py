@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 along_track_ICESat_GLA12.py
-Written by Tyler Sutterley (06/2025)
+Written by Tyler Sutterley (07/2025)
 
 Fits a time-variable surface to ICESat data to create an
 along-track GLAH12 data product
@@ -12,6 +12,7 @@ INPUTS:
 COMMAND LINE OPTIONS:
     --help: list the command line options
     -H X, --hemisphere X: Region of interest to run
+    --rgt-phase X: Repeat ground-track phase to run
     -A X, --along_track X: Along-track distance for the segments
     -S X, --search_radius X: Search radius for the surface fit
     -I X, --iteration X: Number of iterations for surface fit
@@ -22,6 +23,8 @@ COMMAND LINE OPTIONS:
     -R X, --reanalysis X: Model for inverse-barometer correction
     -G X, --geoid X: Geoid height model for correction
     --dem-filter: Filter elevations against internal DEM
+    --knots X: Number of knots for the spline fit
+    --runs X: Number of Monte Carlo runs for the along-track coordinates
     -V, --verbose: Verbose output of run
     -M X, --mode X: Permissions mode of the directories and files
 
@@ -57,6 +60,8 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 07/2025: save saturated waveform correction to output files
+        save elevation change rate and uncertainty if computed
+        use a Monte Carlo approach to calculate the along-track coordinates
     Forked 06/2025 from fit_surface_tiles.py
 """
 import sys
@@ -301,6 +306,26 @@ def read_GLAH12_file(GRANULE,
         tide_ocean=otide, tide_earth=tide_earth, dac=IB,
         geoid=gdHt)
 
+def along_track_splines(d, x, y, z, **kwargs):
+    """
+    Use univariate splines to interpolate along-track coordinates
+    """
+    # set default keyword arguments
+    kwargs.setdefault('s', 0)
+    kwargs.setdefault('ext', 0)
+    # try to create a spline with the given data
+    for k in range(3, 0, -1):
+        try:
+            sx = scipy.interpolate.UnivariateSpline(d, x, k=k, **kwargs)
+            sy = scipy.interpolate.UnivariateSpline(d, y, k=k, **kwargs)
+            sz = scipy.interpolate.UnivariateSpline(d, z, k=k, **kwargs)
+        except Exception as exc:
+            pass
+        else:
+            return (sx, sy, sz)
+    # if we get here, then we failed to create a spline
+    raise ValueError(f'Failed to create spline for {d.size} points')
+
 # PURPOSE: read ICESat ICESat/GLAS L2 GLA12 Ice Sheet elevation data
 # and create an along-track GLA12 HDF5 file using a surface fit technique
 def along_track_GLA12(track_file,
@@ -316,6 +341,8 @@ def along_track_GLA12(track_file,
         REANALYSIS=None,
         GEOID=None,
         DEM_FILTER=False,
+        KNOTS=0,
+        RUNS=2000,
         RGT_PHASE=None,
         MODE=0o775
     ):
@@ -389,6 +416,9 @@ def along_track_GLA12(track_file,
     # reduce to repeat ground-track phase
     if (RGT_PHASE is not None):
         mask |= (GLAH12['i_rgtp'] != RGT_PHASE)
+    # check that there are some valid points
+    if np.all(mask):
+        raise ValueError(f'No valid points in {track_file.name}')
     # apply mask to all variables
     for var in variables:
         GLAH12[var].mask = mask
@@ -409,29 +439,52 @@ def along_track_GLA12(track_file,
     # sort the data
     for var in variables:
         GLAH12[var] = GLAH12[var][s]
-    # sort the campaigns
+    # sort the campaigns and repeat ground-track phase
     GLAH12['campaign'] = GLAH12['campaign'][s]
     GLAH12['i_rgtp'] = GLAH12['i_rgtp'][s]
+    # number of campaigns
+    n_camp = len(campaigns)
 
-    # use scipy interpolating splines
-    sx = scipy.interpolate.UnivariateSpline(d, x, k=1, s=0, ext=0)
-    sy = scipy.interpolate.UnivariateSpline(d, y, k=1, s=0, ext=0)
-    sz = scipy.interpolate.UnivariateSpline(d, z, k=1, s=0, ext=0)
     # create a new set of distances
     dist = np.arange(0, np.max(d), ALONG_TRACK)
     # number of segments
     n_seg = len(dist)
-    # number of campaigns
-    n_camp = len(campaigns)
-    # interpolate coordinates to segments
-    xi = sx(dist)
-    yi = sy(dist)
-    zi = sz(dist)
+
+    # randomly sample the along-track coordinates
+    # and calculate the median of the random samples
+    xtemp = np.zeros((n_seg, RUNS))
+    ytemp = np.zeros((n_seg, RUNS))
+    ztemp = np.zeros((n_seg, RUNS))
+    # indices for the data
+    indices = np.arange(0, len(d))
+    # number of samples for each run
+    # if KNOTS is set, then use that number of samples
+    # otherwise use the number of points divided by the number of runs
+    n_samp = np.int64(KNOTS) if (KNOTS > 0) else (len(d)//RUNS)
+    # create a random number generator
+    rng = np.random.default_rng()
+    # for each monte carlo run
+    for N in range(RUNS):
+        # randomly sample indices
+        s = rng.choice(indices, size=n_samp, replace=False, shuffle=False)
+        # verify that the samples are monotonicly increasing
+        i = np.sort(s)
+        # try using scipy interpolating splines
+        sx, sy, sz = along_track_splines(d[i], x[i], y[i], z[i])
+        # interpolate the data for iteration
+        xtemp[:,N] = sx(dist)
+        ytemp[:,N] = sy(dist)
+        ztemp[:,N] = sz(dist)
+    # calculate the median of the random samples
+    xi = np.median(xtemp, axis=1)
+    yi = np.median(ytemp, axis=1)
+    zi = np.median(ztemp, axis=1)
+
     # convert to geodetic and geocentric coordinates
     longitude, latitude, _ = pyTMD.spatial.to_geodetic(xi, yi, zi)
     latitude_geocentric = np.arctan(zi / np.sqrt(xi**2.0 + yi**2.0))
     # legendre polynomial of degree 2 (unnormalized)
-    theta = np.radians(90.0 - latitude_geocentric)
+    theta = (np.pi/2.0 - latitude_geocentric)
     P2 = 0.5*(3.0*np.cos(theta)**2 - 1.0)
     # body tide love numbers for degree 2
     k2 = 0.300
@@ -637,6 +690,22 @@ def along_track_GLA12(track_file,
     attributes['n_slope']['contentType'] = "derived"
     attributes['n_slope']['long_name'] = "North-component slope"
     attributes['n_slope']['coordinates'] = "longitude latitude"
+    # elevation change rate and uncertainty
+    attributes['dhdt'] = collections.OrderedDict()
+    attributes['dhdt']['units'] = "meters/year"
+    attributes['dhdt']['contentType'] = "derived"
+    attributes['dhdt']['long_name'] = "Elevation change rate"
+    attributes['dhdt']['coordinates'] = "longitude latitude"  
+    attributes['dhdt_sigma'] = collections.OrderedDict()
+    attributes['dhdt_sigma']['units'] = "meters/year"
+    attributes['dhdt_sigma']['contentType'] = "derived"
+    attributes['dhdt_sigma']['long_name'] = "Uncertainty in elevation change rate"
+    attributes['dhdt_sigma']['coordinates'] = "longitude latitude"
+    if (ORDER_TIME >= 1):
+        segment['dhdt'] = np.ma.zeros((n_seg), fill_value=fill_value)
+        segment['dhdt'].mask = np.ones((n_seg), dtype=bool)
+        segment['dhdt_sigma'] = np.ma.zeros((n_seg), fill_value=fill_value)
+        segment['dhdt_sigma'].mask = np.ones((n_seg), dtype=bool)
     # iterations
     segment['iterations'] = np.zeros((n_seg), dtype='i')
     attributes['iterations'] = collections.OrderedDict()
@@ -687,9 +756,6 @@ def along_track_GLA12(track_file,
         sat_corr = GLAH12['sat_corr'][ii]
         geoid = GLAH12['geoid'][ii]
         m_in = np.zeros_like(t_in, dtype=bool)
-        # radial distance used for inverse-distance weighting
-        # (weight all points within segment equally)
-        rad_in = np.clip(radius[ii], a_min=ALONG_TRACK, a_max=None)
         # convert times from J2000 seconds
         ts = timescale.time.Timescale().from_deltatime(
             t_in, epoch=timescale.time._j2000_epoch,
@@ -711,6 +777,12 @@ def along_track_GLA12(track_file,
         misfit_RMS = np.sqrt(fit['MSE'])
         segment['misfit_RMS'][iseg] = misfit_RMS.copy()
         segment['misfit_RMS'].mask[iseg] = np.isnan(misfit_RMS)
+        # save the elevation change rate and uncertainty
+        if (ORDER_TIME >= 1):
+            segment['dhdt'][iseg] = fit['beta'][1].copy()
+            segment['dhdt'].mask[iseg] = np.isnan(fit['beta'][1])
+            segment['dhdt_sigma'][iseg] = fit['error'][1].copy()
+            segment['dhdt_sigma'].mask[iseg] = np.isnan(fit['error'][1])
         # save the east and north slopes
         e_slope = fit['beta'][ORDER_TIME+2]
         e_slope_sigma = fit['error'][ORDER_TIME+2]
@@ -737,8 +809,9 @@ def along_track_GLA12(track_file,
                 t_in[v], e_in[v], n_in[v], **kwargs)
             # spatial model
             spatial_model = np.dot(DMAT[:,n_terms:], fit['beta'][n_terms:])
-            # weight by the distance from the segment center
-            weights = np.exp(-(rad_in[v]/ALONG_TRACK)**2)
+            # weight all points equally
+            weights = np.ones_like(v, dtype=np.float64)
+            # calculate sum of the weights for normalizing
             w_sum = np.nansum(weights)
             # reduce the height
             reduced = h_in[v] - spatial_model
@@ -836,8 +909,8 @@ def along_track_GLA12(track_file,
         "Geophysical properties and statistics for each campaign"
     # group for reference surface variables
     ref_surf = ['x_atc','h_mean','h_sigma','misfit_RMS',
-        'e_slope','n_slope','iterations','DOF',
-        'geoid_h','geoid_free2mean']
+        'dhdt','dhdt_sigma','e_slope','n_slope',
+        'iterations','DOF','geoid_h','geoid_free2mean']
     f2.create_group('ref_surf')
     f2['ref_surf'].attrs['Description'] = \
         "Fit statistics and reference surface information"
@@ -910,6 +983,10 @@ def arguments():
     parser.add_argument('--hemisphere','-H',
         type=str, default='S', choices=('N','S'),
         help='Region of interest to run')
+    # filter RGTs for repeat ground-track phase
+    parser.add_argument('--rgt-phase',
+        type=int, default=2,
+        help='Repeat ground-track phase to filter (1=8 day; 2=91 day)')
     # along-track distance for the segments
     parser.add_argument('--along-track','-A',
         type=float, default=200.0,
@@ -949,10 +1026,13 @@ def arguments():
     parser.add_argument('--dem-filter',
         default=False, action='store_true',
         help='Filter elevations against internal DEM')
-    # filter RGTs for repeat ground-track phase
-    parser.add_argument('--rgt-phase',
-        type=int, default=2,
-        help='Repeat ground-track phase to filter (1=8 day; 2=91 day)')
+    # number of knots for along-track coordinates
+    parser.add_argument('--knots',
+        type=int, default=0,
+        help='Number of knots to use for along-track coordinates')
+    parser.add_argument('--runs',
+        type=int, default=2000,
+        help='Number of along-track coordinate Monte Carlo runs')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
@@ -980,6 +1060,7 @@ def main():
         # run the program with the specified arguments
         along_track_GLA12(args.infile,
             HEM=args.hemisphere,
+            RGT_PHASE=args.rgt_phase,
             ALONG_TRACK=args.along_track,
             SEARCH_RADIUS=args.search_radius,
             ORDER_TIME=args.order_time,
@@ -991,7 +1072,8 @@ def main():
             REANALYSIS=args.reanalysis,
             GEOID=args.geoid,
             DEM_FILTER=args.dem_filter,
-            RGT_PHASE=args.rgt_phase,
+            KNOTS=args.knots,
+            RUNS=args.runs,
             MODE=args.mode)
     except Exception as exc:
         # if there has been an error exception

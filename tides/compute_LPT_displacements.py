@@ -301,9 +301,10 @@ def compute_LPT_displacements(input_file, output_file,
             )
             # calculate components of load pole tides
             S = np.einsum('ti...,tji...->tj...', dxi, R)
+            smask = np.reshape(np.any(dxi.mask, axis=1), (ny,nx))
             # reshape to output dimensions
             Srad.data[:,:,i] = np.reshape(S[:,2], (ny,nx))
-            Srad.mask[:,:,i] = np.isnan(Srad.data[:,:,i])
+            Srad.mask[:,:,i] = np.isnan(Srad.data[:,:,i]) | smask
     elif (TYPE == 'drift'):
         # calculate load pole tides in cartesian coordinates
         XYZ = np.c_[X, Y, Z]
@@ -317,10 +318,11 @@ def compute_LPT_displacements(input_file, output_file,
         )
         # calculate components of load pole tides
         S = np.einsum('ti...,tji...->tj...', dxi, R)
+        smask = np.any(dxi.mask, axis=1)
         # reshape to output dimensions
         Srad = np.ma.zeros((nt), fill_value=FILL_VALUE)
         Srad.data[:] = S[:,2].copy()
-        Srad.mask = np.isnan(Srad.data)
+        Srad.mask = np.isnan(Srad.data) | smask 
     elif (TYPE == 'time series'):
         Srad = np.ma.zeros((nstation,nt), fill_value=FILL_VALUE)
         Srad.mask = np.zeros((nstation,nt),dtype=bool)
@@ -338,9 +340,10 @@ def compute_LPT_displacements(input_file, output_file,
             )
             # calculate components of load pole tides
             S = np.einsum('ti...,ji...->tj...', dxi, R[s,:,:])
+            smask = np.any(dxi.mask, axis=1)
             # reshape to output dimensions
             Srad.data[s,:] = S[:,2].copy()
-            Srad.mask[s,:] = np.isnan(Srad.data[s,:])
+            Srad.mask[s,:] = np.isnan(Srad.data[s,:]) | smask
 
     # replace invalid data with fill values
     Srad.data[Srad.mask] = Srad.fill_value

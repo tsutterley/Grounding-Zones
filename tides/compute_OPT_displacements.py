@@ -322,9 +322,10 @@ def compute_OPT_displacements(input_file, output_file,
             )
             # calculate components of ocean pole tides
             U = np.einsum('ti...,tji...->tj...', dxi, Rinv)
+            umask = np.reshape(np.any(dxi.mask, axis=1), (ny,nx))
             # reshape to output dimensions
             Urad.data[:,:,i] = np.reshape(U[:,2], (ny,nx))
-            Urad.mask[:,:,i] = np.isnan(Urad.data[:,:,i])
+            Urad.mask[:,:,i] = np.isnan(Urad.data[:,:,i]) | umask
     elif (TYPE == 'drift'):
         # calculate ocean pole tides in cartesian coordinates
         XYZ = np.c_[X, Y, Z]
@@ -340,10 +341,11 @@ def compute_OPT_displacements(input_file, output_file,
         )
         # calculate components of ocean pole tides
         U = np.einsum('ti...,tji...->tj...', dxi, Rinv)
+        umask = np.any(dxi.mask, axis=1)
         # convert to masked array
         Urad = np.ma.zeros((nt), fill_value=FILL_VALUE)
         Urad.data[:] = U[:,2].copy()
-        Urad.mask = np.isnan(Urad.data)
+        Urad.mask = np.isnan(Urad.data) | umask
     elif (TYPE == 'time series'):
         Urad = np.ma.zeros((nstation,nt), fill_value=FILL_VALUE)
         Urad.mask = np.zeros((nstation,nt),dtype=bool)
@@ -364,9 +366,10 @@ def compute_OPT_displacements(input_file, output_file,
             )
             # calculate components of ocean pole tides
             U = np.einsum('ti...,ji...->tj...', dxi, Rinv[s,:,:])
+            umask = np.any(dxi.mask, axis=1)
             # reshape to output dimensions
             Urad.data[s,:] = U[:,2].copy()
-            Urad.mask[s,:] = np.isnan(Urad.data[s,:])
+            Urad.mask[s,:] = np.isnan(Urad.data[s,:]) | umask
 
     # replace invalid data with fill values
     Urad.data[Urad.mask] = Urad.fill_value

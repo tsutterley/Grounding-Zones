@@ -222,7 +222,7 @@ def compute_LPT_ICESat(INPUT_FILE,
     Srad = np.ma.zeros((n_40HZ),fill_value=fv)
     Srad.data[:] = S[:,2].copy()
     # replace fill values
-    Srad.mask = np.isnan(Srad.data)
+    Srad.mask = np.isnan(Srad.data) | np.any(dxi.mask, axis=1)
     Srad.data[Srad.mask] = Srad.fill_value
 
     # copy variables for outputting to HDF5 file

@@ -272,7 +272,7 @@ def compute_LPT_icebridge_data(arg,
     Srad = np.ma.zeros((file_lines),fill_value=fill_value)
     Srad.data[:] = S[:,2].copy()
     # replace fill values
-    Srad.mask = np.isnan(Srad.data)
+    Srad.mask = np.isnan(Srad.data) | np.any(dxi.mask, axis=1)
     Srad.data[Srad.mask] = Srad.fill_value
     # copy radial displacement to output dictionary
     dinput['tide_pole'] = Srad.copy()
