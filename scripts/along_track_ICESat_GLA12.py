@@ -167,6 +167,8 @@ def read_GLAH12_file(GRANULE,
     # Elevation (height above TOPEX/Poseidon ellipsoid in meters)
     d_elev = fid['Data_40HZ']['Elevation_Surfaces']['d_elev'][indices]
     fv = fid['Data_40HZ']['Elevation_Surfaces']['d_elev'].fillvalue
+    # distance to the reference ground track
+    d_d2refTrk = fid['Data_40HZ']['Geophysical']['d_d2refTrk'][indices]
     # retide the elevation data
     d_ocElv = fid['Data_40HZ']['Geophysical']['d_ocElv'][indices]
     d_ocElv[d_ocElv == fv] = 0.0
@@ -304,7 +306,7 @@ def read_GLAH12_file(GRANULE,
     return dict(lon=d_lon, lat=d_lat, h=elev,
         t=J2000, campaign=campaign, sat_corr=sat_corr,
         tide_ocean=otide, tide_earth=tide_earth, dac=IB,
-        geoid=gdHt)
+        geoid=gdHt, d2rgt=d_d2refTrk)
 
 def along_track_splines(d, x, y, z, **kwargs):
     """
@@ -355,7 +357,7 @@ def along_track_GLA12(track_file,
     REGION = dict(N='GL', S='AA')
     # main variables to extract
     variables = ['lon', 'lat', 'h', 't', 'sat_corr',
-        'tide_ocean', 'tide_earth', 'dac', 'geoid']
+        'tide_ocean', 'tide_earth', 'dac', 'geoid', 'd2rgt']
 
     # open the track file
     with h5py.File(track_file, 'r') as f1:
@@ -449,7 +451,10 @@ def along_track_GLA12(track_file,
     dist = np.arange(0, np.max(d), ALONG_TRACK)
     # number of segments
     n_seg = len(dist)
-
+    
+    # weight by the distance from the reference ground track
+    w = 1.0/np.abs(GLAH12['d2rgt'])
+    
     # randomly sample the along-track coordinates
     # and calculate the median of the random samples
     xtemp = np.zeros((n_seg, RUNS))
@@ -470,7 +475,8 @@ def along_track_GLA12(track_file,
         # verify that the samples are monotonicly increasing
         i = np.sort(s)
         # try using scipy interpolating splines
-        sx, sy, sz = along_track_splines(d[i], x[i], y[i], z[i])
+        sx, sy, sz = along_track_splines(d[i], x[i], y[i], z[i],
+            w=w[i], s=None)
         # interpolate the data for iteration
         xtemp[:,N] = sx(dist)
         ytemp[:,N] = sy(dist)
