@@ -5,6 +5,18 @@ name: Python on pull request
 
 on:
   pull_request:
+    paths:
+      - grounding_zones/**
+      - DAC/**
+      - DEM/**
+      - geoid/**
+      - GZ/**
+      - scripts/**
+      - SL/**
+      - subset/**
+      - tides/**
+      - test/**
+      - .github/workflows/python-request.yml
 
 jobs:
   build:
@@ -13,7 +25,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: [3.11]
+        python-version: [3.13]
     env:
       OS: ${{ matrix.os }}
       PYTHON: ${{ matrix.python-version }}

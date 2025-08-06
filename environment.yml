@@ -18,7 +18,7 @@ dependencies:
   - python-dateutil
   - pyTMD
   - pyyaml
-  - scipy>=1.10.1
+  - scipy>=1.16.0
   - scikit-learn
   - shapely
   - timescale
