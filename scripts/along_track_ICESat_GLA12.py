@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 along_track_ICESat_GLA12.py
-Written by Tyler Sutterley (07/2025)
+Written by Tyler Sutterley (08/2025)
 
 Fits a time-variable surface to ICESat data to create an
 along-track GLAH12 data product
@@ -16,6 +16,7 @@ COMMAND LINE OPTIONS:
     -A X, --along_track X: Along-track distance for the segments
     -S X, --search_radius X: Search radius for the surface fit
     -I X, --iteration X: Number of iterations for surface fit
+    --order-spline X: Smoothing spline order for along-track coordinates
     --order-time X: Temporal fit polynomial order
     --order-space X: Spatial fit polynomial order
     --point-threshold X: Threshold for minimum number of points
@@ -59,6 +60,9 @@ REFERENCES:
         41(23), 8421--8428, (2014). https://doi.org/10.1002/2014GL061940
 
 UPDATE HISTORY:
+    Updated 08/2025: save robust spread (RDE) of height residuals
+        can adjust the order of the spline fit for along-track coordinates
+        drop empty campaigns if setting repeat ground track phase
     Updated 07/2025: save saturated waveform correction to output files
         save elevation change rate and uncertainty if computed
         use a Monte Carlo approach to calculate the along-track coordinates
@@ -67,6 +71,7 @@ UPDATE HISTORY:
 import sys
 import re
 import os
+import copy
 import time
 import logging
 import argparse
@@ -87,7 +92,7 @@ timescale = gz.utilities.import_dependency('timescale')
 rx = re.compile((r'GLAH(\d{2})_(\d{3})_(\d{1})(\d{1})(\d{2})_(\d{3})_'
     r'(\d{4})_(\d{1})_(\d{2})_(\d{4})\.H5$'), re.VERBOSE)
 
-# ICESat campaigns
+# ICESat campaigns (all repeat ground-track phases)
 campaigns = ['1A', '1B', '2A', '2B', '2C', '3A',
     '3B', '3C', '3D', '3E', '3F', '3G', '3H',
     '3I', '3J', '3K', '2D', '2E', '2F']
@@ -308,7 +313,7 @@ def read_GLAH12_file(GRANULE,
         tide_ocean=otide, tide_earth=tide_earth, dac=IB,
         geoid=gdHt, d2rgt=d_d2refTrk)
 
-def along_track_splines(d, x, y, z, **kwargs):
+def along_track_splines(d, x, y, z, max_order=3, **kwargs):
     """
     Use univariate splines to interpolate along-track coordinates
     """
@@ -316,7 +321,7 @@ def along_track_splines(d, x, y, z, **kwargs):
     kwargs.setdefault('s', 0)
     kwargs.setdefault('ext', 0)
     # try to create a spline with the given data
-    for k in range(3, 0, -1):
+    for k in range(max_order, 0, -1):
         try:
             sx = scipy.interpolate.UnivariateSpline(d, x, k=k, **kwargs)
             sy = scipy.interpolate.UnivariateSpline(d, y, k=k, **kwargs)
@@ -334,6 +339,7 @@ def along_track_GLA12(track_file,
         HEM=None,
         ALONG_TRACK=200,
         SEARCH_RADIUS=600,
+        ORDER_SPLINE=3,
         ORDER_TIME=1,
         ORDER_SPACE=1,
         RELATIVE=None,
@@ -444,8 +450,15 @@ def along_track_GLA12(track_file,
     # sort the campaigns and repeat ground-track phase
     GLAH12['campaign'] = GLAH12['campaign'][s]
     GLAH12['i_rgtp'] = GLAH12['i_rgtp'][s]
+    # adjust number of campaigns if RGT_PHASE is set
+    if (RGT_PHASE == 1):
+        campaign = copy.copy(campaigns[:3])
+    elif (RGT_PHASE == 2):
+        campaign = copy.copy(campaigns[2:])
+    else:
+        campaign = copy.copy(campaigns)
     # number of campaigns
-    n_camp = len(campaigns)
+    n_camp = len(campaign)
 
     # create a new set of distances
     dist = np.arange(0, np.max(d), ALONG_TRACK)
@@ -453,7 +466,7 @@ def along_track_GLA12(track_file,
     n_seg = len(dist)
     
     # weight by the distance from the reference ground track
-    w = 1.0/np.abs(GLAH12['d2rgt'])
+    w = np.abs(GLAH12['d2rgt'])**(-1.0)
     
     # randomly sample the along-track coordinates
     # and calculate the median of the random samples
@@ -476,7 +489,7 @@ def along_track_GLA12(track_file,
         i = np.sort(s)
         # try using scipy interpolating splines
         sx, sy, sz = along_track_splines(d[i], x[i], y[i], z[i],
-            w=w[i], s=None)
+            max_order=ORDER_SPLINE, w=w[i], s=None)
         # interpolate the data for iteration
         xtemp[:,N] = sx(dist)
         ytemp[:,N] = sy(dist)
@@ -513,7 +526,7 @@ def along_track_GLA12(track_file,
     attributes['campaign'] = collections.OrderedDict()
     attributes['campaign']['contentType'] = "referenceInformation"
     attributes['campaign']['long_name'] = "Index of ICESat campaign"
-    attributes['campaign']['flag_meanings'] = campaigns
+    attributes['campaign']['flag_meanings'] = copy.copy(campaign)
     attributes['campaign']['valid_min'] = 1
     attributes['campaign']['valid_max'] = n_camp
     # along-track distance
@@ -530,7 +543,7 @@ def along_track_GLA12(track_file,
     attributes['longitude']['contentType'] = "physicalMeasurement"
     attributes['longitude']['long_name'] = "Longitude"
     attributes['longitude']['standard_name'] = "longitude"
-    attributes['longitude']['description'] = "Longitude of segment location"
+    attributes['longitude']['description'] = "Longitude of point location"
     attributes['longitude']['valid_min'] = -180.0
     attributes['longitude']['valid_max'] = 180.0
     # latitude
@@ -540,7 +553,7 @@ def along_track_GLA12(track_file,
     attributes['latitude']['contentType'] = "physicalMeasurement"
     attributes['latitude']['long_name'] = "Latitude"
     attributes['latitude']['standard_name'] = "latitude"
-    attributes['latitude']['description'] = "Latitude of segment location"
+    attributes['latitude']['description'] = "Latitude of point location"
     attributes['latitude']['valid_min'] = -90.0
     attributes['latitude']['valid_max'] = 90.0
     # corrected height
@@ -626,7 +639,7 @@ def along_track_GLA12(track_file,
         "applied to the corrected elevation estimates")
     # campaign bias correction
     segment['icbc'] = np.zeros((n_camp))
-    segment['icbc'][:] = [campaign_bias_correction(c) for c in campaigns]
+    segment['icbc'][:] = [campaign_bias_correction(c) for c in campaign]
     attributes['icbc'] = collections.OrderedDict()
     attributes['icbc']['units'] = "meters"
     attributes['icbc']['contentType'] = "derived"
@@ -672,6 +685,16 @@ def along_track_GLA12(track_file,
     attributes['h_sigma']['contentType'] = "derived"
     attributes['h_sigma']['long_name'] = "Uncertainty in average height from fit"
     attributes['h_sigma']['coordinates'] = "longitude latitude"
+    # RDE of height residuals
+    segment['h_robust_sprd'] = np.ma.zeros((n_seg), fill_value=fill_value)
+    segment['h_robust_sprd'].mask = np.ones((n_seg), dtype=bool)
+    attributes['h_robust_sprd'] = collections.OrderedDict()
+    attributes['h_robust_sprd']['units'] = "meters"
+    attributes['h_robust_sprd']['contentType'] = "derived"
+    attributes['h_robust_sprd']['long_name'] = "Robust Spread"
+    attributes['h_robust_sprd']['description'] = \
+        "RDE of height residuals from surface-polynomial fit"
+    attributes['h_robust_sprd']['coordinates'] = "longitude latitude"
     # misfit from fit
     segment['misfit_RMS'] = np.ma.zeros((n_seg), fill_value=fill_value)
     segment['misfit_RMS'].mask = np.ones((n_seg), dtype=bool)
@@ -780,6 +803,9 @@ def along_track_GLA12(track_file,
         segment['h_mean'].mask[iseg] = np.isnan(fit['beta'][0])
         segment['h_sigma'][iseg] = fit['error'][0].copy()
         segment['h_sigma'].mask[iseg] = np.isnan(fit['error'][0])
+        segment['h_robust_sprd'][iseg] = fit['RDE'].copy()
+        segment['h_robust_sprd'].mask[iseg] = np.isnan(fit['RDE'])
+        # save the misfit RMS
         misfit_RMS = np.sqrt(fit['MSE'])
         segment['misfit_RMS'][iseg] = misfit_RMS.copy()
         segment['misfit_RMS'].mask[iseg] = np.isnan(misfit_RMS)
@@ -895,7 +921,7 @@ def along_track_GLA12(track_file,
     f2.attrs['date_created'] = today
     # add parameter attributes
     f2.attrs['lineage'] = lineage
-    f2.attrs['campaign'] = campaigns
+    f2.attrs['campaign'] = campaign
     f2.attrs['track'] = RGT
     f2.attrs['hemisphere'] = HEM
     f2.attrs['search_radius'] = SEARCH_RADIUS
@@ -914,8 +940,8 @@ def along_track_GLA12(track_file,
     f2['campaign_stats'].attrs['Description'] = \
         "Geophysical properties and statistics for each campaign"
     # group for reference surface variables
-    ref_surf = ['x_atc','h_mean','h_sigma','misfit_RMS',
-        'dhdt','dhdt_sigma','e_slope','n_slope',
+    ref_surf = ['x_atc','h_mean','h_sigma','h_robust_sprd',
+        'misfit_RMS','dhdt','dhdt_sigma','e_slope','n_slope',
         'iterations','DOF','geoid_h','geoid_free2mean']
     f2.create_group('ref_surf')
     f2['ref_surf'].attrs['Description'] = \
@@ -1004,6 +1030,9 @@ def arguments():
     parser.add_argument('--iteration','-I',
         type=int, default=25,
         help='Number of iterations for surface fit')
+    parser.add_argument('--order-spline',
+        type=int, default=3,
+        help='Smoothing spline order for along-track coordinates')
     parser.add_argument('--order-time',
         type=int, default=1,
         help='Temporal fit polynomial order')
@@ -1041,8 +1070,8 @@ def arguments():
         help='Number of along-track coordinate Monte Carlo runs')
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
-        default=False, action='store_true',
-        help='Output information about each created file')
+        action='count', default=0,
+        help='Verbose output of processing run')
     # permissions mode of the local files (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
@@ -1057,8 +1086,8 @@ def main():
     args,_ = parser.parse_known_args()
 
     # create logger
-    loglevel = logging.INFO if args.verbose else logging.CRITICAL
-    logging.basicConfig(level=loglevel)
+    loglevels = [logging.CRITICAL, logging.INFO, logging.DEBUG]
+    logging.basicConfig(level=loglevels[args.verbose])
 
     # try to run tidal current program for input file
     try:
@@ -1069,6 +1098,7 @@ def main():
             RGT_PHASE=args.rgt_phase,
             ALONG_TRACK=args.along_track,
             SEARCH_RADIUS=args.search_radius,
+            ORDER_SPLINE=args.order_spline,
             ORDER_TIME=args.order_time,
             ORDER_SPACE=args.order_space,
             RELATIVE=args.relative,
@@ -1091,3 +1121,4 @@ def main():
 # run main program
 if __name__ == '__main__':
     main()
+
