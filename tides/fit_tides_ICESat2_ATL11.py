@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 u"""
 fit_tides_ICESat2_ATL11.py
-Written by Tyler Sutterley (09/2024)
+Written by Tyler Sutterley (08/2025)
 Fits tidal amplitudes to ICESat-2 data in ice sheet grounding zones
 
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -O X, --output-directory X: input/output data directory
+    -C X, --cycles X: ICESat-2 cycles to process
     -T X, --tide X: Tide model to use in correction
     -R X, --reanalysis X: Reanalysis model to run
         ERA-Interim: http://apps.ecmwf.int/datasets/data/interim-full-moda
@@ -35,6 +36,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 08/2025: can reduce to a subset of ICESat-2 cycles
     Updated 09/2024: use JSON database for known model parameters
         drop support for the ascii definition file format
     Updated 08/2024: option for automatic detection of definition format
@@ -87,6 +89,7 @@ def common_reference_points(XT, AT):
 # use an initial tide model as a prior for estimating ice flexure
 def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         OUTPUT_DIRECTORY=None,
+        CYCLES=None,
         TIDE_MODEL=None,
         DEFINITION_FILE=None,
         REANALYSIS=None,
@@ -178,6 +181,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         latitude = {}
         longitude = {}
         delta_time = {}
+        cycle_number = {}
         h_corr = {}
         h_sigma = {}
         quality_summary = {}
@@ -202,6 +206,8 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         delta_time['AT'] = np.ma.array(mds1[ptx]['delta_time'],
             fill_value=attr1[ptx]['delta_time']['_FillValue'])
         delta_time['AT'].mask = (delta_time['AT'] == delta_time['AT'].fill_value)
+        # cycle number
+        cycle_number['AT'] = mds1[ptx]['cycle_number'].copy()
         # corrected height and corrected height errors
         h_corr['AT'] = np.ma.array(mds1[ptx]['h_corr'],
             fill_value=attr1[ptx]['h_corr']['_FillValue'])
@@ -244,6 +250,8 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         delta_time['XT'] = np.ma.array(mds1[ptx][XT]['delta_time'],
             fill_value=attr1[ptx][XT]['delta_time']['_FillValue'])
         delta_time['XT'].mask = (delta_time['XT'] == delta_time['XT'].fill_value)
+        # cycle number
+        cycle_number['XT'] = mds1[ptx][XT]['cycle_number'].copy()
         # corrected height at crossovers
         h_corr['XT'] = np.ma.array(mds1[ptx][XT]['h_corr'],
             fill_value=attr1[ptx][XT]['h_corr']['_FillValue'])
@@ -347,8 +355,6 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
 
         # for each ATL11 segment
         for s in range(n_points):
-            # indices for crossover points
-            i2 = np.squeeze(ref_indices[s])
             # create mask for valid points
             segment_mask = np.logical_not(h_corr['AT'].mask[s,:])
             # segment_mask &= np.logical_not(IB['AT'].mask[s,:])
@@ -357,11 +363,22 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             segment_mask &= ((h_corr['AT'].data[s,:] - geoid_h[s]) > THRESHOLD)
             segment_mask &= (h_sigma['AT'].data[s,:] < sigma_tolerance)
             segment_mask &= mds1[ptx]['subsetting']['ice_gz'][s]
+            # create mask for crossover points
+            crossover_mask = np.zeros((n_cross), dtype=bool)
+            crossover_mask[np.squeeze(ref_indices[s])] = True
+            # reduce to subset of cycles
+            if CYCLES is not None:
+                segment_mask &= (cycle_number['AT'] >= CYCLES[0])
+                segment_mask &= (cycle_number['AT'] <= CYCLES[1])
+                crossover_mask &= (cycle_number['XT'] >= CYCLES[0])
+                crossover_mask &= (cycle_number['XT'] <= CYCLES[1])
+            # check that there are at least some valid measurements
             if not np.any(segment_mask):
                 # continue to next iteration
                 continue
             # indices for valid points within segment
             i1, = np.nonzero(segment_mask)
+            i2, = np.nonzero(crossover_mask)
             # height referenced to geoid
             h1 = h_corr['AT'].data[s,i1] - geoid_h[s]
             h2 = np.atleast_1d(h_corr['XT'].data[i2]) - geoid_h[s]
@@ -772,6 +789,10 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
             IS2_atl11_tide_attrs[ptx]['subsetting'][key]['coordinates'] = \
                 "../ref_pt ../delta_time ../latitude ../longitude"
 
+    # replace output cycles for file
+    if CYCLES is not None:
+        SCYC = str(CYCLES[0]).zfill(2)
+        ECYC = str(CYCLES[1]).zfill(2)
     # output flexure correction HDF5 file
     args = (PRD,TIDE_MODEL,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX)
     file_format = '{0}_{1}_FIT_TIDES_{2}{3}_{4}{5}_{6}_{7}{8}.h5'
@@ -989,6 +1010,10 @@ def arguments():
     parser.add_argument('--output-directory','-O',
         type=pathlib.Path,
         help='Output data directory')
+    # output cycles to process
+    parser.add_argument('--cycles','-C',
+        type=int, nargs=2, metavar=('START','END'),
+        help='ICESat-2 cycles to process')
     # tide model to use
     group.add_argument('--tide','-T',
         metavar='TIDE', type=str,
@@ -1024,6 +1049,7 @@ def main():
     for FILE in args.infile:
         fit_tides_ICESat2(args.directory, FILE,
             OUTPUT_DIRECTORY=args.output_directory,
+            CYCLES=args.cycles,
             TIDE_MODEL=args.tide,
             DEFINITION_FILE=args.definition_file,
             REANALYSIS=args.reanalysis,
