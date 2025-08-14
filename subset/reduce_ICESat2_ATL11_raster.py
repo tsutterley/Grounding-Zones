@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 reduce_ICESat2_ATL11_raster.py
-Written by Tyler Sutterley (08/2024)
+Written by Tyler Sutterley (08/2025)
 
 Create masks for reducing ICESat-2 ATL11 data using raster imagery
 
@@ -44,6 +44,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2025: added option to set the output mask variable name
     Updated 08/2024: changed from 'geotiff' to 'GTiff' and 'cog' formats
     Updated 05/2024: use wrapper to importlib for optional dependencies
         moved from icesat2_toolkit to Grounding-Zones package
@@ -170,6 +171,7 @@ def reduce_ICESat2_ATL11_raster(FILE,
     PROJECTION=None,
     SIGMA=0.0,
     TOLERANCE=0.5,
+    MASK_NAME='mask',
     VERBOSE=False,
     MODE=0o775):
 
@@ -381,18 +383,19 @@ def reduce_ICESat2_ATL11_raster(FILE,
             "are stored at the average segment rate.")
 
         # interpolated raster mask
-        IS2_atl11_mask[ptx]['subsetting']['mask'] = interp_mask.copy()
-        IS2_atl11_fill[ptx]['subsetting']['mask'] = None
-        IS2_atl11_dims[ptx]['subsetting']['mask'] = ['ref_pt']
-        IS2_atl11_mask_attrs[ptx]['subsetting']['mask'] = collections.OrderedDict()
-        IS2_atl11_mask_attrs[ptx]['subsetting']['mask']['contentType'] = "referenceInformation"
-        IS2_atl11_mask_attrs[ptx]['subsetting']['mask']['long_name'] = 'Mask'
-        IS2_atl11_mask_attrs[ptx]['subsetting']['mask']['description'] = ('Mask calculated '
-            'using raster image')
-        IS2_atl11_mask_attrs[ptx]['subsetting']['mask']['source'] = MASK.name
-        IS2_atl11_mask_attrs[ptx]['subsetting']['mask']['sigma'] = SIGMA
-        IS2_atl11_mask_attrs[ptx]['subsetting']['mask']['tolerance'] = TOLERANCE
-        IS2_atl11_mask_attrs[ptx]['subsetting']['mask']['coordinates'] = \
+        IS2_atl11_mask[ptx]['subsetting'][MASK_NAME] = interp_mask.copy()
+        IS2_atl11_fill[ptx]['subsetting'][MASK_NAME] = None
+        IS2_atl11_dims[ptx]['subsetting'][MASK_NAME] = ['ref_pt']
+        IS2_atl11_mask_attrs[ptx]['subsetting'][MASK_NAME] = collections.OrderedDict()
+        IS2_atl11_mask_attrs[ptx]['subsetting'][MASK_NAME]['contentType'] = \
+            "referenceInformation"
+        IS2_atl11_mask_attrs[ptx]['subsetting'][MASK_NAME]['long_name'] = 'Mask'
+        IS2_atl11_mask_attrs[ptx]['subsetting'][MASK_NAME]['description'] = \
+            'Mask calculated using raster image'
+        IS2_atl11_mask_attrs[ptx]['subsetting'][MASK_NAME]['source'] = MASK.name
+        IS2_atl11_mask_attrs[ptx]['subsetting'][MASK_NAME]['sigma'] = SIGMA
+        IS2_atl11_mask_attrs[ptx]['subsetting'][MASK_NAME]['tolerance'] = TOLERANCE
+        IS2_atl11_mask_attrs[ptx]['subsetting'][MASK_NAME]['coordinates'] = \
             "../ref_pt ../delta_time ../latitude ../longitude"
 
     # use default output file name and path
@@ -592,6 +595,10 @@ def arguments():
     parser.add_argument('--variables','-v',
         type=str, nargs='+', default=['x','y','data'],
         help='Variable names of data in HDF5 or netCDF4 files')
+    # output variable name for mask
+    parser.add_argument('--mask','-m',
+        type=str, default='mask',
+        help='Output HDF5 variable name for mask')
     # spatial projection (EPSG code or PROJ4 string)
     parser.add_argument('--projection','-P',
         type=str, default='4326',
@@ -631,6 +638,7 @@ def main():
         SIGMA=args.sigma,
         TOLERANCE=args.tolerance,
         OUTPUT=args.output,
+        MASK_NAME=args.mask,
         VERBOSE=args.verbose,
         MODE=args.mode)
 
