@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 u"""
 interpolate_tide_adjustment.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (08/2025)
 Interpolates tidal adjustment scale factors to output grids
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
     -O X, --output-directory X: input/output data directory
+    -C X, --cycles X: ICESat-2 cycles to process
     -H X, --hemisphere X: Region of interest to run
     -W X, --width: Width of tile grid
     -s X, --subset: Width of interpolation subset
@@ -29,6 +30,7 @@ PYTHON DEPENDENCIES:
         https://www.h5py.org/
 
 UPDATE HISTORY:
+    Updated 08/2025: added option to reduce ICESat-2 cycles
     Updated 05/2024: use wrapper to importlib for optional dependencies
         moved multiprocess h5py reader to io utilities module
     Updated 12/2023: don't have a default tide model in arguments
@@ -64,6 +66,7 @@ def reduce(val, method=np.min, axis=1):
 
 def interpolate_tide_adjustment(tile_file,
         OUTPUT_DIRECTORY=None,
+        CYCLES=None,
         HEM='S',
         W=80e3,
         SUBSET=10e3,
@@ -91,6 +94,9 @@ def interpolate_tide_adjustment(tile_file,
         OUTPUT_DIRECTORY = tile_file.parents[1]
     # file format for mask and tide fit files
     file_format = '{0}_{1}{2}_{3}{4}_{5}{6}_{7}_{8}{9}.h5'
+    # start and end cycles if set
+    if CYCLES is not None:
+        C1,C2 = str(CYCLES[0]).zfill(2), str(CYCLES[1]).zfill(2)
     # extract tile centers from filename
     tile_centers = R1.findall(tile_file.name).pop()
     xc, yc = 1000.0*np.array(tile_centers, dtype=np.float64)
@@ -175,9 +181,12 @@ def interpolate_tide_adjustment(tile_file,
         for ATL11 in ATL11_files:
             # extract parameters from ATL11 filename
             PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = R2.findall(ATL11).pop()
+            # default start and end cycles
+            if CYCLES is None:
+                C1, C2 = (SCYC, ECYC)
             # ATL11 flexure correction HDF5 file
-            FILE2 = OUTPUT_DIRECTORY.joinpath(file_format.format(
-                PRD,TIDE_MODEL,'_FIT_TIDES',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX))
+            a2 = (PRD,TIDE_MODEL,'_FIT_TIDES',TRK,GRAN,C1,C2,RL,VERS,AUX)
+            FILE2 = OUTPUT_DIRECTORY.joinpath(file_format.format(*a2))
             # ATL11 raster mask HDF5 file
             FILE3 = OUTPUT_DIRECTORY.joinpath(file_format.format(
                 PRD,'MASK','',TRK,GRAN,SCYC,ECYC,RL,VERS,AUX))
@@ -412,8 +421,12 @@ def interpolate_tide_adjustment(tile_file,
 
     # open original HDF5 file in append mode
     fileID = gz.io.multiprocess_h5py(tile_file, mode='a')
-    # create geophysical group if non-existent
-    group = 'geophysical'
+    # output HDF5 group name
+    if CYCLES is not None:
+        group = f'geophysical_{C1}_{C2}'
+    else:
+        group = 'geophysical'
+    # create group if non-existent
     if group not in fileID:
         g1 = fileID.create_group(group)
     else:
@@ -467,6 +480,10 @@ def arguments():
     parser.add_argument('--output-directory','-O',
         type=pathlib.Path,
         help='Output data directory')
+    # output cycles to process
+    parser.add_argument('--cycles','-C',
+        type=int, nargs=2, metavar=('START','END'),
+        help='ICESat-2 cycles to process')
     # region of interest to run
     parser.add_argument('--hemisphere','-H',
         type=str, default='S', choices=('N','S'),
@@ -536,6 +553,7 @@ def main():
     for FILE in args.infile:
         interpolate_tide_adjustment(FILE,
             OUTPUT_DIRECTORY=args.output_directory,
+            CYCLES=args.cycles,
             HEM=args.hemisphere,
             W=args.width,
             SUBSET=args.subset,

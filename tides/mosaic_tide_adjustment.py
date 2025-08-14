@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 """
 mosaic_tide_adjustment.py
-Written by Tyler Sutterley (03/2025)
+Written by Tyler Sutterley (08/2025)
 
 Creates a mosaic of interpolated tidal adjustment scale factors
 
 COMMAND LINE OPTIONS:
     --help: list the command line options
     -d X, --directory X: directory to run
+    -C X, --cycles X: ICESat-2 cycles to process
     -H X, --hemisphere X: Region of interest to run
     -r X, --range X: valid range of tiles to read [xmin,xmax,ymin,ymax]
     -c X, --crop X: crop mosaic to bounds [xmin,xmax,ymin,ymax]
@@ -18,6 +19,7 @@ COMMAND LINE OPTIONS:
     -M X, --mode X: Local permissions mode of the output mosaic
 
 UPDATE HISTORY:
+    Updated 08/2025: added option to reduce ICESat-2 cycles
     Updated 03/2025: put program execution within a try/except statement
     Updated 08/2024: changed from 'geotiff' to 'GTiff' and 'cog' formats
     Updated 05/2024: use wrapper to importlib for optional dependencies
@@ -57,6 +59,7 @@ def info(args):
 
 # PURPOSE: mosaic interpolated tiles to a complete grid
 def mosaic_tide_adjustment(base_dir, output_file,
+        CYCLES=None,
         HEM=None,
         RANGE=None,
         CROP=None,
@@ -72,6 +75,11 @@ def mosaic_tide_adjustment(base_dir, output_file,
     tile_directory = base_dir.joinpath(index_directory)
     # regular expression pattern for tile files
     R1 = re.compile(r'E([-+]?\d+)_N([-+]?\d+)', re.VERBOSE)
+    # input HDF5 group name if reducing cycles
+    if CYCLES is not None:
+        group = f'geophysical_{CYCLES[0]:02d}_{CYCLES[1]:02d}'
+    else:
+        group = 'geophysical'
 
     # find list of valid files
     initial_file_list = [f for f in tile_directory.iterdir() if R1.match(f.name)]
@@ -97,8 +105,8 @@ def mosaic_tide_adjustment(base_dir, output_file,
         # read tile grid from HDF5
         try:
             with h5py.File(tile) as fileID:
-                x = fileID['geophysical']['x'][:]
-                y = fileID['geophysical']['y'][:]
+                x = fileID[group]['x'][:]
+                y = fileID[group]['y'][:]
         except (KeyError, ValueError) as exc:
             # drop invalid files
             valid_file_list.remove(tile)
@@ -178,10 +186,10 @@ def mosaic_tide_adjustment(base_dir, output_file,
     for tile in sorted(valid_file_list):
         # read tile grid from HDF5
         fileID = h5py.File(tile)
-        x = fileID['geophysical']['x'][:]
-        y = fileID['geophysical']['y'][:]
-        tide_adj_scale = fileID['geophysical']['tide_adj_scale'][:]
-        weight = fileID['geophysical']['weight'][:]
+        x = fileID[group]['x'][:]
+        y = fileID[group]['y'][:]
+        tide_adj_scale = fileID[group]['tide_adj_scale'][:]
+        weight = fileID[group]['weight'][:]
         # mask tide adjustment scale factor
         if MASK is not None:
             # warp to output grid and mask tide adjustment grid
@@ -247,6 +255,10 @@ def arguments():
     parser.add_argument('--directory','-d',
         type=pathlib.Path,
         help='directory to run')
+    # output cycles to process
+    parser.add_argument('--cycles','-C',
+        type=int, nargs=2, metavar=('START','END'),
+        help='ICESat-2 cycles to process')
     # region of interest to run
     parser.add_argument('--hemisphere','-H',
         type=str, default='S', choices=('N','S'),
@@ -298,6 +310,7 @@ def main():
     try:
         info(args)
         mosaic_tide_adjustment(args.directory, args.output_file,
+            CYCLES=args.cycles,
             HEM=args.hemisphere,
             RANGE=args.range,
             CROP=args.crop,
