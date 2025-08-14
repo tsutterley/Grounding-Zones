@@ -279,7 +279,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         mds1[ptx]['subsetting'] = {}
         mds1[ptx]['subsetting'].setdefault('ice_gz',
             np.zeros((n_points),dtype=bool))
-        attr1[ptx]['subsetting'] = {}
+        attr1[ptx]['subsetting'] = dict(ice_gz={})
         # check that mask file exists
         try:
             mds2,attr2 = is2tk.io.ATL11.read_pair(f3,ptx,
