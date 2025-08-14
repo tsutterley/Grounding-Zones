@@ -63,10 +63,12 @@ from __future__ import print_function
 
 import sys
 import re
+import os
 import logging
 import pathlib
 import argparse
 import datetime
+import traceback
 import numpy as np
 import collections
 import scipy.stats
@@ -93,13 +95,8 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         TIDE_MODEL=None,
         DEFINITION_FILE=None,
         REANALYSIS=None,
-        VERBOSE=False,
         MODE=0o775
     ):
-
-    # create logger
-    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
-    logging.basicConfig(level=loglevel)
 
     # get tide model parameters
     if DEFINITION_FILE is not None:
@@ -1030,8 +1027,8 @@ def arguments():
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
-        default=False, action='store_true',
-        help='Output information about each created file')
+        action='count', default=0,
+        help='Verbose output of processing run')
     # permissions mode of the local files (number in octal)
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
@@ -1045,17 +1042,27 @@ def main():
     parser = arguments()
     args,_ = parser.parse_known_args()
 
-    # run for each input ATL11 file
-    for FILE in args.infile:
-        fit_tides_ICESat2(args.directory, FILE,
-            OUTPUT_DIRECTORY=args.output_directory,
-            CYCLES=args.cycles,
-            TIDE_MODEL=args.tide,
-            DEFINITION_FILE=args.definition_file,
-            REANALYSIS=args.reanalysis,
-            VERBOSE=args.verbose,
-            MODE=args.mode)
+    # create logger
+    loglevels = [logging.CRITICAL, logging.INFO, logging.DEBUG]
+    logging.basicConfig(level=loglevels[args.verbose])
 
+    # try to run for each input ATL11 file
+    for FILE in args.infile:
+        try:
+            fit_tides_ICESat2(args.directory, FILE,
+                OUTPUT_DIRECTORY=args.output_directory,
+                CYCLES=args.cycles,
+                TIDE_MODEL=args.tide,
+                DEFINITION_FILE=args.definition_file,
+                REANALYSIS=args.reanalysis,
+                MODE=args.mode)
+        except Exception as exc:
+            # if there has been an error exception
+            # print the type, value, and stack trace of the
+            # current exception being handled
+            logging.critical(f'process id {os.getpid():d} failed')
+            logging.error(traceback.format_exc())
+    
 # run main program
 if __name__ == '__main__':
     main()
