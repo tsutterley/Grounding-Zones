@@ -118,7 +118,7 @@ def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
 # PURPOSE: attempt to read the mask variables
 def read_grounding_zone_mask(mask_file):
     # check that mask file and variable exists
-    for mask in ['d_ice_gz', 'd_mask']:
+    for mask in ['d_ice_gz', 'd_mask', 'ice_gz_flg', 'mask_flg']:
         try:
             # extract mask values to create grounding zone mask
             fileID = gz.io.multiprocess_h5py(mask_file, mode='r')
