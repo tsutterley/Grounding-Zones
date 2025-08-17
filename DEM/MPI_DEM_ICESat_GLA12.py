@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_DEM_ICESat_GLA12.py
-Written by Tyler Sutterley (06/2024)
+Written by Tyler Sutterley (08/2025)
 Determines which digital elevation model tiles to read for a given GLA12 file
 Reads 3x3 array of tiles for points within bounding box of central mosaic tile
 Interpolates digital elevation model to locations of ICESat/GLAS L2
@@ -62,6 +62,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 08/2025: set GDAL to use exceptions
     Written 06/2024
 """
 from __future__ import print_function
@@ -348,6 +349,8 @@ def main():
     # create logger
     loglevel = logging.INFO if args.verbose else logging.CRITICAL
     logging.basicConfig(level=loglevel)
+    # set GDAL to use exceptions
+    gdal.UseExceptions()
 
     # output module information for process
     info(comm.rank,comm.size)

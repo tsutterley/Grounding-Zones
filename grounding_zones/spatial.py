@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 spatial.py
-Written by Tyler Sutterley (12/2024)
+Written by Tyler Sutterley (08/2025)
 
 Utilities for reading, writing and operating on spatial data
 
@@ -11,6 +11,7 @@ PYTHON DEPENDENCIES:
         https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
 
 UPDATE HISTORY:
+    Updated 08/2025: set GDAL to use exceptions
     Updated 12/2024: add latitude and longitude as potential dimension names
     Updated 11/2024: added function to calculate the altitude and azimuth
     Updated 09/2024: deprecation fix case where an array is output to scalars
@@ -125,6 +126,12 @@ __all__ = [
     "default_field_mapping",
     "inverse_mapping",
 ]
+
+# set GDAL to use exceptions
+try:
+    osgeo.gdal.UseExceptions()
+except AttributeError:
+    pass
 
 def case_insensitive_filename(filename: str | pathlib.Path):
     """

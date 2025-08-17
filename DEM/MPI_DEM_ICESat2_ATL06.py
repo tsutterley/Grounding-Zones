@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_DEM_ICESat2_ATL06.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (08/2025)
 Determines which digital elevation model tiles to read for a given ATL06 file
 Reads 3x3 array of tiles for points within bounding box of central mosaic tile
 Interpolates digital elevation model to locations of ICESat-2 ATL06 segments
@@ -60,6 +60,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 08/2025: set GDAL to use exceptions
     Updated 05/2024: use wrapper to importlib for optional dependencies
         moved from icesat2_toolkit to Grounding-Zones package
     Updated 04/2024: use timescale for temporal operations
@@ -387,6 +388,8 @@ def main():
     # create logger
     loglevel = logging.INFO if args.verbose else logging.CRITICAL
     logging.basicConfig(level=loglevel)
+    # set GDAL to use exceptions
+    gdal.UseExceptions()
 
     # output module information for process
     info(comm.rank,comm.size)
