@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 interpolate_tide_adjustment.py
-Written by Tyler Sutterley (08/2025)
+Written by Tyler Sutterley (09/2025)
 Interpolates tidal adjustment scale factors to output grids
 
 COMMAND LINE OPTIONS:
@@ -28,8 +28,14 @@ PYTHON DEPENDENCIES:
         https://numpy.org/doc/stable/user/numpy-for-matlab-users.html
     h5py: Python interface for Hierarchal Data Format 5 (HDF5)
         https://www.h5py.org/
+    pyproj: Python interface to PROJ library
+        https://pypi.org/project/pyproj/
+        https://pyproj4.github.io/pyproj/
+    scipy: Scientific Tools for Python
+        https://docs.scipy.org/doc/
 
 UPDATE HISTORY:
+    Updated 09/2025: check if any points are within ice shelf area
     Updated 08/2025: added option to reduce ICESat-2 cycles
     Updated 05/2024: use wrapper to importlib for optional dependencies
         moved multiprocess h5py reader to io utilities module
@@ -48,7 +54,6 @@ UPDATE HISTORY:
 """
 
 import re
-import time
 import logging
 import pathlib
 import argparse
@@ -109,7 +114,7 @@ def interpolate_tide_adjustment(tile_file,
     nx = np.int64(W//dx) + 1
     ny = np.int64(W//dy) + 1
     # minimum number of points to run interpolation for a tile
-    point_threshold = 3
+    point_threshold = 5
 
     # pyproj transformer for converting to polar stereographic
     EPSG = dict(N=3413, S=3031)[HEM]
@@ -226,6 +231,8 @@ def interpolate_tide_adjustment(tile_file,
                             method=Reducer[k], axis=1)
                         d[k].fill_value = fv
                 # try to extract subsetting variables
+                # grounding zone mask
+                # True for within buffered grounding zone
                 for k in ['ice_gz']:
                     try:
                         temp = f2[ptx]['subsetting'][k][:].copy()
@@ -234,6 +241,8 @@ def interpolate_tide_adjustment(tile_file,
                     else:
                         # reduce to indices
                         d[k][c:c+file_length] = temp[indices]
+                # floating ice and ocean mask
+                # True for floating ice/ocean, False for grounded/land
                 for k in ['mask']:
                     try:
                         temp = f3[ptx]['subsetting'][k][:].copy()
@@ -375,31 +384,45 @@ def interpolate_tide_adjustment(tile_file,
                     count[indy,indx] = 0.0
                 # check if adjustment exists or is uniform
                 if np.all(tide_adj_scale == 1):
+                    # no adjustment to tidal model
+                    # within buffered grounding zone
+                    # but completely hydrostatic
+                    mosaic[iy,ix] += interp.copy()
+                    weight[iy,ix] += count.copy()
+                    continue
+                elif np.any(u['mask']) and not np.any(u['ice_gz']):
+                    # outside of buffered grounding zone
+                    # but within areas of floating ice or ocean
                     mosaic[iy,ix] += interp.copy()
                     weight[iy,ix] += count.copy()
                     continue
                 elif np.all(tide_adj_scale == 0):
+                    # no correlation to tidal model
                     weight[iy,ix] += count.copy()
                     continue
-                elif np.all(np.isnan(tide_adj_scale)):
+                elif np.all(np.logical_not(np.isfinite(tide_adj_scale))):
+                    # no valid points
                     weight[iy,ix] += count.copy()
                     continue
-                elif np.any(np.isnan(tide_adj_scale)):
-                    # replace invalid points
-                    tide_adj_scale = np.nan_to_num(tide_adj_scale, nan=0.0)
-                elif (len(np.atleast_1d(tide_adj_scale)) <= point_threshold):
-                    weight[iy,ix] += count.copy()
+                # replace invalid points
+                if np.any(np.logical_not(np.isfinite(tide_adj_scale))):
+                    valid, = np.nonzero(np.isfinite(tide_adj_scale))
+                    xnorm = xnorm[valid]
+                    ynorm = ynorm[valid]
+                    tide_adj_scale = tide_adj_scale[valid]
+                if (len(np.atleast_1d(tide_adj_scale)) <= point_threshold):
+                    # not enough points to make an interpolation
                     continue
                 # interpolate sparse points to grid
                 if METHOD in ('spline',):
                     # interpolate with biharmonic splines in tension
                     INTERP = spi.biharmonic_spline(xnorm, ynorm,
-                        u['tide_adj'], XN.flatten(), YN.flatten(),
+                        tide_adj_scale, XN.flatten(), YN.flatten(),
                         metric='euclidean', tension=TENSION, eps=1e-7)
                 elif METHOD in ('radial',):
                     # interpolate with radial basis functions
                     INTERP = spi.radial_basis(xnorm, ynorm,
-                        u['tide_adj'], XN.flatten(), YN.flatten(),
+                        tide_adj_scale, XN.flatten(), YN.flatten(),
                         metric='euclidean', smooth=SMOOTH,
                         epsilon=EPSILON, polynomial=POLYNOMIAL)
                 # clip to valid values and add to output mosaic

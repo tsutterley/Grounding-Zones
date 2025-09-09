@@ -40,7 +40,6 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
-    io/ATL06.py: reads ICESat-2 land ice along-track height data files
     spatial.py: utilities for reading and writing spatial data
     utilities.py: download and management utilities for syncing files
 

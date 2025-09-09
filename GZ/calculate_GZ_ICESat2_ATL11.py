@@ -276,6 +276,9 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
         fv = attr1[ptx]['h_corr']['_FillValue']
         # shape of along-track data
         n_points,n_cycles = mds1[ptx]['delta_time'].shape
+        # along-track coordinates 
+        x_atc = mds1[ptx]['ref_surf']['x_atc'][:].copy()
+        y_atc = mds1[ptx]['ref_surf']['y_atc'][:].copy()
         # along-track (AT) reference point, latitude, longitude and time
         ref_pt['AT'] = mds1[ptx]['ref_pt'].copy()
         latitude['AT'] = np.ma.array(mds1[ptx]['latitude'],
@@ -491,7 +494,8 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                 # find valid indices within range
                 i = sorted(set(np.arange(imin,imax+1)) & set(ifit))
                 iout = sorted(set(np.arange(imin,imax+1)) & set(igz))
-                coords = np.sqrt((X-X[i[0]])**2 + (Y-Y[i[0]])**2)
+                # along-track coordinates starting at i
+                coords = x_atc - x_atc[i[0]]
                 # shapely LineString object for altimetry segment
                 try:
                     segment_line = shapely.geometry.LineString(np.c_[X[i], Y[i]])
@@ -506,7 +510,7 @@ def calculate_GZ_ICESat2(base_dir, INPUT_FILE,
                         continue
                     else:
                         iint = np.argmin((Y[i]-yi)**2 + (X[i]-xi)**2)
-                    # horizontal eulerian distance from start of segment
+                    # along-track distance from start of segment
                     dist = coords[i]
                     output = coords[iout]
                     # land ice height for grounding zone
