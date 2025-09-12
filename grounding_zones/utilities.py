@@ -34,6 +34,7 @@ import logging
 import warnings
 import importlib
 import posixpath
+import PIL.Image
 import lxml.etree
 import subprocess
 if sys.version_info[0] == 2:
@@ -269,6 +270,52 @@ def pgc_list(
             lastmod = [lastmod[indice] for indice in i]
         # return the list of column names and last modified times
         return (colnames, lastmod, None)
+
+def pgc_image_service(bounds, crs=3031, **params):
+    """
+    Fetch an image from the ArcGIS PGC DEM image service
+
+    Parameters
+    ----------
+    bounds: list
+        bounding box for image in form [[xmin, xmax], [ymin, ymax]]
+    crs: int, default 3031
+        coordinate reference system for the image
+    params: keyword arguments for image service
+    """
+    # set default parameters
+    params.setdefault('size', None)
+    params.setdefault('bboxSR', crs)
+    params.setdefault('imageSR', crs)
+    params.setdefault('format', 'jpgpng')
+    params.setdefault('pixelType', None)
+    params.setdefault('noData', None)
+    params.setdefault('noDataInterpretation', 'esriNoDataMatchAll')
+    params.setdefault('f', 'image')
+    params.setdefault('interpolation', 'RSP_BilinearInterpolation')
+    params.setdefault('compression', None)
+    params.setdefault('compressionQuality', None)
+    params.setdefault('pixelType', None)
+    params.setdefault('bandIds', None)
+    params.setdefault('mosaicRule', None)
+    params.setdefault('renderingRule', None)
+    # set the service based on the CRS
+    if crs == 3031:
+        service = 'AntarcticDEM'
+    elif crs == 3413:
+        service = 'ArcticDEM'
+    # build bounding box parameter from bounds
+    [xmin, xmax], [ymin, ymax] = bounds
+    params.setdefault('bbox', f'{xmin},{ymin},{xmax},{ymax}')
+    # drop any parameters that are None
+    params = {k: v for k, v in params.items() if v is not None}
+    # build URL
+    HOST = f'https://elevation2.arcgis.com/arcgis/rest/services/Polar/{service}'
+    url = f'{HOST}/ImageServer/exportImage?{urlencode(params)}'
+    logging.info(f'URL: {url}')
+    # fetch the image from the image service
+    with urllib2.urlopen(url) as response:
+        return PIL.Image.open(response)
 
 # PURPOSE: filter the CMR json response for desired data files
 def cmr_filter_json(
