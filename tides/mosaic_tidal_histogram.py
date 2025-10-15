@@ -233,14 +233,25 @@ def mosaic_tidal_histogram(base_dir, output_file,
         # close the input HDF5 file
         fileID.close()
 
-    # histogram mean and standard deviation
+    # replace masked values with fill value
+    output['dh_hist'].mask = (output['dh_hist'].data == invalid)
+    # find valid points
+    valid = (output['count'] > 0)
+    # compute mean and standard deviation of height differences
+    ii, jj = np.nonzero(valid)
+    # histogram mean
     b2 = np.broadcast_to(bins, (ny, nx, nbins))
-    hmean = np.average(b2, axis=2, weights=output['dh_hist'])
-    hvariance = np.average((b2-hmean)**2, axis=2, weights=output['dh_hist'])
-    hstdev = np.sqrt(hvariance)
-    # add to output dictionary
-    output['dh_mean'] = np.ma.array(hmean, fill_value=invalid)
-    output['dh_stdev'] = np.ma.array(hstdev, fill_value=invalid)
+    output['dh_mean'] = np.ma.zeros((ny, nx), fill_value=invalid)
+    output['dh_mean'][ii,jj] = np.average(b2[ii,jj,:], axis=1,
+        weights=output['dh_hist'][ii,jj,:])
+    output['dh_mean'].mask = np.logical_not(valid)
+    # standard deviation of histogram    
+    hmean = np.broadcast_to(output['dh_mean'][:,:,None], (ny, nx, nbins))
+    hvariance = np.average((b2[ii,jj,:] - hmean[ii,jj,:])**2, axis=1,
+        weights=output['dh_hist'][ii,jj,:])
+    output['dh_stdev'] = np.ma.zeros((ny, nx), fill_value=invalid)
+    output['dh_stdev'][ii,jj] = np.sqrt(hvariance)
+    output['dh_stdev'].mask = np.logical_not(valid)
 
     # crop mosaic to bounds
     if np.any(CROP):
@@ -253,7 +264,7 @@ def mosaic_tidal_histogram(base_dir, output_file,
         output['x'] = np.copy(output['x'][xslice])
         output['y'] = np.copy(output['y'][yslice])
         # crop the 2D and 3D variables
-        for key in ['cell_area', 'count']:
+        for key in ['cell_area', 'count', 'dh_mean', 'dh_stdev']:
             output[key] = np.copy(output[key][yslice, xslice])
         for key in ['dh_hist']:
             output[key] = np.copy(output[key][yslice, xslice, :])
