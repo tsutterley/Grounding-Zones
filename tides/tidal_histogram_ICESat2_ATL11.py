@@ -364,7 +364,7 @@ def tidal_histogram(tile_file,
     fill_value = {}
     # root group attributes
     attributes['ROOT']['x_center'] = xc
-    attributes['ROOT']['y_center'] = xc
+    attributes['ROOT']['y_center'] = yc
     attributes['ROOT']['tile_width'] = W
     attributes['ROOT']['spacing'] = SPACING
     # projection attributes

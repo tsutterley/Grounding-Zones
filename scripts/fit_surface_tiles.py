@@ -584,7 +584,7 @@ def fit_surface_tiles(tile_files,
     fill_value = {}
     # root group attributes
     attributes['ROOT']['x_center'] = xc
-    attributes['ROOT']['y_center'] = xc
+    attributes['ROOT']['y_center'] = yc
     attributes['ROOT']['tile_width'] = W
     attributes['ROOT']['spacing'] = SPACING
     attributes['ROOT']['fit_type'] = FIT_TYPE

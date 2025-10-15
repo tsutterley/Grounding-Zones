@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tidal_constants_ICESat2_ATL11.py
-Written by Tyler Sutterley (03/2025)
+Written by Tyler Sutterley (10/2025)
 Calculates amplitudes and phases of tidal constituents using
 data from the ICESat-2 ATL11 annual land ice height product
 
@@ -36,6 +36,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 10/2025: include minor constituents inferrence in post-fit
     Updated 03/2025: added check to see if any mask points are valid
     Updated 10/2024: add option to select nodal corrections type
     Written 09/2024
@@ -399,7 +400,7 @@ def tidal_constants(tile_file,
     fill_value = {}
     # root group attributes
     attributes['ROOT']['x_center'] = xc
-    attributes['ROOT']['y_center'] = xc
+    attributes['ROOT']['y_center'] = yc
     attributes['ROOT']['tile_width'] = W
     attributes['ROOT']['spacing'] = SPACING
     # projection attributes
@@ -430,13 +431,14 @@ def tidal_constants(tile_file,
     attributes['cell_area']['coordinates'] = 'y x'
     attributes['cell_area']['grid_mapping'] = 'crs'
     fill_value['cell_area'] = 0
-    # amplitude and phase of harmonic constants
+    # amplitude of harmonic constants
     attributes['amplitude'] = {}
     attributes['amplitude']['long_name'] = 'Amplitude of harmonic constants'
     attributes['amplitude']['units'] = 'meters'
     attributes['amplitude']['coordinates'] = 'y x'
     attributes['amplitude']['grid_mapping'] = 'crs'
     fill_value['amplitude'] = invalid
+    # phase of harmonic constants
     attributes['phase'] = {}
     attributes['phase']['long_name'] = 'Phase lag of harmonic constants'
     attributes['phase']['units'] = 'degrees'
@@ -498,7 +500,7 @@ def tidal_constants(tile_file,
                 bounds = build_constraints(h_rand, CONSTANTS)
                 amp, ph = pyTMD.solve.constants(u['delta_time'], h_rand,
                     constituents=CONSTANTS, corrections=nodal_corrections,
-                    bounds=bounds, solver='lstsq')
+                    infer_minor=True, bounds=bounds, solver='lstsq')
                 # calculate complex harmonic constants for iteration
                 cph = -1j*dtr*ph
                 hci[i, :] = amp*np.exp(cph)

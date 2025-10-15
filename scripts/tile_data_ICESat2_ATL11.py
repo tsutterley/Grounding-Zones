@@ -114,7 +114,7 @@ def tile_data_ICESat2_ATL11(tile_file,
     # root group attributes
     attributes = dict(ROOT={})
     attributes['ROOT']['x_center'] = xc
-    attributes['ROOT']['y_center'] = xc
+    attributes['ROOT']['y_center'] = yc
     if TIDE_MODEL:
         attributes['ROOT']['tide_model'] = TIDE_MODEL
     if REANALYSIS:
