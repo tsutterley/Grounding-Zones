@@ -151,7 +151,7 @@ timescale = gz.utilities.import_dependency('timescale')
 def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         DEFINITION_FILE=None,
         CROP=False,
-        METHOD='spline',
+        METHOD='linear',
         EXTRAPOLATE=False,
         CUTOFF=None,
         CORRECTIONS=None,
@@ -425,8 +425,8 @@ def arguments():
         help='Crop tide model to bounds of data')
     # interpolation method
     parser.add_argument('--interpolate','-I',
-        metavar='METHOD', type=str, default='spline',
-        choices=('spline','linear','nearest','bilinear'),
+        metavar='METHOD', type=str, default='linear',
+        choices=('linear','nearest'),
         help='Spatial interpolation method')
     # extrapolate with nearest-neighbors
     parser.add_argument('--extrapolate','-E',

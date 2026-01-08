@@ -472,8 +472,8 @@ def arguments():
         help='IERS mean or secular pole convention')
     # interpolation method
     parser.add_argument('--interpolate','-I',
-        metavar='METHOD', type=str, default='spline',
-        choices=('spline','linear','nearest'),
+        metavar='METHOD', type=str, default='linear',
+        choices=('linear','nearest'),
         help='Spatial interpolation method')
     # verbosity settings
     parser.add_argument('--verbose','-V',

@@ -198,7 +198,7 @@ def compute_OPT_displacements(input_file, output_file,
     PROJECTION='4326',
     ELLIPSOID='WGS84',
     CONVENTION='2018',
-    METHOD='spline',
+    METHOD='linear',
     FILL_VALUE=-9999.0,
     MODE=0o775):
 
@@ -440,8 +440,8 @@ def arguments():
         help='IERS mean or secular pole convention')
     # interpolation method
     parser.add_argument('--interpolate','-I',
-        metavar='METHOD', type=str, default='spline',
-        choices=('spline','linear','nearest'),
+        metavar='METHOD', type=str, default='linear',
+        choices=('linear','nearest'),
         help='Spatial interpolation method')
     # fill value for output spatial fields
     parser.add_argument('--fill-value','-f',

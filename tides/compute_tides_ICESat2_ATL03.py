@@ -149,7 +149,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         TIDE_MODEL=None,
         DEFINITION_FILE=None,
         CROP=False,
-        METHOD='spline',
+        METHOD='linear',
         EXTRAPOLATE=False,
         CUTOFF=None,
         CORRECTIONS=None,
@@ -619,8 +619,8 @@ def arguments():
         help='Crop tide model to bounds of data')
     # interpolation method
     parser.add_argument('--interpolate','-I',
-        metavar='METHOD', type=str, default='spline',
-        choices=('spline','linear','nearest','bilinear'),
+        metavar='METHOD', type=str, default='linear',
+        choices=('linear','nearest'),
         help='Spatial interpolation method')
     # extrapolate with nearest-neighbors
     parser.add_argument('--extrapolate','-E',

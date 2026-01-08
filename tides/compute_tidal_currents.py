@@ -232,7 +232,7 @@ def compute_tidal_currents(tide_dir, input_file, output_file,
     TIME=None,
     TIME_STANDARD='UTC',
     PROJECTION='4326',
-    METHOD='spline',
+    METHOD='linear',
     EXTRAPOLATE=False,
     CUTOFF=None,
     CORRECTIONS=None,
@@ -485,8 +485,8 @@ def arguments():
         help='Spatial projection as EPSG code or PROJ4 string')
     # interpolation method
     parser.add_argument('--interpolate','-I',
-        metavar='METHOD', type=str, default='spline',
-        choices=('spline','linear','nearest','bilinear'),
+        metavar='METHOD', type=str, default='linear',
+        choices=('linear','nearest'),
         help='Spatial interpolation method')
     # extrapolate with nearest-neighbors
     parser.add_argument('--extrapolate','-E',
