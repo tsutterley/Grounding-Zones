@@ -69,6 +69,7 @@ import argparse
 import warnings
 import collections
 import numpy as np
+import xarray as xr
 import grounding_zones as gz
 
 # attempt imports
@@ -176,10 +177,19 @@ def compute_LPET_icebridge_data(arg,
             input_file, input_subsetter)
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    ts = timescale.time.Timescale().from_deltatime(dinput['time'],
+    ts = timescale.from_deltatime(dinput['time'],
         epoch=timescale.time._j2000_epoch, standard='UTC')
-    # convert tide times to dynamical time
-    tide_time = ts.tide + ts.tt_ut1
+
+    # convert coordinates to xarray DataArrays
+    longitude = xr.DataArray(dinput['lon'], dims=('time'))
+    latitude = xr.DataArray(dinput['lat'], dims=('time'))
+    ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
+    # bad value
+    fill_value = -9999.0
+
+    # predict long-period equilibrium tides at times
+    tide_lpe = pyTMD.predict.equilibrium_tide(ts.tide, ds,
+        deltat=ts.tt_ut1)
 
     # output tidal HDF5 file
     # form: rg_NASA_model_EQUILIBRIUM_TIDES_WGS84_fl1yyyymmddjjjjj.H5
@@ -200,9 +210,8 @@ def compute_LPET_icebridge_data(arg,
     # open output HDF5 file
     fid = h5py.File(output_file, mode='w')
 
-    # predict long-period equilibrium tides at time
-    dinput['tide_lpe'] = pyTMD.predict.equilibrium_tide(tide_time,
-        dinput['lat'])
+    # add long-period equilibrium tide to output dictionary
+    dinput['tide_lpe'] = tide_lpe.fillna(fill_value)
 
     # output dictionary with HDF5 variables
     h5 = {}

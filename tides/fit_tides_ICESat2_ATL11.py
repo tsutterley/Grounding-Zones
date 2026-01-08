@@ -102,7 +102,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
     if DEFINITION_FILE is not None:
         model = pyTMD.io.model(tide_dir, verify=False).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.io.model(tide_dir, verify=False).elevation(TIDE_MODEL)
+        model = pyTMD.io.model(tide_dir, verify=False).from_database(TIDE_MODEL)
 
     # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
@@ -346,7 +346,7 @@ def fit_tides_ICESat2(tide_dir, INPUT_FILE,
         for track in ['AT','XT']:
             # create timescale from ATLAS Standard Epoch time
             # GPS seconds since 2018-01-01 00:00:00 UTC
-            ts[track] = timescale.time.Timescale().from_deltatime(
+            ts[track] = timescale.from_deltatime(
                 delta_time[track], epoch=timescale.time._atlas_sdp_epoch,
                 standard='GPS')
 
@@ -962,7 +962,7 @@ def HDF5_ATL11_corr_write(IS2_atl11_corr, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['geospatial_ellipsoid'] = "WGS84"
     fileID.attrs['date_type'] = 'UTC'
     # convert start and end time from ATLAS SDP seconds into timescale
-    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+    ts = timescale.from_deltatime(np.array([tmn,tmx]),
         epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration

@@ -261,7 +261,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
     i_track_40HZ = np.zeros((n_40HZ), dtype=i_track_1HZ.dtype)
     # time of ICESat data
     J2000 = fid['Data_40HZ']['DS_UTCTime_40'][:].copy()
-    ts = timescale.time.Timescale().from_deltatime(
+    ts = timescale.from_deltatime(
         J2000, epoch=timescale.time._j2000_epoch,
         standard='UTC')
     # campaign bias correction

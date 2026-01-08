@@ -270,7 +270,7 @@ def interp_EGM2008_icebridge_data(model_file, arg,
     fid.attrs['time_type'] = 'UTC'
     # convert start and end time from J2000 seconds into timescale
     tmn, tmx = np.min(dinput['time']), np.max(dinput['time'])
-    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+    ts = timescale.from_deltatime(np.array([tmn,tmx]),
         epoch=timescale.time._j2000_epoch, standard='UTC')
     duration = ts.day*(np.max(ts.MJD) - np.min(ts.MJD))
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')

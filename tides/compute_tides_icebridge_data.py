@@ -17,13 +17,10 @@ INPUTS:
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -T X, --tide X: Tide model to use in correction
-    --gzip, -G: Tide model files are gzip compressed
     --definition-file X: Model definition file for use as correction
     -I X, --interpolate X: Interpolation method
-        spline
         linear
         nearest
-        bilinear
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
@@ -141,6 +138,7 @@ import pathlib
 import argparse
 import collections
 import numpy as np
+import xarray as xr
 import grounding_zones as gz
 
 # attempt imports
@@ -151,7 +149,6 @@ timescale = gz.utilities.import_dependency('timescale')
 # PURPOSE: read Operation IceBridge data
 # compute tides at points and times using tidal model driver algorithms
 def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
-        GZIP=True,
         DEFINITION_FILE=None,
         CROP=False,
         METHOD='spline',
@@ -172,9 +169,16 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
+        model = gz.io.Model(tide_dir).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.io.model(tide_dir, compressed=GZIP).elevation(TIDE_MODEL)
+        model = gz.io.Model(tide_dir).from_database(TIDE_MODEL)
+    # open tide model dataest
+    ds = model.open_dataset(group='z', append_node=APPEND_NODE)
+    # apply flexure field to each constituent
+    if APPLY_FLEXURE:
+        # apply ice flexure scaling factor to height values
+        for c in ds.tmd.constituents:
+            ds[c] *= ds['flexure']
 
     # extract file name and subsetter indices lists
     match_object = re.match(r'(.*?)(\[(.*?)\])?$', arg)
@@ -222,12 +226,13 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
         'position_at_the_acquisition_time')
     attrib['lon']['units'] = 'Degrees_East'
     # tides
-    attrib[model.variable] = {}
-    attrib[model.variable]['description'] = model.description
-    attrib[model.variable]['reference'] = model.reference
-    attrib[model.variable]['model'] = model.name
-    attrib[model.variable]['units'] = 'meters'
-    attrib[model.variable]['long_name'] = model.long_name
+    output_variable = model.z.variable
+    attrib[output_variable] = {}
+    attrib[output_variable]['description'] = model.description
+    attrib[output_variable]['reference'] = model.reference
+    attrib[output_variable]['model'] = model.name
+    attrib[output_variable]['units'] = 'meters'
+    attrib[output_variable]['long_name'] = model.long_name
 
     # extract information from input file
     # acquisition year, month and day
@@ -265,17 +270,8 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
             input_file, input_subsetter)
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    ts = timescale.time.Timescale().from_deltatime(dinput['time'],
+    ts = timescale.from_deltatime(dinput['time'],
         epoch=timescale.time._j2000_epoch, standard='UTC')
-
-    # read tidal constants and interpolate to grid points
-    amp, ph, c = model.extract_constants(dinput['lon'], dinput['lat'],
-        type=model.type, crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE,
-        cutoff=CUTOFF, append_node=APPEND_NODE, apply_flexure=APPLY_FLEXURE)
-    # calculate complex phase in radians for Euler's
-    cph = -1j*ph*np.pi/180.0
-    # calculate constituent oscillation
-    hc = amp*np.exp(cph)
 
     # output tidal HDF5 file
     # form: rg_NASA_model_TIDES_WGS84_fl1yyyymmddjjjjj.H5
@@ -305,7 +301,7 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
     minor_constituents = MINOR_CONSTITUENTS or model.minor
     # delta time (TT - UT1) for tide model
     if nodal_corrections in ('OTIS','ATLAS','TMD3','netcdf'):
-        # use delta time at 2000.0 to match TMD outputs
+        # use delta time at 2000.0 to match TMDv2.5 outputs
         deltat = np.zeros_like(ts.tt_ut1)
     else:
         # use interpolated delta times
@@ -313,18 +309,22 @@ def compute_tides_icebridge_data(tide_dir, arg, TIDE_MODEL,
 
     # predict tidal elevations at time and infer minor corrections
     fill_value = -9999.0
-    tide = np.ma.empty((file_lines),fill_value=fill_value)
-    tide.mask = np.any(hc.mask,axis=1)
-    tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
-        deltat=deltat, corrections=nodal_corrections)
+    # convert coordinates to xarray DataArrays
+    # in coordinate reference system of model
+    X, Y = ds.tmd.coords_as(dinput['lon'], dinput['lat'],
+        crs=4326, type='drift')
+    # interpolate to grid points
+    local = ds.tmd.interp(X, Y, method=METHOD,
+        extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
+    # predict tidal elevations at time
+    tide = local.tmd.predict(ts.tide, deltat=deltat,
+        corrections=nodal_corrections)
     # calculate values for minor constituents by inferrence
     if INFER_MINOR:
-        minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
-            deltat=deltat, corrections=nodal_corrections,
-            minor=minor_constituents)
-        tide.data[:] += minor.data[:]
+        tide += local.tmd.infer(ts.tide, deltat=deltat,
+            corrections=nodal_corrections, minor=minor_constituents)
     # replace invalid values with fill value
-    tide.data[tide.mask] = tide.fill_value
+    tide = tide.fillna(fill_value)
     # copy tide to output variable
     dinput[model.variable] = tide.copy()
 

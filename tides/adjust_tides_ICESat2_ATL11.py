@@ -81,7 +81,7 @@ def adjust_tides_ICESat2_ATL11(adjustment_file, INPUT_FILE,
     if DEFINITION_FILE is not None:
         model = pyTMD.io.model(None, verify=False).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.io.model(None, verify=False).elevation(TIDE_MODEL)
+        model = pyTMD.io.model(None, verify=False).from_database(TIDE_MODEL)
     # source of tide model
     tide_source = TIDE_MODEL
     tide_reference = model.reference
@@ -690,7 +690,7 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+    ts = timescale.from_deltatime(np.array([tmn,tmx]),
         epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration

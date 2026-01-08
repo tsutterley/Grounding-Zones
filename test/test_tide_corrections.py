@@ -56,7 +56,7 @@ def test_ATL03_equilibrium_tides():
         fv = IS2_atl03_attrs[gtx]['geophys_corr']['tide_equilibrium']['_FillValue']
         tide_equilibrium = IS2_atl03_mds[gtx]['geophys_corr']['tide_equilibrium']
         # calculate tide time for beam
-        ts = timescale.time.Timescale().from_deltatime(delta_time,
+        ts = timescale.from_deltatime(delta_time,
             epoch=(2018,1,1), standard='GPS')
         # calculate long-period equilibrium tides
         lpet = pyTMD.predict.equilibrium_tide(ts.tide + ts.tt_ut1, latitude)
@@ -92,8 +92,8 @@ def test_ATL03_load_pole_tide():
         tide_pole = IS2_atl03_mds[gtx]['geophys_corr']['tide_pole']
         # calculate load pole tides from correction function
         Srad = pyTMD.compute.LPT_displacements(longitude, latitude,
-            delta_time, EPSG=4326, EPOCH=(2018,1,1,0,0,0), TYPE='drift',
-            TIME='GPS', ELLIPSOID='IERS', CONVENTION='2003')
+            delta_time, crs=4326, epoch=(2018,1,1,0,0,0), type='drift',
+            standard='GPS', ellipsoid='IERS', convention='2003')
         # calculate differences between computed and data versions
         difference = np.ma.zeros((nref))
         difference.data[:] = Srad - tide_pole
@@ -125,8 +125,8 @@ def test_ATL03_ocean_pole_tide():
         tide_oc_pole = IS2_atl03_mds[gtx]['geophys_corr']['tide_oc_pole']
         # calculate ocean pole tides from correction function
         Urad = pyTMD.compute.OPT_displacements(longitude, latitude,
-            delta_time, EPSG=4326, EPOCH=(2018,1,1,0,0,0), TYPE='drift',
-            TIME='GPS', ELLIPSOID='IERS', CONVENTION='2003')
+            delta_time, crs=4326, epoch=(2018,1,1,0,0,0), type='drift',
+            standard='GPS', ellipsoid='IERS', convention='2003')
         # calculate differences between computed and data versions
         difference = np.ma.zeros((nref))
         difference.data[:] = Urad - tide_oc_pole
@@ -181,7 +181,7 @@ def test_ATL07_equilibrium_tides():
         fv = attrs['geophysical']['height_segment_lpe']['_FillValue']
         height_segment_lpe = val['geophysical']['height_segment_lpe'][:]
         # calculate tide time for beam
-        ts = timescale.time.Timescale().from_deltatime(delta_time,
+        ts = timescale.from_deltatime(delta_time,
             epoch=(2018,1,1), standard='GPS')
         # calculate long-period equilibrium tides
         lpet = pyTMD.predict.equilibrium_tide(ts.tide + ts.tt_ut1, latitude)
@@ -195,8 +195,8 @@ def test_ATL07_equilibrium_tides():
             assert np.all(np.abs(difference) < eps)
         # calculate long-period equilibrium tides from correction function
         lpet = pyTMD.compute.LPET_elevations(longitude, latitude,
-            delta_time, EPSG=4326, EPOCH=(2018,1,1,0,0,0), TYPE='drift',
-            TIME='GPS')
+            delta_time, crs=4326, epoch=(2018,1,1,0,0,0), type='drift',
+            standard='GPS')
         # calculate differences between computed and data versions
         difference = np.ma.zeros((nseg))
         difference.data[:] = lpet - height_segment_lpe

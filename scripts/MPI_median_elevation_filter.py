@@ -397,9 +397,9 @@ def main():
         # mask for points not equal to fill value
         mask = (dh1 != att1['data']['_FillValue'])
         # convert from J2000 into decimal years for dh/dt
-        ts1 = timescale.time.Timescale().from_deltatime(J1,
+        ts1 = timescale.from_deltatime(J1,
             epoch=timescale.time._j2000_epoch, standard='UTC')
-        ts2 = timescale.time.Timescale().from_deltatime(J2,
+        ts2 = timescale.from_deltatime(J2,
             epoch=timescale.time._j2000_epoch, standard='UTC')
         # calculate dhdt from input triangulated file(s) and original file(s)
         dhdt = (dh2 - dh1)/(ts2.year - ts1.year)

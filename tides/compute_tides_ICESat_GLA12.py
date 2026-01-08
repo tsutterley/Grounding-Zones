@@ -16,13 +16,10 @@ COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -O X, --output-directory X: input/output data directory
     -T X, --tide X: Tide model to use in correction
-    --gzip, -G: Tide model files are gzip compressed
     --definition-file X: Model definition file for use as correction
     -I X, --interpolate X: Interpolation method
-        spline
         linear
         nearest
-        bilinear
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
@@ -133,6 +130,7 @@ import logging
 import pathlib
 import argparse
 import numpy as np
+import xarray as xr
 import grounding_zones as gz
 
 # attempt imports
@@ -145,7 +143,6 @@ timescale = gz.utilities.import_dependency('timescale')
 def compute_tides_ICESat(tide_dir, INPUT_FILE,
         OUTPUT_DIRECTORY=None,
         TIDE_MODEL=None,
-        GZIP=True,
         DEFINITION_FILE=None,
         CROP=False,
         METHOD='spline',
@@ -166,9 +163,16 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
+        model = gz.io.Model(tide_dir).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.io.model(tide_dir, compressed=GZIP).elevation(TIDE_MODEL)
+        model = gz.io.Model(tide_dir).from_database(TIDE_MODEL)
+    # open tide model dataest
+    ds = model.open_dataset(group='z', append_node=APPEND_NODE)
+    # apply flexure field to each constituent
+    if APPLY_FLEXURE:
+        # apply ice flexure scaling factor to height values
+        for c in ds.tmd.constituents:
+            ds[c] *= ds['flexure']
 
     # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
@@ -243,17 +247,8 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
         topex.a_axis, topex.flat, wgs84.a_axis, wgs84.flat, eps=1e-12, itmax=10)
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    ts = timescale.time.Timescale().from_deltatime(DS_UTCTime_40HZ[:],
+    ts = timescale.from_deltatime(DS_UTCTime_40HZ[:],
         epoch=timescale.time._j2000_epoch, standard='UTC')
-
-    # read tidal constants and interpolate to grid points
-    amp, ph, c = model.extract_constants(lon_40HZ, lat_40HZ,
-        type=model.type, crop=CROP, method=METHOD, extrapolate=EXTRAPOLATE,
-        cutoff=CUTOFF, append_node=APPEND_NODE, apply_flexure=APPLY_FLEXURE)
-    # calculate complex phase in radians for Euler's
-    cph = -1j*ph*np.pi/180.0
-    # calculate constituent oscillation
-    hc = amp*np.exp(cph)
 
     # nodal corrections to apply
     nodal_corrections = CORRECTIONS or model.corrections
@@ -261,27 +256,27 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     minor_constituents = MINOR_CONSTITUENTS or model.minor
     # delta time (TT - UT1) for tide model
     if nodal_corrections in ('OTIS','ATLAS','TMD3','netcdf'):
-        # use delta time at 2000.0 to match TMD outputs
+        # use delta time at 2000.0 to match TMDv2.5 outputs
         deltat = np.zeros_like(ts.tt_ut1)
     else:
         # use interpolated delta times
         deltat = ts.tt_ut1
 
-    # predict tidal elevations at time and infer minor corrections
-    tide = np.ma.empty((n_40HZ),fill_value=fv)
-    tide.mask = np.any(hc.mask,axis=1)
-    tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
-        deltat=deltat, corrections=nodal_corrections)
+    # convert coordinates to xarray DataArrays
+    # in coordinate reference system of model
+    X, Y = ds.tmd.coords_as(lon_40HZ, lat_40HZ, crs=4326, type='drift')
+    # interpolate to grid points
+    local = ds.tmd.interp(X, Y, method=METHOD,
+        extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
+    # predict tidal elevations at time
+    tide = local.tmd.predict(ts.tide, deltat=deltat,
+        corrections=nodal_corrections)
     # calculate values for minor constituents by inferrence
     if INFER_MINOR:
-        minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
-            deltat=deltat, corrections=nodal_corrections,
-            minor=minor_constituents)
-        tide.data[:] += minor.data[:]
-    # replace masked and nan values with fill value
-    invalid, = np.nonzero(np.isnan(tide.data) | tide.mask)
-    tide.data[invalid] = tide.fill_value
-    tide.mask[invalid] = True
+        tide += local.tmd.infer(ts.tide, deltat=deltat,
+            corrections=nodal_corrections, minor=minor_constituents)
+    # replace invalid values with fill value
+    tide = tide.fillna(fv)
 
     # copy variables for outputting to HDF5 file
     IS_gla12_tide = dict(Data_40HZ={})
@@ -375,7 +370,7 @@ def compute_tides_ICESat(tide_dir, INPUT_FILE,
     # geophysical variables
     # computed tide
     IS_gla12_tide['Data_40HZ']['Geophysical'][model.gla12] = tide
-    IS_gla12_fill['Data_40HZ']['Geophysical'][model.gla12] = tide.fill_value
+    IS_gla12_fill['Data_40HZ']['Geophysical'][model.gla12] = fv
     IS_gla12_tide_attrs['Data_40HZ']['Geophysical'][model.gla12] = {}
     IS_gla12_tide_attrs['Data_40HZ']['Geophysical'][model.gla12]['units'] = "meters"
     IS_gla12_tide_attrs['Data_40HZ']['Geophysical'][model.gla12]['long_name'] = model.long_name

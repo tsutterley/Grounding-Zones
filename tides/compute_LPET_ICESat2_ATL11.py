@@ -62,6 +62,7 @@ import argparse
 import datetime
 import numpy as np
 import collections
+import xarray as xr
 import grounding_zones as gz
 
 # attempt imports
@@ -192,31 +193,32 @@ def compute_LPET_ICESat2(INPUT_FILE,
         for track in ['AT','XT']:
             # create timescale from ATLAS Standard Epoch time
             # GPS seconds since 2018-01-01 00:00:00 UTC
-            ts = timescale.time.Timescale().from_deltatime(delta_time[track],
+            ts = timescale.from_deltatime(delta_time[track],
                 epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
 
             # calculate  long-period equilibrium tides for track type
             if (track == 'AT'):
+                # convert coordinates to xarray DataArrays
+                longitude = xr.DataArray(longitude[track], dims=('time'))
+                latitude = xr.DataArray(latitude[track], dims=('time'))
+                ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
                 # calculate LPET for each cycle if along-track
                 for cycle in range(n_cycles):
-                    # find valid time and spatial points for cycle
-                    valid, = np.nonzero(~tide_lpe[track].mask[:,cycle])
                     # predict long-period equilibrium tides at latitudes and time
-                    t = ts.tide[valid,cycle] + ts.tt_ut1[valid,cycle]
-                    tide_lpe[track].data[valid,cycle] = pyTMD.predict.equilibrium_tide(t,
-                        latitude[track][valid])
+                    tide_lpe[track][:,cycle] = pyTMD.predict.equilibrium_tide(
+                        ts.tide[:,cycle], ds, deltat=ts.tt_ut1[:,cycle])
             elif (track == 'XT'):
-                # find valid time and spatial points for cycle
-                valid, = np.nonzero(~tide_lpe[track].mask[:])
+                # convert coordinates to xarray DataArrays
+                longitude = xr.DataArray(longitude[track], dims=('time'))
+                latitude = xr.DataArray(latitude[track], dims=('time'))
+                ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
                 # predict long-period equilibrium tides at latitudes and time
-                t = ts.tide[valid] + ts.tt_ut1[valid]
-                tide_lpe[track].data[valid] = pyTMD.predict.equilibrium_tide(t,
-                    latitude[track][valid])
+                tide_lpe[track][:] = pyTMD.predict.equilibrium_tide(
+                    ts.tide[:], ds, deltat=ts.tt_ut1[:])
 
             # replace masked and nan values with fill value
-            invalid = np.nonzero(np.isnan(tide_lpe[track].data) | tide_lpe[track].mask)
-            tide_lpe[track].data[invalid] = tide_lpe[track].fill_value
-            tide_lpe[track].mask[invalid] = True
+            tide_lpe[track].mask[:] |= np.isnan(tide_lpe[track].data)
+            tide_lpe[track].data[tide_lpe[track].mask] = tide_lpe[track].fill_value
 
         # group attributes for beam
         IS2_atl11_tide_attrs[ptx]['description'] = ('Contains the primary science parameters '
@@ -605,7 +607,7 @@ def HDF5_ATL11_tide_write(IS2_atl11_tide, IS2_atl11_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+    ts = timescale.from_deltatime(np.array([tmn,tmx]),
         epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration

@@ -370,7 +370,7 @@ def fit_surface_tiles(tile_files,
                         # invalid value for heights
                         invalid = attrs[gtx][g]['h_li']['_FillValue']
                         # convert time to timescale
-                        ts = timescale.time.Timescale().from_deltatime(
+                        ts = timescale.from_deltatime(
                             mds[gtx][g]['delta_time'][indices],
                             epoch=timescale.time._atlas_sdp_epoch,
                             standard='GPS')
@@ -433,7 +433,7 @@ def fit_surface_tiles(tile_files,
                         # for each cycle
                         for k, cycle in enumerate(cycle_number):
                             # convert time to timescale
-                            ts = timescale.time.Timescale().from_deltatime(
+                            ts = timescale.from_deltatime(
                                 mds[ptx]['delta_time'][indices,k],
                                 epoch=timescale.time._atlas_sdp_epoch,
                                 standard='GPS')
@@ -483,7 +483,7 @@ def fit_surface_tiles(tile_files,
                     # get 40HZ variables
                     group = 'Data_40HZ'
                     J2000 = f2[group]['DS_UTCTime_40'][indices].copy()
-                    ts = timescale.time.Timescale().from_deltatime(
+                    ts = timescale.from_deltatime(
                         J2000, epoch=timescale.time._j2000_epoch,
                         standard='UTC')
                     # campaign bias correction
@@ -527,7 +527,7 @@ def fit_surface_tiles(tile_files,
                     mds, file_length, HEM = gz.io.icebridge.from_file(
                         FILE2, indices, format=short_name)
                     # convert the ITRF to a common reference frame
-                    dt = timescale.time.Timescale().from_deltatime(
+                    dt = timescale.from_deltatime(
                         mds['time'][0], epoch=timescale.time._j2000_epoch,
                         standard='UTC').to_calendar()
                     ITRF = gz.io.icebridge.get_ITRF(short_name,
@@ -568,7 +568,7 @@ def fit_surface_tiles(tile_files,
         logging.info(f'Total Valid ({mission_names[k]}): {nvalid:d}')
 
     # convert time into year-decimal for fitting
-    ts = timescale.time.Timescale().from_deltatime(
+    ts = timescale.from_deltatime(
         d['time'], epoch=timescale.time._j2000_epoch,
         standard='UTC')
 

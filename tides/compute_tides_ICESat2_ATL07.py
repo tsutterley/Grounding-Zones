@@ -132,6 +132,7 @@ import pathlib
 import argparse
 import datetime
 import numpy as np
+import xarray as xr
 import grounding_zones as gz
 
 # attempt imports
@@ -145,7 +146,6 @@ timescale = gz.utilities.import_dependency('timescale')
 def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         OUTPUT_DIRECTORY=None,
         TIDE_MODEL=None,
-        GZIP=True,
         DEFINITION_FILE=None,
         CROP=False,
         METHOD='spline',
@@ -165,9 +165,11 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
+        model = gz.io.Model(tide_dir).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.io.model(tide_dir, compressed=GZIP).elevation(TIDE_MODEL)
+        model = gz.io.Model(tide_dir).from_database(TIDE_MODEL)
+    # open tide model dataest
+    ds = model.open_dataset(group='z', append_node=APPEND_NODE)
 
     # log input file
     logging.info(f'{str(INPUT_FILE)} -->')
@@ -207,30 +209,19 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
     IS2_atl07_mds,IS2_atl07_attrs,IS2_atl07_beams = \
         is2tk.io.ATL07.read_granule(INPUT_FILE, ATTRIBUTES=True)
 
-    # transform bounding box coordinates
-    if model.projection:
-        transformer = pyTMD.crs().get(model.projection)
     # find geospatial ranges for bounding box
     BOUNDS = [np.inf, -np.inf, np.inf, -np.inf]
     for gtx in IS2_atl07_beams:
         lon = IS2_atl07_mds[gtx]['sea_ice_segments']['longitude']
         lat = IS2_atl07_mds[gtx]['sea_ice_segments']['latitude']
-        if model.projection:
-            x, y = transformer.transform(lon, lat)
-            BOUNDS[0] = np.minimum(BOUNDS[0], np.min(x))
-            BOUNDS[1] = np.maximum(BOUNDS[1], np.max(x))
-            BOUNDS[2] = np.minimum(BOUNDS[2], np.min(y))
-            BOUNDS[3] = np.maximum(BOUNDS[3], np.max(y))
-        else:
-            BOUNDS[0] = np.minimum(BOUNDS[0], np.min(lon))
-            BOUNDS[1] = np.maximum(BOUNDS[1], np.max(lon))
-            BOUNDS[2] = np.minimum(BOUNDS[2], np.min(lat))
-            BOUNDS[3] = np.maximum(BOUNDS[3], np.max(lat))
-
-    # read tidal constants
-    model.read_constants(type=model.type, crop=CROP, bounds=BOUNDS,
-        append_node=APPEND_NODE)
-    c = model._constituents.fields
+        x, y = ds.tmd.transform_as(lon, lat, crs=4326)
+        BOUNDS[0] = np.minimum(BOUNDS[0], np.min(x))
+        BOUNDS[1] = np.maximum(BOUNDS[1], np.max(x))
+        BOUNDS[2] = np.minimum(BOUNDS[2], np.min(y))
+        BOUNDS[3] = np.maximum(BOUNDS[3], np.max(y))
+    # crop model to bounds of input data
+    if CROP:
+        ds = ds.tmd.crop(BOUNDS, buffer=1.0)
 
     # copy variables for outputting to HDF5 file
     IS2_atl07_tide = {}
@@ -261,21 +252,12 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         # number of segments
         val = IS2_atl07_mds[gtx]['sea_ice_segments']
         n_seg = len(val['height_segment_id'])
+        fv = np.finfo('f4').max
 
         # create timescale from ATLAS Standard Epoch time
         # GPS seconds since 2018-01-01 00:00:00 UTC
-        ts = timescale.time.Timescale().from_deltatime(val['delta_time'],
+        ts = timescale.from_deltatime(val['delta_time'],
             epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
-
-        # interpolate tidal constants to grid points
-        amp, ph = model.interpolate_constants(val['longitude'],
-            val['latitude'], type=model.type, method=METHOD,
-            extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
-
-        # calculate complex phase in radians for Euler's
-        cph = -1j*ph*np.pi/180.0
-        # calculate constituent oscillation
-        hc = amp*np.exp(cph)
 
         # nodal corrections to apply
         nodal_corrections = CORRECTIONS or model.corrections
@@ -283,27 +265,28 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
         minor_constituents = MINOR_CONSTITUENTS or model.minor
         # delta time (TT - UT1) for tide model
         if nodal_corrections in ('OTIS','ATLAS','TMD3','netcdf'):
-            # use delta time at 2000.0 to match TMD outputs
+            # use delta time at 2000.0 to match TMDv2.5 outputs
             deltat = np.zeros_like(ts.tt_ut1)
         else:
             # use interpolated delta times
             deltat = ts.tt_ut1
 
+        # convert coordinates to xarray DataArrays
+        # in coordinate reference system of model
+        X, Y = ds.tmd.coords_as(val['longitude'], val['latitude'],
+            crs=4326, type='drift')
+        # interpolate to grid points
+        local = ds.tmd.interp(X, Y, method=METHOD,
+            extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
         # predict tidal elevations at time
-        tide = np.ma.empty((n_seg))
-        tide.mask = np.any(hc.mask,axis=1)
-        tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
-            deltat=deltat, corrections=nodal_corrections)
+        tide = local.tmd.predict(ts.tide, deltat=deltat,
+            corrections=nodal_corrections)
         # calculate values for minor constituents by inferrence
         if INFER_MINOR:
-            minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
-                deltat=deltat, corrections=nodal_corrections,
-                minor=minor_constituents)
-            tide.data[:] += minor.data[:]
-        # replace masked and nan values with fill value
-        invalid, = np.nonzero(np.isnan(tide.data) | tide.mask)
-        tide.data[invalid] = tide.fill_value
-        tide.mask[invalid] = True
+            tide += local.tmd.infer(ts.tide, deltat=deltat,
+                corrections=nodal_corrections, minor=minor_constituents)
+        # replace invalid values with fill value
+        tide = tide.fillna(fv)
 
         # group attributes for beam
         IS2_atl07_tide_attrs[gtx]['Description'] = IS2_atl07_attrs[gtx]['Description']
@@ -430,7 +413,7 @@ def compute_tides_ICESat2(tide_dir, INPUT_FILE,
 
         # computed tide
         IS2_atl07_tide[gtx]['sea_ice_segments']['geophysical'][model.atl07] = tide.copy()
-        IS2_atl07_fill[gtx]['sea_ice_segments']['geophysical'][model.atl07] = tide.fill_value
+        IS2_atl07_fill[gtx]['sea_ice_segments']['geophysical'][model.atl07] = fv
         IS2_atl07_dims[gtx]['sea_ice_segments']['geophysical'][model.atl07] = ['delta_time']
         IS2_atl07_tide_attrs[gtx]['sea_ice_segments']['geophysical'][model.atl07] = {}
         IS2_atl07_tide_attrs[gtx]['sea_ice_segments']['geophysical'][model.atl07]['units'] = "meters"
@@ -603,7 +586,7 @@ def HDF5_ATL07_tide_write(IS2_atl07_tide, IS2_atl07_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+    ts = timescale.from_deltatime(np.array([tmn,tmx]),
         epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration

@@ -156,7 +156,7 @@ def read_GLAH12_file(GRANULE,
     # get variables and attributes
     # time of ICESat data
     J2000 = fid['Data_40HZ']['DS_UTCTime_40'][indices].copy()
-    ts = timescale.time.Timescale().from_deltatime(
+    ts = timescale.from_deltatime(
         J2000, epoch=timescale.time._j2000_epoch,
         standard='UTC')
     # number of 40Hz data points
@@ -196,9 +196,9 @@ def read_GLAH12_file(GRANULE,
     lon, lat, data, tdec = transform.transform(d_lon, d_lat, d_corr, ts.year)
     # calculate the solid earth tides (tide free)
     tide_earth = pyTMD.compute.SET_displacements(lon, lat, J2000,
-        EPSG=4326, EPOCH=timescale.time._j2000_epoch, TYPE='drift',
-        TIME='UTC', ELLIPSOID='WGS84', TIDE_SYSTEM='tide_free',
-        EPHEMERIDES='JPL')
+        EPSG=4326, EPOCH=timescale.time._j2000_epoch, type='drift',
+        standard='UTC', ellipsoid='WGS84', tide_system='tide_free',
+        ephemerides='JPL')
     # remove the solid earth tides from the elevation data
     data -= tide_earth
 
@@ -786,7 +786,7 @@ def along_track_GLA12(track_file,
         geoid = GLAH12['geoid'][ii]
         m_in = np.zeros_like(t_in, dtype=bool)
         # convert times from J2000 seconds
-        ts = timescale.time.Timescale().from_deltatime(
+        ts = timescale.from_deltatime(
             t_in, epoch=timescale.time._j2000_epoch,
             standard='UTC')
         # fit the surface
@@ -911,7 +911,7 @@ def along_track_GLA12(track_file,
     # convert start and end time from J2000 seconds into timescale
     tmn = segment['delta_time'].min()
     tmx = segment['delta_time'].max()
-    ts = timescale.time.Timescale().from_deltatime(np.array([tmn, tmx]),
+    ts = timescale.from_deltatime(np.array([tmn, tmx]),
         epoch=timescale.time._j2000_epoch, standard='UTC')
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     f2.attrs['time_coverage_start'] = str(dt[0])

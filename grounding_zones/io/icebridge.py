@@ -231,7 +231,7 @@ def convert_ITRF(data, ITRF):
     # get the transform for converting to the latest ITRF
     transform = gz.crs.get_itrf_transform(ITRF)
     # convert time to decimal years
-    ts = timescale.time.Timescale().from_deltatime(data['time'],
+    ts = timescale.from_deltatime(data['time'],
         epoch=timescale.time._j2000_epoch, standard='UTC')
     # transform the data to a common ITRF
     lon, lat, dat, tdec = transform.transform(
@@ -366,7 +366,7 @@ def read_ATM_qfit_file(input_file, input_subsetter):
         epoch=timescale.time._gps_epoch,
         scale=86400.0)
     # converting to J2000 seconds
-    ts = timescale.time.Timescale().from_deltatime(gps_seconds,
+    ts = timescale.from_deltatime(gps_seconds,
         epoch=timescale.time._gps_epoch, standard='GPS')
     ATM_L1b_input['time'] = ts.to_deltatime(
         epoch=timescale.time._j2000_epoch, scale=86400.0
@@ -463,11 +463,11 @@ def read_ATM_icessn_file(input_file, input_subsetter):
         scale=86400.0)
     if (MISSION == 'BLATM2') or (SFX != 'csv'):
         # converting to J2000 seconds from GPS seconds
-        ts = timescale.time.Timescale().from_deltatime(gps_seconds,
+        ts = timescale.from_deltatime(gps_seconds,
             epoch=timescale.time._gps_epoch, standard='GPS')
     else:
         # converting to J2000 seconds from UTC seconds
-        ts = timescale.time.Timescale().from_deltatime(gps_seconds,
+        ts = timescale.from_deltatime(gps_seconds,
             epoch=timescale.time._gps_epoch, standard='UTC')
         leap_seconds = 0.0
     # converting to J2000 seconds
@@ -1001,7 +1001,7 @@ def write_LVIS_HDF5_file(
     fileID.attrs['time_type'] = 'UTC'
     fileID.attrs['date_type'] = 'J2000'
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    ts = timescale.time.Timescale().from_deltatime(ILVIS2_MDS['J2000'],
+    ts = timescale.from_deltatime(ILVIS2_MDS['J2000'],
         epoch=timescale.time._j2000_epoch, standard='UTC')
     # add attributes with measurement date start, end and duration
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')

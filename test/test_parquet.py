@@ -6,7 +6,7 @@ Verify (geo)parquet file read and write with spatial utilities
 import inspect
 import pathlib
 import numpy as np
-import pyTMD.crs
+import pyproj
 import grounding_zones as gz
 # attempt imports
 geopandas = gz.utilities.import_dependency('geopandas')
@@ -32,7 +32,7 @@ def test_parquet():
     output['x'] = rng.uniform(-180.0, high=180.0, size=n_time)
     # coordinate reference system
     crs = 4326
-    crs2 = pyTMD.crs().from_input(crs)
+    crs2 = pyproj.CRS.from_user_input(crs)
     # validation tolerance
     eps = np.finfo(np.float64).eps
 
@@ -63,7 +63,7 @@ def test_parquet():
     test = gz.spatial.from_file(output_file, format='parquet',
         columns=['time','y','x','data'])
     # check that the crs is valid (retrieved from pyTMD metadata)
-    crs1 = pyTMD.crs().from_input(test.attrs['wkt'])
+    crs1 = pyproj.CRS.from_user_input(test.attrs['wkt'])
     assert crs1.equals(crs2)
     # check that data is valid
     assert np.all((np.abs(v-test[k]) < eps) for k,v in output.items())
@@ -90,7 +90,7 @@ def test_geoparquet():
     output['x'] = rng.uniform(-560.*5e3, high=560.*5e3, size=n_time)
     # coordinate reference system
     crs = 3031
-    crs2 = pyTMD.crs().from_input(crs)
+    crs2 = pyproj.CRS.from_user_input(crs)
     # dictionary of coordinate reference system variables
     cs_to_cf = crs2.cs_to_cf()
     # validation tolerance
@@ -123,12 +123,12 @@ def test_geoparquet():
     assert np.all((np.abs(v-test[k]) < eps) for k,v in output.items())
     assert 'geometry' in test.columns
     # check that the crs is valid (retrieved from geo metadata)
-    crs1 = pyTMD.crs().from_input(test.attrs['wkt'])
+    crs1 = pyproj.CRS.from_user_input(test.attrs['wkt'])
     assert crs1.equals(crs2)
     # test that geoparquet file can be read by geopandas
     gdf = geopandas.read_parquet(output_file)
     # check that the crs is valid
-    crs1 = pyTMD.crs().from_input(gdf.crs.to_wkt())
+    crs1 = pyproj.CRS.from_user_input(gdf.crs.to_wkt())
     assert crs1.equals(crs2)
     # check that data is valid
     assert np.all((np.abs(v-gdf[k].values) < eps) for k,v in output.items())

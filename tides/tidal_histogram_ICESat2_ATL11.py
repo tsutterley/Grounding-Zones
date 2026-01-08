@@ -155,7 +155,7 @@ def tidal_histogram(tile_file,
         model = pyTMD.io.model(None, verify=False).from_file(
             DEFINITION_FILE)
     elif TIDE_MODEL is not None:
-        model = pyTMD.io.model(None, verify=False).elevation(TIDE_MODEL)
+        model = pyTMD.io.model(None, verify=False).from_database(TIDE_MODEL)
     else:
         # default for uncorrected heights
         model = type('model', (), dict(name=None, corrections='GOT'))

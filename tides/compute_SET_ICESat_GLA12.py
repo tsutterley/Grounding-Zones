@@ -54,6 +54,7 @@ import logging
 import pathlib
 import argparse
 import numpy as np
+import xarray as xr
 import grounding_zones as gz
 
 # attempt imports
@@ -138,7 +139,7 @@ def compute_SET_ICESat(INPUT_FILE,
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    ts = timescale.time.Timescale().from_deltatime(DS_UTCTime_40HZ[:],
+    ts = timescale.from_deltatime(DS_UTCTime_40HZ[:],
         epoch=timescale.time._j2000_epoch, standard='UTC')
     # convert tide times to dynamical time
     tide_time = ts.tide + ts.tt_ut1
@@ -153,53 +154,80 @@ def compute_SET_ICESat(INPUT_FILE,
         wgs84.a_axis, wgs84.flat,
         eps=1e-12, itmax=10)
 
-    # convert input coordinates to cartesian
-    X, Y, Z = pyTMD.spatial.to_cartesian(lon_40HZ, lat_40HZ,
-        a_axis=wgs84.a_axis, flat=wgs84.flat)
-    # compute ephemerides for lunisolar coordinates
-    SX, SY, SZ = pyTMD.astro.solar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
-    LX, LY, LZ = pyTMD.astro.lunar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
-    # convert coordinates to column arrays
-    XYZ = np.c_[X, Y, Z]
-    SXYZ = np.c_[SX, SY, SZ]
-    LXYZ = np.c_[LX, LY, LZ]
+    # convert coordinates to xarray DataArrays
+    longitude = xr.DataArray(lon_40HZ, dims=('time'))
+    latitude = xr.DataArray(lat_40HZ, dims=('time'))
+    ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
 
-    # geocentric latitude (radians)
-    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))
+    # convert from geodetic latitude to geocentric latitude
+    # calculate X, Y and Z from geodetic latitude and longitude
+    X,Y,Z = pyTMD.spatial.to_cartesian(ds.x, ds.y,
+        a_axis=wgs84.a_axis, flat=wgs84.flat)
+    XYZ = xr.Dataset(
+        data_vars={
+            'X': (ds.dims, X),
+            'Y': (ds.dims, Y),
+            'Z': (ds.dims, Z)
+        },
+        coords=ds.coords
+    ) 
     # geocentric colatitude (radians)
-    theta = (np.pi/2.0 - latitude_geocentric)
+    theta = np.pi/2.0 - np.arctan(XYZ.Z / np.sqrt(XYZ.X**2.0 + XYZ.Y**2.0))
     # calculate longitude (radians)
-    phi = np.arctan2(Y, X)
+    phi = np.arctan2(XYZ.Y, XYZ.X)
     # legendre polynomial of degree 2 (unnormalized)
     P2 = 0.5*(3.0*np.cos(theta)**2 - 1.0)
     # body tide love number for degree 2
     h2 = 0.609
 
-    # rotation matrix for converting from cartesian coordinates
-    R = np.zeros((n_40HZ, 3, 3))
-    R[:,0,0] = np.cos(phi)*np.cos(theta)
-    R[:,1,0] = -np.sin(phi)
-    R[:,2,0] = np.cos(phi)*np.sin(theta)
-    R[:,0,1] = np.sin(phi)*np.cos(theta)
-    R[:,1,1] = np.cos(phi)
-    R[:,2,1] = np.sin(phi)*np.sin(theta)
-    R[:,0,2] = -np.sin(theta)
-    R[:,2,2] = np.cos(theta)
+    # compute ephemerides for lunisolar coordinates
+    SX, SY, SZ = pyTMD.astro.solar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
+    LX, LY, LZ = pyTMD.astro.lunar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
+    # create datasets for lunisolar coordinates
+    SXYZ = xr.Dataset(
+        data_vars={
+            'X': (['time'], SX),
+            'Y': (['time'], SY),
+            'Z': (['time'], SZ)
+        },
+        coords=dict(time=np.atleast_1d(ts.MJD))
+    )
+    LXYZ = xr.Dataset(
+        data_vars={
+            'X': (['time'], LX),
+            'Y': (['time'], LY),
+            'Z': (['time'], LZ)
+        },
+        coords=dict(time=np.atleast_1d(ts.MJD))
+    )
 
+    # rotation matrix for converting to/from cartesian coordinates
+    R = xr.Dataset()
+    R[0,0] = np.cos(phi)*np.cos(theta)
+    R[0,1] = -np.sin(phi)
+    R[0,2] = np.cos(phi)*np.sin(theta)
+    R[1,0] = np.sin(phi)*np.cos(theta)
+    R[1,1] = np.cos(phi)
+    R[1,2] = np.sin(phi)*np.sin(theta)
+    R[2,0] = -np.sin(theta)
+    R[2,1] = xr.zeros_like(theta)
+    R[2,2] = np.cos(theta)
+
+    # calculate radial displacement at time
     # predict solid earth tides (cartesian)
-    dxi = pyTMD.predict.solid_earth_tide(tide_time,
-        XYZ, SXYZ, LXYZ, a_axis=wgs84.a_axis,
-        tide_system=TIDE_SYSTEM)
-    # calculate components of solid earth tides
-    SE = np.einsum('ti...,tji...->tj...', dxi, R)
-    # create masked array of solid earth tide displacements
-    tide_se = np.ma.zeros((n_40HZ),fill_value=fv)
-    tide_se.data[:] = SE[:,2].copy()
-    # replace fill values
-    tide_se.mask = np.isnan(tide_se.data) | (elev_40HZ == fv)
-    tide_se.data[tide_se.mask] = tide_se.fill_value
+    dxi = pyTMD.predict.solid_earth_tide(ts.tide, XYZ, SXYZ, LXYZ,
+        deltat=ts.tt_ut1,
+        a_axis=wgs84.a_axis,
+        tide_system=TIDE_SYSTEM
+    )
+    # rotate displacements from cartesian coordinates
+    SE = R[0,2]*dxi['X'] + R[1,2]*dxi['Y'] + R[2,2]*dxi['Z']
+
+    # save solid earth tide displacements to output dictionary
+    tide_se = SE.fillna(fv)
     # calculate permanent tide offset (meters)
-    tide_se_free2mean = 0.3146*np.sqrt(5.0/(4.0*np.pi))*h2*P2
+    norm = np.sqrt(5.0/(4.0*np.pi))
+    tide_se_free2mean = 0.3146*h2*norm*P2
 
     # copy variables for outputting to HDF5 file
     IS_gla12_tide = dict(Data_40HZ={})

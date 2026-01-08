@@ -165,7 +165,7 @@ def interp_DAC_icebridge_data(base_dir, arg,
             input_file, input_subsetter)
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    ts = timescale.time.Timescale().from_deltatime(dinput['time'],
+    ts = timescale.from_deltatime(dinput['time'],
         epoch=timescale.time._j2000_epoch, standard='UTC')
     # convert time to days relative to 1950-01-01 (MJD:33282)
     t = ts.to_deltatime(epoch=(1950,1,1,0,0,0))

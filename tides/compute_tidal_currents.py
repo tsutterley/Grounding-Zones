@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 compute_tidal_currents.py
-Written by Tyler Sutterley (11/2024)
+Written by Tyler Sutterley (11/2025)
 Calculates zonal and meridional tidal currents for an input file
 
 Uses OTIS format tidal solutions provided by Oregon State University and ESR
@@ -20,7 +20,6 @@ INPUTS:
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -T X, --tide X: Tide model to use in calculating currents
-    --gzip, -G: Tide model files are gzip compressed
     --definition-file X: Model definition file for use in calculating currents
     -C, --crop: Crop tide model to (buffered) bounds of data
     -B X, --buffer X: Buffer for cropping tide model
@@ -51,10 +50,8 @@ COMMAND LINE OPTIONS:
     -P X, --projection X: spatial projection as EPSG code or PROJ4 string
         4326: latitude and longitude coordinates on WGS84 reference ellipsoid
     -I X, --interpolate X: Interpolation method
-        spline
         linear
         nearest
-        bilinear
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
@@ -104,6 +101,7 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 11/2025: use new pyTMD xarray data access workflows
     Updated 11/2024: add option for buffer distance to crop tide model data
     Updated 10/2024: compute delta times based on corrections type
         simplify by using wrapper functions to read and interpolate constants
@@ -182,6 +180,7 @@ import pathlib
 import argparse
 import traceback
 import numpy as np
+import xarray as xr
 import pyTMD.utilities
 import timescale.time
 import grounding_zones as gz
@@ -202,14 +201,14 @@ def info(args):
 def get_projection(attributes, PROJECTION):
     # coordinate reference system string from file
     try:
-        crs = pyTMD.crs().from_input(attributes['projection'])
+        crs = pyproj.CRS.from_user_input(attributes['projection'])
     except (ValueError,KeyError,pyproj.exceptions.CRSError):
         pass
     else:
         return crs
     # coordinate reference system from input argument
     try:
-        crs = pyTMD.crs().from_input(PROJECTION)
+        crs = pyproj.CRS.from_user_input(PROJECTION)
     except (ValueError,pyproj.exceptions.CRSError):
         pass
     else:
@@ -221,7 +220,6 @@ def get_projection(attributes, PROJECTION):
 # compute tides at points and times using tidal model driver algorithms
 def compute_tidal_currents(tide_dir, input_file, output_file,
     TIDE_MODEL=None,
-    GZIP=True,
     DEFINITION_FILE=None,
     CROP=False,
     BUFFER=None,
@@ -245,9 +243,11 @@ def compute_tidal_currents(tide_dir, input_file, output_file,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
+        model = gz.io.Model(tide_dir).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.io.model(tide_dir, compressed=GZIP).current(TIDE_MODEL)
+        model = gz.io.Model(tide_dir).from_database(TIDE_MODEL)
+    # open tide model datatree
+    dtree = model.open_datatree(group=['u','v'])
 
     # read input file to extract time, spatial coordinates and data
     if (FORMAT == 'csv'):
@@ -256,12 +256,12 @@ def compute_tidal_currents(tide_dir, input_file, output_file,
             delimiter=DELIMITER, header=HEADER, parse_dates=parse_dates)
         attributes = dinput['attributes']
     elif (FORMAT == 'netCDF4'):
-        field_mapping = pyTMD.spatial.default_field_mapping(VARIABLES)
+        field_mapping = gz.spatial.default_field_mapping(VARIABLES)
         dinput = gz.spatial.from_netCDF4(input_file,
             field_mapping=field_mapping)
         attributes = dinput['attributes']
     elif (FORMAT == 'HDF5'):
-        field_mapping = pyTMD.spatial.default_field_mapping(VARIABLES)
+        field_mapping = gz.spatial.default_field_mapping(VARIABLES)
         dinput = gz.spatial.from_HDF5(input_file,
             field_mapping=field_mapping)
         attributes = dinput['attributes']
@@ -275,20 +275,23 @@ def compute_tidal_currents(tide_dir, input_file, output_file,
     if TIME is not None:
         dinput['time'] = np.copy(TIME)
 
-    # converting x,y from projection to latitude/longitude
-    crs1 = get_projection(attributes, PROJECTION)
-    crs2 = pyproj.CRS.from_epsg(4326)
-    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    # converting x,y from projection to model crs
+    crs = get_projection(attributes, PROJECTION)
+    # determine input data type based on variable dimensions
+    if not TYPE:
+        TYPE = pyTMD.spatial.data_type(dinput['x'], dinput['y'], dinput['time'])
     assert TYPE.lower() in ('grid', 'drift', 'time series')
-    if (TYPE == 'grid'):
-        ny, nx = (len(dinput['y']), len(dinput['x']))
-        gridx, gridy = np.meshgrid(dinput['x'], dinput['y'])
-        lon, lat = transformer.transform(gridx, gridy)
-    elif (TYPE == 'drift'):
-        lon, lat = transformer.transform(dinput['x'], dinput['y'])
-    elif (TYPE == 'time series'):
-        nstation = len(dinput['y'])
-        lon, lat = transformer.transform(dinput['x'], dinput['y'])
+    # convert coordinates to xarray DataArrays
+    # in coordinate reference system of model
+    X, Y = dtree.tmd.coords_as(dinput['x'], dinput['y'], crs=crs, type=TYPE)
+
+    # crop tide model datatree to bounds
+    if CROP:
+        # default bounds if cropping data
+        xmin, xmax = np.min(X), np.max(X)
+        ymin, ymax = np.min(Y), np.max(Y)
+        # crop datatree to buffered default bounds
+        dtree = dtree.tmd.crop([xmin, xmax, ymin, ymax], buffer=BUFFER)
 
     # extract time units from netCDF4 and HDF5 attributes or from TIME_UNITS
     try:
@@ -304,132 +307,76 @@ def compute_tidal_currents(tide_dir, input_file, output_file,
     else:
         # convert time to seconds
         delta_time = to_secs*np.ravel(dinput['time'])
-        ts = timescale.time.Timescale().from_deltatime(delta_time,
+        ts = timescale.from_deltatime(delta_time,
             epoch=epoch1, standard=TIME_STANDARD)
-    # number of time points
-    nt = len(ts)
+
+    # nodal corrections to apply
+    nodal_corrections = CORRECTIONS or model.corrections
+    # minor constituents to infer
+    minor_constituents = MINOR_CONSTITUENTS or model.minor
+    # delta time (TT - UT1) for tide model
+    if nodal_corrections in ('OTIS','ATLAS','TMD3','netcdf'):
+        # use delta time at 2000.0 to match TMDv2.5 outputs
+        deltat = np.zeros_like(ts.tt_ut1)
+    else:
+        # use interpolated delta times
+        deltat = ts.tt_ut1
 
     # python dictionary with tide model data
     tide = {}
     # iterate over u and v currents
-    for t in model.type:
-        # read tidal constants and interpolate to grid points
-        amp, ph, c = model.extract_constants(np.ravel(lon), np.ravel(lat),
-            type=t, crop=CROP, buffer=BUFFER, method=METHOD,
+    for t, ds in dtree.items():
+        # convert to dataset
+        ds = ds.to_dataset()
+        # interpolate to grid points
+        local = ds.tmd.interp(X, Y, method=METHOD,
             extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
-        # calculate complex phase in radians for Euler's
-        cph = -1j*ph*np.pi/180.0
-        # calculate constituent oscillation
-        hc = amp*np.exp(cph)
-
-        # nodal corrections to apply
-        nodal_corrections = CORRECTIONS or model.corrections
-        # minor constituents to infer
-        minor_constituents = MINOR_CONSTITUENTS or model.minor
-        # delta time (TT - UT1) for tide model
-        if nodal_corrections in ('OTIS','ATLAS','TMD3','netcdf'):
-            # use delta time at 2000.0 to match TMD outputs
-            deltat = np.zeros_like(ts.tt_ut1)
-        else:
-            # use interpolated delta times
-            deltat = ts.tt_ut1
-
         # predict tidal currents at time
-        if (TYPE == 'grid'):
-            tide[t] = np.ma.zeros((ny,nx,nt), fill_value=FILL_VALUE)
-            tide[t].mask = np.zeros((ny,nx,nt),dtype=bool)
-            for i in range(nt):
-                TIDE = pyTMD.predict.map(ts.tide[i], hc, c,
-                    deltat=deltat[i], corrections=nodal_corrections)
-                # calculate values for minor constituents by inferrence
-                if INFER_MINOR:
-                    MINOR = pyTMD.predict.infer_minor(ts.tide[i], hc, c,
-                        deltat=deltat[i], corrections=nodal_corrections,
-                        minor=minor_constituents)
-                else:
-                    MINOR = np.ma.zeros_like(TIDE)
-                # add major and minor components and reform grid
-                tide[t][:,:,i] = np.reshape((TIDE+MINOR), (ny,nx))
-                tide[t].mask[:,:,i] = np.reshape((TIDE.mask | MINOR.mask),
-                    (ny,nx))
-        elif (TYPE == 'drift'):
-            tide[t] = np.ma.zeros((nt), fill_value=FILL_VALUE)
-            tide[t].mask = np.any(hc.mask,axis=1)
-            tide[t].data[:] = pyTMD.predict.drift(ts.tide, hc, c,
-                deltat=deltat, corrections=nodal_corrections)
-            # calculate values for minor constituents by inferrence
-            if INFER_MINOR:
-                minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
-                    deltat=deltat, corrections=nodal_corrections,
-                    minor=minor_constituents)
-                tide[t].data[:] += minor.data[:]
-        elif (TYPE == 'time series'):
-            tide[t] = np.ma.zeros((nstation,nt), fill_value=FILL_VALUE)
-            tide[t].mask = np.zeros((nstation,nt),dtype=bool)
-            for s in range(nstation):
-                # calculate constituent oscillation for station
-                HC = hc[s,None,:]
-                TIDE = pyTMD.predict.time_series(ts.tide, HC, c,
-                    deltat=deltat, corrections=nodal_corrections)
-                # calculate values for minor constituents by inferrence
-                if INFER_MINOR:
-                    MINOR = pyTMD.predict.infer_minor(ts.tide, HC, c,
-                        deltat=deltat, corrections=nodal_corrections,
-                        minor=minor_constituents)
-                else:
-                    MINOR = np.ma.zeros_like(TIDE)
-                # add major and minor components
-                tide[t].data[s,:] = TIDE.data[:] + MINOR.data[:]
-                tide[t].mask[s,:] = (TIDE.mask | MINOR.mask)
+        tide[t] = local.tmd.predict(ts.tide, deltat=deltat,
+            corrections=nodal_corrections)
+        # calculate values for minor constituents by inferrence
+        if INFER_MINOR:
+            tide[t] += local.tmd.infer(ts.tide, deltat=deltat,
+                corrections=nodal_corrections, minor=minor_constituents)
         # replace invalid values with fill value
-        tide[t].data[tide[t].mask] = tide[t].fill_value
+        tide[t] = tide[t].fillna(FILL_VALUE)
 
     # output netCDF4 and HDF5 file attributes
     # will be added to YAML header in csv files
     attrib = {}
-    # latitude
-    attrib['lat'] = {}
-    attrib['lat']['long_name'] = 'Latitude'
-    attrib['lat']['units'] = 'Degrees_North'
-    # longitude
-    attrib['lon'] = {}
-    attrib['lon']['long_name'] = 'Longitude'
-    attrib['lon']['units'] = 'Degrees_East'
+    # copy coordinate attributes from input file
+    attrib['x'] = attributes.get('x', {})
+    attrib['y'] = attributes.get('y', {})
+    attrib['time'] = attributes.get('time', {})
     # zonal tidal currents
     attrib['u'] = {}
-    attrib['u']['description'] = model.description['u']
+    attrib['u']['description'] = ('Depth-averaged tidal zonal current '
+        'derived from harmonic constants')
     attrib['u']['reference'] = model.reference
     attrib['u']['model'] = model.name
     attrib['u']['units'] = 'cm/s'
-    attrib['u']['long_name'] = model.long_name['u']
+    attrib['u']['long_name'] = model.u.variable
     attrib['u']['_FillValue'] = FILL_VALUE
     # meridional tidal currents
     attrib['v'] = {}
-    attrib['v']['description'] = model.description['v']
+    attrib['v']['description'] = ('Depth-averaged tidal meridional current '
+        'derived from harmonic constants')
     attrib['v']['reference'] =  model.reference
     attrib['v']['model'] = model.name
     attrib['v']['units'] = 'cm/s'
-    attrib['v']['long_name'] = model.long_name['v']
+    attrib['v']['long_name'] = model.v.variable
     attrib['v']['_FillValue'] = FILL_VALUE
-    # time
-    attrib['time'] = {}
-    attrib['time']['long_name'] = 'Time'
-    attrib['time']['calendar'] = 'standard'
 
     # output data dictionary
-    output = {'lon':lon, 'lat':lat, **tide}
-    if (FORMAT == 'csv') and (TIME_STANDARD.lower() == 'datetime'):
-        output['time'] = ts.to_string()
-    else:
-        attrib['time']['units'] = 'days since 1992-01-01T00:00:00'
-        output['time'] = ts.tide
+    output = {'x':dinput['x'], 'y':dinput['y'], 'time':dinput['time']}
+    output.update(tide)
 
     # output to file
     if (FORMAT == 'csv'):
         # write columnar data to ascii
         gz.spatial.to_ascii(output, attrib, output_file,
             delimiter=DELIMITER, header=False,
-            columns=['time','lat','lon','u','v'])
+            columns=['time','x','y','u','v'])
     elif (FORMAT == 'netCDF4'):
         # write to netCDF4 for data type
         gz.spatial.to_netCDF4(output, attrib, output_file, data_type=TYPE)
@@ -452,7 +399,7 @@ def compute_tidal_currents(tide_dir, input_file, output_file,
         geometry_encoding = attributes.get('geometry_encoding', None)
         gz.spatial.to_parquet(output, attrib, output_file,
             geoparquet=geoparquet, geometry_encoding=geometry_encoding,
-            crs=4326)
+            crs=crs)
     # change the permissions level to MODE
     output_file.chmod(mode=MODE)
 
@@ -483,9 +430,6 @@ def arguments():
     group.add_argument('--tide','-T',
         type=str, choices=choices,
         help='Tide model to use in calculating currents')
-    parser.add_argument('--gzip','-G',
-        default=False, action='store_true',
-        help='Tide model files are gzip compressed')
     # tide model definition file to set an undefined model
     group.add_argument('--definition-file',
         type=pathlib.Path,
@@ -596,7 +540,7 @@ def main():
     if args.definition_file is not None:
         model = pyTMD.io.model(verify=False).from_file(args.definition_file)
     else:
-        model = pyTMD.io.model(verify=False).current(args.tide)
+        model = pyTMD.io.model(verify=False).from_database(args.tide)
 
     # set output file from input filename if not entered
     if not args.outfile:
@@ -608,7 +552,6 @@ def main():
         info(args)
         compute_tidal_currents(args.directory, args.infile, args.outfile,
             TIDE_MODEL=args.tide,
-            GZIP=args.gzip,
             DEFINITION_FILE=args.definition_file,
             CROP=args.crop,
             BUFFER=args.buffer,
