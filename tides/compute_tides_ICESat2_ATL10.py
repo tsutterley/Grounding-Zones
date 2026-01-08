@@ -598,9 +598,6 @@ def arguments():
         metavar='TIDE', type=str,
         choices=get_available_models(),
         help='Tide model to use in correction')
-    parser.add_argument('--gzip','-G',
-        default=False, action='store_true',
-        help='Tide model files are gzip compressed')
     # tide model definition file to set an undefined model
     group.add_argument('--definition-file',
         type=pathlib.Path,
@@ -663,7 +660,6 @@ def main():
         compute_tides_ICESat2(args.directory, FILE,
             OUTPUT_DIRECTORY=args.output_directory,
             TIDE_MODEL=args.tide,
-            GZIP=args.gzip,
             DEFINITION_FILE=args.definition_file,
             CROP=args.crop,
             METHOD=args.interpolate,
