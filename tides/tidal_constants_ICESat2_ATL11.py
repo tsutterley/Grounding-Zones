@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tidal_constants_ICESat2_ATL11.py
-Written by Tyler Sutterley (10/2025)
+Written by Tyler Sutterley (02/2026)
 Calculates amplitudes and phases of tidal constituents using
 data from the ICESat-2 ATL11 annual land ice height product
 
@@ -36,6 +36,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 02/2026: estimate model uncertainty in amplitude and phase
     Updated 10/2025: include minor constituents inferrence in post-fit
     Updated 03/2025: added check to see if any mask points are valid
     Updated 10/2024: add option to select nodal corrections type
@@ -185,8 +186,6 @@ def tidal_constants(tile_file,
     crs_to_cf = crs2.to_cf()
     flat = 1.0/crs_to_cf['inverse_flattening']
     reference_latitude = crs_to_cf['standard_parallel']
-    # degrees to radians
-    dtr = np.pi/180.0
 
     # get tide model parameters from definition file or model name
     if DEFINITION_FILE is not None:
@@ -447,6 +446,20 @@ def tidal_constants(tile_file,
     attributes['phase']['valid_min'] = 0
     attributes['phase']['valid_max'] = 360
     fill_value['phase'] = invalid
+    # estimates error in harmonic constants amplitude
+    attributes['amp_sigma'] = {}
+    attributes['amp_sigma']['long_name'] = 'Amplitude uncertainty'
+    attributes['amp_sigma']['units'] = 'meters'
+    attributes['amp_sigma']['coordinates'] = 'y x'
+    attributes['amp_sigma']['grid_mapping'] = 'crs'
+    fill_value['amp_sigma'] = invalid
+    # estimates error in harmonic constants phase
+    attributes['ph_sigma'] = {}
+    attributes['ph_sigma']['long_name'] = 'Phase lag uncertainty'
+    attributes['ph_sigma']['units'] = 'degrees'
+    attributes['ph_sigma']['coordinates'] = 'y x'
+    attributes['ph_sigma']['grid_mapping'] = 'crs'
+    fill_value['ph_sigma'] = invalid
     # harmonic constituents
     attributes['constituents'] = {}
     attributes['constituents']['long_name'] = 'Tidal constituents'
@@ -467,6 +480,8 @@ def tidal_constants(tile_file,
     nc = len(CONSTANTS)
     output['amplitude'] = np.ma.zeros((ny, nx, nc), fill_value=invalid)
     output['phase'] = np.ma.zeros((ny, nx, nc), fill_value=invalid)
+    output['amp_sigma'] = np.ma.zeros((ny, nx, nc), fill_value=invalid)
+    output['ph_sigma'] = np.ma.zeros((ny, nx, nc), fill_value=invalid)
     output['constituents'] = np.array(CONSTANTS, dtype='|S8')
     count = np.zeros((ny, nx), dtype=np.int64)
 
@@ -501,14 +516,27 @@ def tidal_constants(tile_file,
                 hci[i, :] = pyTMD.solve.constants(u['delta_time'], h_rand,
                     constituents=CONSTANTS, corrections=nodal_corrections,
                     infer_minor=True, bounds=bounds, solver='lstsq')
-            # calculate mean value of complex harmonic constants
+            # calculate mean and stdev values of complex harmonic constants
             hc = np.mean(hci, axis=0)
+            hc_std = np.std(hci, axis=0)
+            # calculate amplitude
+            amp = np.abs(hc)
             # calculate phase in degrees
-            ph = np.arctan2(-np.imag(hc), np.real(hc))/dtr
+            ph = np.degrees(np.arctan2(-np.imag(hc), np.real(hc)))
             ph[ph < 0] += 360.0
             # add to output variables
-            output['amplitude'][indy, indx, :] = np.abs(hc)
+            output['amplitude'][indy, indx, :] = amp.copy()
             output['phase'][indy, indx, :] = ph.copy()
+            # amplitude uncertainty
+            comp1 = hc_std.real*hc.real/amp
+            comp2 = hc_std.imag*hc.imag/amp
+            amp_sigma = np.sqrt(comp1**2 + comp2**2)
+            output['amp_sigma'][indy, indx, :] = amp_sigma.copy()
+            # phase uncertainty (degrees)
+            comp1 = hc_std.real*hc.imag/(amp**2)
+            comp2 = hc_std.imag*hc.real/(amp**2)
+            ph_sigma = np.sqrt(comp1**2 + comp2**2)
+            output['ph_sigma'][indy, indx, :] = np.degrees(ph_sigma)
 
     # exit if there are no valid points
     if np.sum(count) == 0:
@@ -519,6 +547,8 @@ def tidal_constants(tile_file,
     # update values for invalid points
     output['amplitude'][indy, indx, :] = invalid
     output['phase'][indy, indx, :] = invalid
+    output['amp_sigma'][indy, indx, :] = invalid
+    output['ph_sigma'][indy, indx, :] = invalid
 
     # open output HDF5 file in append mode
     output_file = OUTPUT_DIRECTORY.joinpath(tile_file_formatted)
