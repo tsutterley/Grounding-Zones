@@ -513,9 +513,10 @@ def tidal_constants(tile_file,
                 # solve for harmonic constants
                 h_rand = u['h_corr'] + np.random.normal(0, u['h_sigma'])
                 bounds = build_constraints(h_rand, CONSTANTS)
-                hci[i, :] = pyTMD.solve.constants(u['delta_time'], h_rand,
+                ds = pyTMD.solve.constants(u['delta_time'], h_rand,
                     constituents=CONSTANTS, corrections=nodal_corrections,
                     infer_minor=True, bounds=bounds, solver='lstsq')
+                hci[i, :] = ds.tmd.to_dataarray()
             # calculate mean and stdev values of complex harmonic constants
             hc = np.mean(hci, axis=0)
             hc_std = np.std(hci, axis=0)
