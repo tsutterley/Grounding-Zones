@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 utilities.py
-Written by Tyler Sutterley (10/2024)
+Written by Tyler Sutterley (05/2026)
 Download and management utilities for syncing time and auxiliary files
 Adds additional modules to the icesat2_toolkit utilities
 
@@ -10,6 +10,7 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 05/2026: updated `xpath` queries for new PGC directory structure
     Updated 10/2024: update CMR search utility to replace deprecated scrolling
         https://cmr.earthdata.nasa.gov/search/site/docs/search/api.html
     Updated 05/2024: added generic querying functions for NASA CMR
@@ -252,10 +253,10 @@ def pgc_list(
         # read and parse request for files (column names and modified times)
         tree = lxml.etree.parse(response, parser)
         colnames = [i.replace(posixpath.sep,'')
-            for i in tree.xpath('//tr/td[not(@*)]//a/@href')]
+            for i in tree.xpath('//tr/td[@class="indexcolname"]//a/@href')]
         # get the Unix timestamp value for a modification time
         lastmod = [get_unix_time(i,format=format)
-            for i in tree.xpath('//tr/td[@align="right"][1]/text()')]
+            for i in tree.xpath('//tr/td[@class="indexcollastmod"]/text()')]
         # reduce using regular expression pattern
         if pattern:
             i = [i for i,f in enumerate(colnames) if re.search(pattern,f)]
