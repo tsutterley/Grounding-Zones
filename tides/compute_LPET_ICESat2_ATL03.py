@@ -62,6 +62,7 @@ import pathlib
 import argparse
 import datetime
 import numpy as np
+import xarray as xr
 import grounding_zones as gz
 
 # attempt imports
@@ -153,15 +154,19 @@ def compute_LPET_ICESat2(INPUT_FILE,
         delta_time = val['geolocation']['delta_time'].copy()
         lon = val['geolocation']['reference_photon_lon'].copy()
         lat = val['geolocation']['reference_photon_lat'].copy()
+        # convert coordinates to xarray DataArrays
+        longitude = xr.DataArray(lon, dims=('time'))
+        latitude = xr.DataArray(lat, dims=('time'))
+        ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
 
         # create timescale from ATLAS Standard Epoch time
         # GPS seconds since 2018-01-01 00:00:00 UTC
-        ts = timescale.time.Timescale().from_deltatime(delta_time,
+        ts = timescale.from_deltatime(delta_time,
             epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
-        tide_time = ts.tide + ts.tt_ut1
 
         # predict long-period equilibrium tides at latitudes and time
-        tide_lpe = pyTMD.predict.equilibrium_tide(tide_time, lat)
+        tide_lpe = pyTMD.predict.equilibrium_tide(ts.tide, ds,
+            deltat=ts.tt_ut1)
 
         # group attributes for beam
         IS2_atl03_tide_attrs[gtx]['Description'] = attrs['Description']
@@ -417,7 +422,7 @@ def HDF5_ATL03_tide_write(IS2_atl03_tide, IS2_atl03_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+    ts = timescale.from_deltatime(np.array([tmn,tmx]),
         epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration

@@ -893,7 +893,7 @@ def HDF5_triangulated_data(output_data, MISSION=None, INPUT=None, FILENAME='',
     tmn = np.min(output_data['time'][ind])
     tmx = np.max(output_data['time'][ind])
     # convert start and end time from J2000 seconds into timescale
-    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+    ts = timescale.from_deltatime(np.array([tmn,tmx]),
         epoch=timescale.time._j2000_epoch, standard='UTC')
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration

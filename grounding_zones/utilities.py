@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 utilities.py
-Written by Tyler Sutterley (10/2024)
+Written by Tyler Sutterley (05/2026)
 Download and management utilities for syncing time and auxiliary files
 Adds additional modules to the icesat2_toolkit utilities
 
@@ -10,6 +10,7 @@ PYTHON DEPENDENCIES:
         https://pypi.python.org/pypi/lxml
 
 UPDATE HISTORY:
+    Updated 05/2026: updated `xpath` queries for new PGC directory structure
     Updated 10/2024: update CMR search utility to replace deprecated scrolling
         https://cmr.earthdata.nasa.gov/search/site/docs/search/api.html
     Updated 05/2024: added generic querying functions for NASA CMR
@@ -34,6 +35,7 @@ import logging
 import warnings
 import importlib
 import posixpath
+import PIL.Image
 import lxml.etree
 import subprocess
 if sys.version_info[0] == 2:
@@ -251,10 +253,10 @@ def pgc_list(
         # read and parse request for files (column names and modified times)
         tree = lxml.etree.parse(response, parser)
         colnames = [i.replace(posixpath.sep,'')
-            for i in tree.xpath('//tr/td[not(@*)]//a/@href')]
+            for i in tree.xpath('//tr/td[@class="indexcolname"]//a/@href')]
         # get the Unix timestamp value for a modification time
         lastmod = [get_unix_time(i,format=format)
-            for i in tree.xpath('//tr/td[@align="right"][1]/text()')]
+            for i in tree.xpath('//tr/td[@class="indexcollastmod"]/text()')]
         # reduce using regular expression pattern
         if pattern:
             i = [i for i,f in enumerate(colnames) if re.search(pattern,f)]
@@ -269,6 +271,52 @@ def pgc_list(
             lastmod = [lastmod[indice] for indice in i]
         # return the list of column names and last modified times
         return (colnames, lastmod, None)
+
+def pgc_image_service(bounds, crs=3031, **params):
+    """
+    Fetch an image from the ArcGIS PGC DEM image service
+
+    Parameters
+    ----------
+    bounds: list
+        bounding box for image in form [[xmin, xmax], [ymin, ymax]]
+    crs: int, default 3031
+        coordinate reference system for the image
+    params: keyword arguments for image service
+    """
+    # set default parameters
+    params.setdefault('size', None)
+    params.setdefault('bboxSR', crs)
+    params.setdefault('imageSR', crs)
+    params.setdefault('format', 'jpgpng')
+    params.setdefault('pixelType', None)
+    params.setdefault('noData', None)
+    params.setdefault('noDataInterpretation', 'esriNoDataMatchAll')
+    params.setdefault('f', 'image')
+    params.setdefault('interpolation', 'RSP_BilinearInterpolation')
+    params.setdefault('compression', None)
+    params.setdefault('compressionQuality', None)
+    params.setdefault('pixelType', None)
+    params.setdefault('bandIds', None)
+    params.setdefault('mosaicRule', None)
+    params.setdefault('renderingRule', None)
+    # set the service based on the CRS
+    if crs == 3031:
+        service = 'AntarcticDEM'
+    elif crs == 3413:
+        service = 'ArcticDEM'
+    # build bounding box parameter from bounds
+    [xmin, xmax], [ymin, ymax] = bounds
+    params.setdefault('bbox', f'{xmin},{ymin},{xmax},{ymax}')
+    # drop any parameters that are None
+    params = {k: v for k, v in params.items() if v is not None}
+    # build URL
+    HOST = f'https://elevation2.arcgis.com/arcgis/rest/services/Polar/{service}'
+    url = f'{HOST}/ImageServer/exportImage?{urlencode(params)}'
+    logging.info(f'URL: {url}')
+    # fetch the image from the image service
+    with urllib2.urlopen(url) as response:
+        return PIL.Image.open(response)
 
 # PURPOSE: filter the CMR json response for desired data files
 def cmr_filter_json(

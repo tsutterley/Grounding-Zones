@@ -60,6 +60,7 @@ import pathlib
 import argparse
 import datetime
 import numpy as np
+import xarray as xr
 import grounding_zones as gz
 
 # attempt imports
@@ -142,18 +143,22 @@ def compute_LPET_ICESat2(INPUT_FILE,
         IS2_atl07_fill[gtx] = dict(sea_ice_segments={})
         IS2_atl07_dims[gtx] = dict(sea_ice_segments={})
         IS2_atl07_tide_attrs[gtx] = dict(sea_ice_segments={})
-
-        # number of segments
+        # data for beam and group
         val = IS2_atl07_mds[gtx]['sea_ice_segments']
 
         # create timescale from ATLAS Standard Epoch time
         # GPS seconds since 2018-01-01 00:00:00 UTC
-        ts = timescale.time.Timescale().from_deltatime(val['delta_time'],
+        ts = timescale.from_deltatime(val['delta_time'],
             epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
-        tide_time = ts.tide + ts.tt_ut1
+
+        # convert coordinates to xarray DataArrays
+        longitude = xr.DataArray(val['longitude'], dims=('time'))
+        latitude = xr.DataArray(val['latitude'], dims=('time'))
+        ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
 
         # predict long-period equilibrium tides at latitudes and time
-        tide_lpe = pyTMD.predict.equilibrium_tide(tide_time, val['latitude'])
+        tide_lpe = pyTMD.predict.equilibrium_tide(ts.tide, ds,
+            deltat=ts.tt_ut1)
 
         # group attributes for beam
         IS2_atl07_tide_attrs[gtx]['Description'] = IS2_atl07_attrs[gtx]['Description']
@@ -455,7 +460,7 @@ def HDF5_ATL07_tide_write(IS2_atl07_tide, IS2_atl07_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+    ts = timescale.from_deltatime(np.array([tmn,tmx]),
         epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration

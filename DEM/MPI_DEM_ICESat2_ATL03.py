@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 MPI_DEM_ICESat2_ATL03.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (08/2025)
 Determines which digital elevation model tiles to read for a given ATL03 file
 Reads 3x3 array of tiles for points within bounding box of central mosaic tile
 Interpolates digital elevation model to ICESat-2 ATL03 photon event locations
@@ -60,6 +60,7 @@ REFERENCES:
     https://nsidc.org/data/nsidc-0645/versions/1
 
 UPDATE HISTORY:
+    Updated 08/2025: set GDAL to use exceptions
     Updated 05/2024: use wrapper to importlib for optional dependencies
         moved from icesat2_toolkit to Grounding-Zones package
     Updated 04/2024: use timescale for temporal operations
@@ -387,6 +388,8 @@ def main():
     # create logger
     loglevel = logging.INFO if args.verbose else logging.CRITICAL
     logging.basicConfig(level=loglevel)
+    # set GDAL to use exceptions
+    gdal.UseExceptions()
 
     # output module information for process
     info(comm.rank,comm.size)
@@ -922,7 +925,7 @@ def HDF5_ATL03_dem_write(IS2_atl03_dem, IS2_atl03_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+    ts = timescale.from_deltatime(np.array([tmn,tmx]),
         epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration

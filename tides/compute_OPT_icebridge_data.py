@@ -92,7 +92,7 @@ import pathlib
 import argparse
 import collections
 import numpy as np
-import scipy.interpolate
+import xarray as xr
 import grounding_zones as gz
 
 # attempt imports
@@ -204,24 +204,15 @@ def compute_OPT_icebridge_data(arg,
         dinput, file_lines, HEM = gz.io.icebridge.read_LVIS_HDF5_file(
             input_file, input_subsetter)
 
-    # extract lat/lon
-    lon = dinput['lon'][:]
-    lat = dinput['lat'][:]
-    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    ts = timescale.time.Timescale().from_deltatime(dinput['time'],
-        epoch=timescale.time._j2000_epoch, standard='UTC')
-    # convert dynamic time to Modified Julian Days (MJD)
-    MJD = ts.tt - 2400000.5
-    # convert Julian days to calendar dates
-    Y,M,D,h,m,s = timescale.time.convert_julian(ts.tt, format='tuple')
-    # calculate time in year-decimal format
-    time_decimal = timescale.time.convert_calendar_decimal(Y,M,day=D,
-        hour=h,minute=m,second=s)
-    # elevation
-    h1 = dinput['data'][:]
+    # convert coordinates to xarray DataArrays
+    longitude = xr.DataArray(dinput['lon'], dims=('time'))
+    latitude = xr.DataArray(dinput['lat'], dims=('time'))
+    ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
 
-    # degrees to radians
-    dtr = np.pi/180.0
+    # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
+    ts = timescale.from_deltatime(dinput['time'],
+        epoch=timescale.time._j2000_epoch, standard='UTC')
+
     # earth and physical parameters for ellipsoid
     wgs84 = pyTMD.spatial.datum(ellipsoid='WGS84', units='MKS')
     # mean equatorial gravitational acceleration [m/s^2]
@@ -235,37 +226,47 @@ def compute_OPT_icebridge_data(arg,
 
     # convert from geodetic latitude to geocentric latitude
     # calculate X, Y and Z from geodetic latitude and longitude
-    X,Y,Z = pyTMD.spatial.to_cartesian(lon, lat,
+    X,Y,Z = pyTMD.spatial.to_cartesian(ds.x, ds.y,
         a_axis=wgs84.a_axis, flat=wgs84.flat)
-    # geocentric latitude (radians)
-    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))
+    XYZ = xr.Dataset(
+        data_vars={
+            'X': (ds.dims, X),
+            'Y': (ds.dims, Y),
+            'Z': (ds.dims, Z)
+        },
+        coords=ds.coords
+    )
     # geocentric colatitude (radians)
-    theta = (np.pi/2.0 - latitude_geocentric)
+    theta = np.pi/2.0 - np.arctan(XYZ.Z / np.sqrt(XYZ.X**2.0 + XYZ.Y**2.0))
     # calculate longitude (radians)
-    phi = np.arctan2(Y, X)
+    phi = np.arctan2(XYZ.Y, XYZ.X)
+    # geocentric latitude (degrees)
+    latitude_geocentric = 90.0 - np.degrees(theta)
 
-    # read ocean pole tide map from Desai (2002)
-    ur, un, ue = pyTMD.io.IERS.extract_coefficients(lon,
-        latitude_geocentric, method=METHOD)
+    # read and interpolate ocean pole tide map from Desai (2002)
+    IERS = pyTMD.io.IERS.open_dataset()
+    Umap = IERS.interp(x=ds.x, y=latitude_geocentric, method=METHOD)
+    
     # rotation matrix for converting to/from cartesian coordinates
-    R = np.zeros((file_lines, 3, 3))
-    R[:,0,0] = np.cos(phi)*np.cos(theta)
-    R[:,0,1] = -np.sin(phi)
-    R[:,0,2] = np.cos(phi)*np.sin(theta)
-    R[:,1,0] = np.sin(phi)*np.cos(theta)
-    R[:,1,1] = np.cos(phi)
-    R[:,1,2] = np.sin(phi)*np.sin(theta)
-    R[:,2,0] = -np.sin(theta)
-    R[:,2,2] = np.cos(theta)
-    Rinv = np.linalg.inv(R)
+    R = xr.Dataset()
+    R[0,0] = np.cos(phi)*np.cos(theta)
+    R[0,1] = -np.sin(phi)
+    R[0,2] = np.cos(phi)*np.sin(theta)
+    R[1,0] = np.sin(phi)*np.cos(theta)
+    R[1,1] = np.cos(phi)
+    R[1,2] = np.sin(phi)*np.sin(theta)
+    R[2,0] = -np.sin(theta)
+    R[2,1] = xr.zeros_like(theta)
+    R[2,2] = np.cos(theta)
 
     # calculate pole tide displacements in Cartesian coordinates
-    # coefficients reordered to N, E, R to match IERS rotation matrix
-    UXYZ = np.einsum('ti...,tji...->tj...', np.c_[un, ue, ur], R)
+    UXYZ = xr.Dataset()
+    UXYZ['X'] = R[0,0]*Umap['N'] + R[0,1]*Umap['E'] + R[0,2]*Umap['R']
+    UXYZ['Y'] = R[1,0]*Umap['N'] + R[1,1]*Umap['E'] + R[1,2]*Umap['R']
+    UXYZ['Z'] = R[2,0]*Umap['N'] + R[2,1]*Umap['E'] + R[2,2]*Umap['R']
 
     # calculate ocean pole tides in cartesian coordinates
-    XYZ = np.c_[X, Y, Z]
-    dxi = pyTMD.predict.ocean_pole_tide(ts.tide, XYZ, UXYZ,
+    dxi = pyTMD.predict.ocean_pole_tide(ts.tide, UXYZ,
         deltat=ts.tt_ut1,
         a_axis=wgs84.a_axis,
         gamma_0=ge,
@@ -275,8 +276,9 @@ def compute_OPT_icebridge_data(arg,
         g2=gamma,
         convention=CONVENTION
     )
-    # calculate components of ocean pole tides
-    U = np.einsum('ti...,tji...->tj...', dxi, Rinv)
+
+    # rotate displacements from cartesian coordinates
+    Urad = R[0,2]*dxi['X'] + R[1,2]*dxi['Y'] + R[2,2]*dxi['Z']
 
     # output ocean pole tide HDF5 file
     # form: rg_NASA_OCEAN_POLE_TIDE_WGS84_fl1yyyymmddjjjjj.H5
@@ -297,14 +299,8 @@ def compute_OPT_icebridge_data(arg,
     # open output HDF5 file
     fid = h5py.File(output_file, mode='w')
 
-    # convert to masked array
-    Urad = np.ma.zeros((file_lines),fill_value=fill_value)
-    Urad.data[:] = U[:,2].copy()
-    # replace fill values
-    Urad.mask = np.isnan(Urad.data)
-    Urad.data[Urad.mask] = Urad.fill_value
-    # copy radial displacement to output variable
-    dinput['tide_oc_pole'] = Urad.copy()
+    # copy radial displacement to output dictionary
+    dinput['tide_oc_pole'] = Urad.fillna(fill_value)
 
     # output dictionary with HDF5 variables
     h5 = {}
@@ -385,8 +381,8 @@ def arguments():
         help='IERS mean or secular pole convention')
     # interpolation method
     parser.add_argument('--interpolate','-I',
-        metavar='METHOD', type=str, default='spline',
-        choices=('spline','linear','nearest'),
+        metavar='METHOD', type=str, default='linear',
+        choices=('linear','nearest'),
         help='Spatial interpolation method')
     # verbosity settings
     parser.add_argument('--verbose','-V',

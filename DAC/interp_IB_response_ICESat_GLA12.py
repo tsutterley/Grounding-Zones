@@ -334,7 +334,7 @@ def interp_IB_response_ICESat(base_dir, INPUT_FILE, MODEL,
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    ts = timescale.time.Timescale().from_deltatime(DS_UTCTime_40HZ[:],
+    ts = timescale.from_deltatime(DS_UTCTime_40HZ[:],
         epoch=timescale.time._j2000_epoch, standard='UTC')
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids

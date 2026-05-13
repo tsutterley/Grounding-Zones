@@ -411,19 +411,19 @@ def main():
         "to specific regions of interest.")
 
     # output mask
-    IS_gla12_mask['Data_40HZ']['Subsetting']['d_ice_gz'] = associated_map
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_ice_gz'] = {}
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_ice_gz']['contentType'] = \
+    IS_gla12_mask['Data_40HZ']['Subsetting']['ice_gz_flg'] = associated_map
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['ice_gz_flg'] = {}
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['ice_gz_flg']['contentType'] = \
         "referenceInformation"
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_ice_gz']['long_name'] = \
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['ice_gz_flg']['long_name'] = \
         'Grounding Zone Mask'
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_ice_gz']['description'] = \
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['ice_gz_flg']['description'] = \
         f"Grounding zone mask buffered by {args.buffer:0.0f} km"
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_ice_gz']['reference'] = \
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['ice_gz_flg']['reference'] = \
         grounded_reference[args.hemisphere]
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_ice_gz']['source'] = \
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['ice_gz_flg']['source'] = \
         grounded_description[args.hemisphere]
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_ice_gz']['coordinates'] = \
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['ice_gz_flg']['coordinates'] = \
         "../DS_UTCTime_40"
     # wait for all processes to finish calculation
     comm.Barrier()

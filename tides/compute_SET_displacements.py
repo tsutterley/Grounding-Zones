@@ -127,6 +127,7 @@ import pathlib
 import argparse
 import traceback
 import numpy as np
+import xarray as xr
 import pyTMD.utilities
 import timescale.time
 import grounding_zones as gz
@@ -147,14 +148,14 @@ def info(args):
 def get_projection(attributes, PROJECTION):
     # coordinate reference system string from file
     try:
-        crs = pyTMD.crs().from_input(attributes['projection'])
+        crs = pyproj.CRS.from_user_input(attributes['projection'])
     except (ValueError,KeyError,pyproj.exceptions.CRSError):
         pass
     else:
         return crs
     # coordinate reference system from input argument
     try:
-        crs = pyTMD.crs().from_input(PROJECTION)
+        crs = pyproj.CRS.from_user_input(PROJECTION)
     except (ValueError,pyproj.exceptions.CRSError):
         pass
     else:
@@ -187,12 +188,12 @@ def compute_SET_displacements(input_file, output_file,
             delimiter=DELIMITER, header=HEADER, parse_dates=parse_dates)
         attributes = dinput['attributes']
     elif (FORMAT == 'netCDF4'):
-        field_mapping = pyTMD.spatial.default_field_mapping(VARIABLES)
+        field_mapping = gz.spatial.default_field_mapping(VARIABLES)
         dinput = gz.spatial.from_netCDF4(input_file,
             field_mapping=field_mapping)
         attributes = dinput['attributes']
     elif (FORMAT == 'HDF5'):
-        field_mapping = pyTMD.spatial.default_field_mapping(VARIABLES)
+        field_mapping = gz.spatial.default_field_mapping(VARIABLES)
         dinput = gz.spatial.from_HDF5(input_file,
             field_mapping=field_mapping)
         attributes = dinput['attributes']
@@ -207,19 +208,15 @@ def compute_SET_displacements(input_file, output_file,
         dinput['time'] = np.copy(TIME)
 
     # converting x,y from projection to latitude/longitude
-    crs1 = get_projection(attributes, PROJECTION)
-    crs2 = pyproj.CRS.from_epsg(4326)
-    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    crs = get_projection(attributes, PROJECTION)
     assert TYPE.lower() in ('grid', 'drift', 'time series')
-    if (TYPE == 'grid'):
-        ny, nx = (len(dinput['y']), len(dinput['x']))
-        gridx, gridy = np.meshgrid(dinput['x'], dinput['y'])
-        lon, lat = transformer.transform(gridx, gridy)
-    elif (TYPE == 'drift'):
-        lon, lat = transformer.transform(dinput['x'], dinput['y'])
-    elif (TYPE == 'time series'):
-        nstation = len(np.ravel(dinput['y']))
-        lon, lat = transformer.transform(dinput['x'], dinput['y'])
+    # convert coordinates to xarray DataArrays
+    # in WGS84 Latitude and Longitude
+    longitude, latitude = pyTMD.io.dataset._coords(
+        dinput['x'], dinput['y'], type=TYPE,
+        source_crs=crs, target_crs=4326)
+    # create dataset
+    ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
 
     # extract time units from netCDF4 and HDF5 attributes or from TIME_UNITS
     try:
@@ -235,101 +232,79 @@ def compute_SET_displacements(input_file, output_file,
     else:
         # convert time to seconds
         delta_time = to_secs*np.ravel(dinput['time'])
-        ts = timescale.time.Timescale().from_deltatime(delta_time,
+        ts = timescale.from_deltatime(delta_time,
             epoch=epoch1, standard=TIME_STANDARD)
-    # convert tide times to dynamical time
-    tide_time = ts.tide + ts.tt_ut1
-    # number of time points
-    nt = len(ts)
 
     # earth and physical parameters for ellipsoid
     units = pyTMD.spatial.datum(ellipsoid=ELLIPSOID, units='MKS')
 
-    # convert input coordinates to cartesian
-    X, Y, Z = pyTMD.spatial.to_cartesian(lon, lat,
+    # convert from geodetic latitude to geocentric latitude
+    # calculate X, Y and Z from geodetic latitude and longitude
+    X,Y,Z = pyTMD.spatial.to_cartesian(ds.x, ds.y,
         a_axis=units.a_axis, flat=units.flat)
+    XYZ = xr.Dataset(
+        data_vars={
+            'X': (ds.dims, X),
+            'Y': (ds.dims, Y),
+            'Z': (ds.dims, Z)
+        },
+        coords=ds.coords
+    ) 
+    # geocentric colatitude (radians)
+    theta = np.pi/2.0 - np.arctan(XYZ.Z / np.sqrt(XYZ.X**2.0 + XYZ.Y**2.0))
+    # calculate longitude (radians)
+    phi = np.arctan2(XYZ.Y, XYZ.X)
+
     # compute ephemerides for lunisolar coordinates
     SX, SY, SZ = pyTMD.astro.solar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
     LX, LY, LZ = pyTMD.astro.lunar_ecef(ts.MJD, ephemerides=EPHEMERIDES)
+    # create datasets for lunisolar coordinates
+    SXYZ = xr.Dataset(
+        data_vars={
+            'X': (['time'], SX),
+            'Y': (['time'], SY),
+            'Z': (['time'], SZ)
+        },
+        coords=dict(time=np.atleast_1d(ts.MJD))
+    )
+    LXYZ = xr.Dataset(
+        data_vars={
+            'X': (['time'], LX),
+            'Y': (['time'], LY),
+            'Z': (['time'], LZ)
+        },
+        coords=dict(time=np.atleast_1d(ts.MJD))
+    )
 
-    # geocentric latitude (radians)
-    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))
-    npts = len(latitude_geocentric)
-    # geocentric colatitude (radians)
-    theta = (np.pi/2.0 - latitude_geocentric)
-    # calculate longitude (radians)
-    phi = np.arctan2(Y, X)
-    # rotation matrix for converting from cartesian coordinates
-    R = np.zeros((npts, 3, 3))
-    R[:,0,0] = np.cos(phi)*np.cos(theta)
-    R[:,1,0] = -np.sin(phi)
-    R[:,2,0] = np.cos(phi)*np.sin(theta)
-    R[:,0,1] = np.sin(phi)*np.cos(theta)
-    R[:,1,1] = np.cos(phi)
-    R[:,2,1] = np.sin(phi)*np.sin(theta)
-    R[:,0,2] = -np.sin(theta)
-    R[:,2,2] = np.cos(theta)
+    # rotation matrix for converting to/from cartesian coordinates
+    R = xr.Dataset()
+    R[0,0] = np.cos(phi)*np.cos(theta)
+    R[0,1] = -np.sin(phi)
+    R[0,2] = np.cos(phi)*np.sin(theta)
+    R[1,0] = np.sin(phi)*np.cos(theta)
+    R[1,1] = np.cos(phi)
+    R[1,2] = np.sin(phi)*np.sin(theta)
+    R[2,0] = -np.sin(theta)
+    R[2,1] = xr.zeros_like(theta)
+    R[2,2] = np.cos(theta)
 
     # calculate radial displacement at time
-    if (TYPE == 'grid'):
-        tide_se = np.zeros((ny,nx,nt))
-        # convert coordinates to column arrays
-        XYZ = np.c_[X, Y, Z]
-        for i in range(nt):
-            # reshape time to match spatial
-            t = tide_time[i] + np.ones((ny*nx))
-            # convert coordinates to column arrays
-            SXYZ = np.repeat(np.c_[SX[i], SY[i], SZ[i]], ny*nx, axis=0)
-            LXYZ = np.repeat(np.c_[LX[i], LY[i], LZ[i]], ny*nx, axis=0)
-            # predict solid earth tides (cartesian)
-            dxi = pyTMD.predict.solid_earth_tide(t,
-                XYZ, SXYZ, LXYZ, a_axis=units.a_axis,
-                tide_system=TIDE_SYSTEM)
-            # calculate components of solid earth tides
-            SE = np.einsum('ti...,tji...->tj...', dxi, R)
-            # reshape to output dimensions
-            tide_se[:,:,i] = np.reshape(SE[:,2], (ny,nx))
-    elif (TYPE == 'drift'):
-        # convert coordinates to column arrays
-        XYZ = np.c_[X, Y, Z]
-        SXYZ = np.c_[SX, SY, SZ]
-        LXYZ = np.c_[LX, LY, LZ]
-        # predict solid earth tides (cartesian)
-        dxi = pyTMD.predict.solid_earth_tide(tide_time,
-            XYZ, SXYZ, LXYZ, a_axis=units.a_axis,
-            tide_system=TIDE_SYSTEM)
-        # calculate components of solid earth tides
-        SE = np.einsum('ti...,tji...->tj...', dxi, R)
-        # reshape to output dimensions
-        tide_se = SE[:,2].copy()
-    elif (TYPE == 'time series'):
-        tide_se = np.zeros((nstation,nt))
-        # convert coordinates to column arrays
-        SXYZ = np.c_[SX, SY, SZ]
-        LXYZ = np.c_[LX, LY, LZ]
-        for s in range(nstation):
-            # convert coordinates to column arrays
-            XYZ = np.repeat(np.c_[X[s], Y[s], Z[s]], nt, axis=0)
-            # predict solid earth tides (cartesian)
-            dxi = pyTMD.predict.solid_earth_tide(tide_time,
-                XYZ, SXYZ, LXYZ, a_axis=units.a_axis,
-                tide_system=TIDE_SYSTEM)
-            # calculate components of solid earth tides
-            SE = np.einsum('ti...,ji...->tj...', dxi, R[s,:,:])
-            # reshape to output dimensions
-            tide_se[s,:] = SE[:,2].copy()
+    # predict solid earth tides (cartesian)
+    dxi = pyTMD.predict.solid_earth_tide(ts.tide, XYZ, SXYZ, LXYZ,
+        deltat=ts.tt_ut1,
+        a_axis=units.a_axis,
+        tide_system=TIDE_SYSTEM
+    )
+    # rotate displacements from cartesian coordinates
+    tide_se = R[0,2]*dxi['X'] + R[1,2]*dxi['Y'] + R[2,2]*dxi['Z']
 
     # output netCDF4 and HDF5 file attributes
     # will be added to YAML header in csv files
     attrib = {}
-    # latitude
-    attrib['lat'] = {}
-    attrib['lat']['long_name'] = 'Latitude'
-    attrib['lat']['units'] = 'Degrees_North'
-    # longitude
-    attrib['lon'] = {}
-    attrib['lon']['long_name'] = 'Longitude'
-    attrib['lon']['units'] = 'Degrees_East'
+    # copy coordinate attributes from input file
+    attrib['x'] = attributes.get('x', {})
+    attrib['y'] = attributes.get('y', {})
+    attrib['time'] = attributes.get('time', {})
     # solid earth tides
     attrib['tide_earth'] = {}
     attrib['tide_earth']['long_name'] = 'Solid_Earth_Tide'
@@ -338,25 +313,17 @@ def compute_SET_displacements(input_file, output_file,
     attrib['tide_earth']['reference'] = 'https://doi.org/10.1029/97JB01515'
     attrib['tide_earth']['units'] = 'meters'
     attrib['tide_earth']['_FillValue'] = FILL_VALUE
-    # time
-    attrib['time'] = {}
-    attrib['time']['long_name'] = 'Time'
-    attrib['time']['calendar'] = 'standard'
 
     # output data dictionary
-    output = {'lon':lon, 'lat':lat, 'tide_earth':tide_se}
-    if (FORMAT == 'csv') and (TIME_STANDARD.lower() == 'datetime'):
-        output['time'] = ts.to_string()
-    else:
-        attrib['time']['units'] = 'days since 1992-01-01T00:00:00'
-        output['time'] = ts.tide
+    output = {'x':dinput['x'], 'y':dinput['y'], 'time':dinput['time']}
+    output['tide_earth'] = tide_se
 
     # output to file
     if (FORMAT == 'csv'):
         # write columnar data to ascii
         gz.spatial.to_ascii(output, attrib, output_file,
             delimiter=DELIMITER, header=False,
-            columns=['time','lat','lon','tide_earth'])
+            columns=['time','x','y','tide_earth'])
     elif (FORMAT == 'netCDF4'):
         # write to netCDF4 for data type
         gz.spatial.to_netCDF4(output, attrib, output_file, data_type=TYPE)
@@ -376,7 +343,7 @@ def compute_SET_displacements(input_file, output_file,
         geometry_encoding = attributes.get('geometry_encoding', None)
         gz.spatial.to_parquet(output, attrib, output_file,
             geoparquet=geoparquet, geometry_encoding=geometry_encoding,
-            crs=4326)
+            crs=crs)
     # change the permissions level to MODE
     output_file.chmod(mode=MODE)
 

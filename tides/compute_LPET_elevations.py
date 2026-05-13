@@ -108,6 +108,7 @@ import pathlib
 import argparse
 import traceback
 import numpy as np
+import xarray as xr
 import pyTMD.utilities
 import timescale.time
 import grounding_zones as gz
@@ -128,14 +129,14 @@ def info(args):
 def get_projection(attributes, PROJECTION):
     # coordinate reference system string from file
     try:
-        crs = pyTMD.crs().from_input(attributes['projection'])
+        crs = pyproj.CRS.from_user_input(attributes['projection'])
     except (ValueError,KeyError,pyproj.exceptions.CRSError):
         pass
     else:
         return crs
     # coordinate reference system from input argument
     try:
-        crs = pyTMD.crs().from_input(PROJECTION)
+        crs = pyproj.CRS.from_user_input(PROJECTION)
     except (ValueError,pyproj.exceptions.CRSError):
         pass
     else:
@@ -165,12 +166,12 @@ def compute_LPET_elevations(input_file, output_file,
             delimiter=DELIMITER, header=HEADER, parse_dates=parse_dates)
         attributes = dinput['attributes']
     elif (FORMAT == 'netCDF4'):
-        field_mapping = pyTMD.spatial.default_field_mapping(VARIABLES)
+        field_mapping = gz.spatial.default_field_mapping(VARIABLES)
         dinput = gz.spatial.from_netCDF4(input_file,
             field_mapping=field_mapping)
         attributes = dinput['attributes']
     elif (FORMAT == 'HDF5'):
-        field_mapping = pyTMD.spatial.default_field_mapping(VARIABLES)
+        field_mapping = gz.spatial.default_field_mapping(VARIABLES)
         dinput = gz.spatial.from_HDF5(input_file,
             field_mapping=field_mapping)
         attributes = dinput['attributes']
@@ -185,21 +186,15 @@ def compute_LPET_elevations(input_file, output_file,
         dinput['time'] = np.copy(TIME)
 
     # converting x,y from projection to latitude/longitude
-    crs1 = get_projection(attributes, PROJECTION)
-    crs2 = pyproj.CRS.from_epsg(4326)
-    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    crs = get_projection(attributes, PROJECTION)
     assert TYPE.lower() in ('grid', 'drift', 'time series')
-    if (TYPE == 'grid'):
-        ny, nx = (len(dinput['y']), len(dinput['x']))
-        gridx, gridy = np.meshgrid(dinput['x'], dinput['y'])
-        lon, lat = transformer.transform(gridx, gridy)
-    elif (TYPE == 'drift'):
-        lon, lat = transformer.transform(dinput['x'], dinput['y'])
-    elif (TYPE == 'time series'):
-        nstation = len(np.ravel(dinput['y']))
-        lon, lat = transformer.transform(dinput['x'], dinput['y'])
-    # flatten latitudes
-    phi = np.ravel(lat)
+    # convert coordinates to xarray DataArrays
+    # in WGS84 Latitude and Longitude
+    longitude, latitude = pyTMD.io.dataset._coords(
+        dinput['x'], dinput['y'], type=TYPE,
+        source_crs=crs, target_crs=4326)
+    # create dataset
+    ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
 
     # extract time units from netCDF4 and HDF5 attributes or from TIME_UNITS
     try:
@@ -215,38 +210,20 @@ def compute_LPET_elevations(input_file, output_file,
     else:
         # convert time to seconds
         delta_time = to_secs*np.ravel(dinput['time'])
-        ts = timescale.time.Timescale().from_deltatime(delta_time,
+        ts = timescale.from_deltatime(delta_time,
             epoch=epoch1, standard=TIME_STANDARD)
-    # number of time points
-    nt = len(ts)
-    # convert tide times to dynamical time
-    tide_time = ts.tide + ts.tt_ut1
 
-    # predict long-period equilibrium tides at time
-    if (TYPE == 'grid'):
-        tide_lpe = np.zeros((ny,nx,nt))
-        for i in range(nt):
-            lpet = pyTMD.predict.equilibrium_tide(tide_time[i], phi)
-            tide_lpe[:,:,i] = np.reshape(lpet,(ny,nx))
-    elif (TYPE == 'drift'):
-        tide_lpe = pyTMD.predict.equilibrium_tide(tide_time, phi)
-    elif (TYPE == 'time series'):
-        tide_lpe = np.zeros((nstation,nt))
-        for s in range(nstation):
-            lpet = pyTMD.predict.equilibrium_tide(tide_time, phi[s])
-            tide_lpe[s,:] = np.copy(lpet)
+    # predict long-period equilibrium tides at times
+    tide_lpe = pyTMD.predict.equilibrium_tide(ts.tide, ds,
+        deltat=ts.tt_ut1)
 
     # output netCDF4 and HDF5 file attributes
     # will be added to YAML header in csv files
     attrib = {}
-    # latitude
-    attrib['lat'] = {}
-    attrib['lat']['long_name'] = 'Latitude'
-    attrib['lat']['units'] = 'Degrees_North'
-    # longitude
-    attrib['lon'] = {}
-    attrib['lon']['long_name'] = 'Longitude'
-    attrib['lon']['units'] = 'Degrees_East'
+    # copy coordinate attributes from input file
+    attrib['x'] = attributes.get('x', {})
+    attrib['y'] = attributes.get('y', {})
+    attrib['time'] = attributes.get('time', {})
     # long-period equilibrium tides
     attrib['tide_lpe'] = {}
     attrib['tide_lpe']['long_name'] = 'Equilibrium_Tide'
@@ -255,25 +232,17 @@ def compute_LPET_elevations(input_file, output_file,
     attrib['tide_lpe']['reference'] = ('https://doi.org/10.1111/'
         'j.1365-246X.1973.tb03420.x')
     attrib['tide_lpe']['units'] = 'meters'
-    # time
-    attrib['time'] = {}
-    attrib['time']['long_name'] = 'Time'
-    attrib['time']['calendar'] = 'standard'
 
     # output data dictionary
-    output = {'lon':lon, 'lat':lat, 'tide_lpe':tide_lpe}
-    if (FORMAT == 'csv') and (TIME_STANDARD.lower() == 'datetime'):
-        output['time'] = ts.to_string()
-    else:
-        attrib['time']['units'] = 'days since 1992-01-01T00:00:00'
-        output['time'] = ts.tide
+    output = {'x':dinput['x'], 'y':dinput['y'], 'time':dinput['time']}
+    output['tide_lpe'] = tide_lpe
 
     # output to file
     if (FORMAT == 'csv'):
         # write columnar data to ascii
         gz.spatial.to_ascii(output, attrib, output_file,
             delimiter=DELIMITER, header=False,
-            columns=['time','lat','lon','tide_lpe'])
+            columns=['time','x','y','tide_lpe'])
     elif (FORMAT == 'netCDF4'):
         # write to netCDF4 for data type
         gz.spatial.to_netCDF4(output, attrib, output_file, data_type=TYPE)
@@ -293,7 +262,7 @@ def compute_LPET_elevations(input_file, output_file,
         geometry_encoding = attributes.get('geometry_encoding', None)
         gz.spatial.to_parquet(output, attrib, output_file,
             geoparquet=geoparquet, geometry_encoding=geometry_encoding,
-            crs=4326)
+            crs=crs)
     # change the permissions level to MODE
     output_file.chmod(mode=MODE)
 

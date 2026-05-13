@@ -152,7 +152,7 @@ def interp_DAC_ICESat_GLA12(base_dir, INPUT_FILE,
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    ts = timescale.time.Timescale().from_deltatime(DS_UTCTime_40HZ[:],
+    ts = timescale.from_deltatime(DS_UTCTime_40HZ[:],
         epoch=timescale.time._j2000_epoch, standard='UTC')
     # convert time to days relative to 1950-01-01 (MJD:33282)
     t = ts.to_deltatime(epoch=(1950,1,1,0,0,0))

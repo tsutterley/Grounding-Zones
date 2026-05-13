@@ -21,7 +21,6 @@ INPUTS:
 COMMAND LINE OPTIONS:
     -D X, --directory X: Working data directory
     -T X, --tide X: Tide model to use in correction
-    --gzip, -G: Tide model files are gzip compressed
     --definition-file X: Model definition file for use as correction
     -C, --crop: Crop tide model to (buffered) bounds of data
     -B X, --buffer X: Buffer for cropping tide model
@@ -52,10 +51,8 @@ COMMAND LINE OPTIONS:
     -P X, --projection X: spatial projection as EPSG code or PROJ4 string
         4326: latitude and longitude coordinates on WGS84 reference ellipsoid
     -I X, --interpolate X: Interpolation method
-        spline
         linear
         nearest
-        bilinear
     -E X, --extrapolate X: Extrapolate with nearest-neighbors
     -c X, --cutoff X: Extrapolation cutoff in kilometers
         set to inf to extrapolate for all points
@@ -108,6 +105,7 @@ PROGRAM DEPENDENCIES:
     predict.py: predict tidal values using harmonic constants
 
 UPDATE HISTORY:
+    Updated 11/2025: use new pyTMD xarray data access workflows
     Updated 11/2024: add option for buffer distance to crop tide model data
     Updated 10/2024: compute delta times based on corrections type
         simplify by using wrapper functions to read and interpolate constants
@@ -189,6 +187,7 @@ import pathlib
 import argparse
 import traceback
 import numpy as np
+import xarray as xr
 import pyTMD.utilities
 import timescale.time
 import grounding_zones as gz
@@ -209,14 +208,14 @@ def info(args):
 def get_projection(attributes, PROJECTION):
     # coordinate reference system string from file
     try:
-        crs = pyTMD.crs().from_input(attributes['projection'])
+        crs = pyproj.CRS.from_user_input(attributes['projection'])
     except (ValueError,KeyError,pyproj.exceptions.CRSError):
         pass
     else:
         return crs
     # coordinate reference system from input argument
     try:
-        crs = pyTMD.crs().from_input(PROJECTION)
+        crs = pyproj.CRS.from_user_input(PROJECTION)
     except (ValueError,pyproj.exceptions.CRSError):
         pass
     else:
@@ -227,7 +226,6 @@ def get_projection(attributes, PROJECTION):
 # compute tides at points and times using tidal model driver algorithms
 def compute_tidal_elevations(tide_dir, input_file, output_file,
     TIDE_MODEL=None,
-    GZIP=True,
     DEFINITION_FILE=None,
     CROP=False,
     BUFFER=None,
@@ -240,7 +238,7 @@ def compute_tidal_elevations(tide_dir, input_file, output_file,
     TIME_STANDARD='UTC',
     TIME=None,
     PROJECTION='4326',
-    METHOD='spline',
+    METHOD='linear',
     EXTRAPOLATE=False,
     CUTOFF=None,
     CORRECTIONS=None,
@@ -253,9 +251,16 @@ def compute_tidal_elevations(tide_dir, input_file, output_file,
 
     # get parameters for tide model
     if DEFINITION_FILE is not None:
-        model = pyTMD.io.model(tide_dir).from_file(DEFINITION_FILE)
+        model = gz.io.Model(tide_dir).from_file(DEFINITION_FILE)
     else:
-        model = pyTMD.io.model(tide_dir, compressed=GZIP).elevation(TIDE_MODEL)
+        model = gz.io.Model(tide_dir).from_database(TIDE_MODEL)
+    # open tide model dataest
+    ds = model.open_dataset(group='z', append_node=APPEND_NODE)
+    # apply flexure field to each constituent
+    if APPLY_FLEXURE:
+        # apply ice flexure scaling factor to height values
+        for c in ds.tmd.constituents:
+            ds[c] *= ds['flexure']
 
     # read input file to extract time, spatial coordinates and data
     if (FORMAT == 'csv'):
@@ -264,12 +269,12 @@ def compute_tidal_elevations(tide_dir, input_file, output_file,
             delimiter=DELIMITER, header=HEADER, parse_dates=parse_dates)
         attributes = dinput['attributes']
     elif (FORMAT == 'netCDF4'):
-        field_mapping = pyTMD.spatial.default_field_mapping(VARIABLES)
+        field_mapping = gz.spatial.default_field_mapping(VARIABLES)
         dinput = gz.spatial.from_netCDF4(input_file,
             field_mapping=field_mapping)
         attributes = dinput['attributes']
     elif (FORMAT == 'HDF5'):
-        field_mapping = pyTMD.spatial.default_field_mapping(VARIABLES)
+        field_mapping = gz.spatial.default_field_mapping(VARIABLES)
         dinput = gz.spatial.from_HDF5(input_file,
             field_mapping=field_mapping)
         attributes = dinput['attributes']
@@ -283,20 +288,23 @@ def compute_tidal_elevations(tide_dir, input_file, output_file,
     if TIME is not None:
         dinput['time'] = np.copy(TIME)
 
-    # converting x,y from projection to latitude/longitude
-    crs1 = get_projection(attributes, PROJECTION)
-    crs2 = pyproj.CRS.from_epsg(4326)
-    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
+    # converting x,y from projection to model crs
+    crs = get_projection(attributes, PROJECTION)
+    # determine input data type based on variable dimensions
+    if not TYPE:
+        TYPE = pyTMD.spatial.data_type(dinput['x'], dinput['y'], dinput['time'])
     assert TYPE.lower() in ('grid', 'drift', 'time series')
-    if (TYPE == 'grid'):
-        ny, nx = (len(dinput['y']), len(dinput['x']))
-        gridx, gridy = np.meshgrid(dinput['x'], dinput['y'])
-        lon, lat = transformer.transform(gridx, gridy)
-    elif (TYPE == 'drift'):
-        lon, lat = transformer.transform(dinput['x'], dinput['y'])
-    elif (TYPE == 'time series'):
-        nstation = len(dinput['y'])
-        lon, lat = transformer.transform(dinput['x'], dinput['y'])
+    # convert coordinates to xarray DataArrays
+    # in coordinate reference system of model
+    X, Y = ds.tmd.coords_as(dinput['x'], dinput['y'], crs=crs, type=TYPE)
+
+    # crop tide model dataset to bounds
+    if CROP:
+        # default bounds if cropping data
+        xmin, xmax = np.min(X), np.max(X)
+        ymin, ymax = np.min(Y), np.max(Y)
+        # crop dataset to buffered default bounds
+        ds = ds.tmd.crop([xmin, xmax, ymin, ymax], buffer=BUFFER)
 
     # extract time units from netCDF4 and HDF5 attributes or from TIME_UNITS
     try:
@@ -312,21 +320,8 @@ def compute_tidal_elevations(tide_dir, input_file, output_file,
     else:
         # convert time to seconds
         delta_time = to_secs*np.ravel(dinput['time'])
-        ts = timescale.time.Timescale().from_deltatime(delta_time,
+        ts = timescale.from_deltatime(delta_time,
             epoch=epoch1, standard=TIME_STANDARD)
-    # number of time points
-    nt = len(ts)
-
-    # read tidal constants and interpolate to grid points
-    amp, ph, c = model.extract_constants(np.ravel(lon), np.ravel(lat),
-        type=model.type, crop=CROP, buffer=BUFFER,
-        method=METHOD, extrapolate=EXTRAPOLATE,
-        cutoff=CUTOFF, append_node=APPEND_NODE,
-        apply_flexure=APPLY_FLEXURE)
-    # calculate complex phase in radians for Euler's
-    cph = -1j*ph*np.pi/180.0
-    # calculate constituent oscillation
-    hc = amp*np.exp(cph)
 
     # nodal corrections to apply
     nodal_corrections = CORRECTIONS or model.corrections
@@ -334,74 +329,34 @@ def compute_tidal_elevations(tide_dir, input_file, output_file,
     minor_constituents = MINOR_CONSTITUENTS or model.minor
     # delta time (TT - UT1) for tide model
     if nodal_corrections in ('OTIS','ATLAS','TMD3','netcdf'):
-        # use delta time at 2000.0 to match TMD outputs
+        # use delta time at 2000.0 to match TMDv2.5 outputs
         deltat = np.zeros_like(ts.tt_ut1)
     else:
         # use interpolated delta times
         deltat = ts.tt_ut1
 
+    # interpolate to grid points
+    local = ds.tmd.interp(X, Y, method=METHOD,
+        extrapolate=EXTRAPOLATE, cutoff=CUTOFF)
     # predict tidal elevations at time
-    if (TYPE == 'grid'):
-        tide = np.ma.zeros((ny,nx,nt), fill_value=FILL_VALUE)
-        tide.mask = np.zeros((ny,nx,nt),dtype=bool)
-        for i in range(nt):
-            TIDE = pyTMD.predict.map(ts.tide[i], hc, c,
-                deltat=deltat[i], corrections=nodal_corrections)
-            # calculate values for minor constituents by inferrence
-            if INFER_MINOR:
-                MINOR = pyTMD.predict.infer_minor(ts.tide[i], hc, c,
-                    deltat=deltat[i], corrections=nodal_corrections,
-                    minor=minor_constituents)
-            else:
-                MINOR = np.ma.zeros_like(TIDE)
-            # add major and minor components and reform grid
-            tide[:,:,i] = np.reshape((TIDE+MINOR), (ny,nx))
-            tide.mask[:,:,i] = np.reshape((TIDE.mask | MINOR.mask), (ny,nx))
-    elif (TYPE == 'drift'):
-        tide = np.ma.zeros((nt), fill_value=FILL_VALUE)
-        tide.mask = np.any(hc.mask,axis=1)
-        tide.data[:] = pyTMD.predict.drift(ts.tide, hc, c,
-            deltat=deltat, corrections=nodal_corrections)
-        # calculate values for minor constituents by inferrence
-        if INFER_MINOR:
-            minor = pyTMD.predict.infer_minor(ts.tide, hc, c,
-                deltat=deltat, corrections=nodal_corrections,
-                minor=minor_constituents)
-            tide.data[:] += minor.data[:]
-    elif (TYPE == 'time series'):
-        tide = np.ma.zeros((nstation,nt), fill_value=FILL_VALUE)
-        tide.mask = np.zeros((nstation,nt),dtype=bool)
-        for s in range(nstation):
-            # calculate constituent oscillation for station
-            HC = hc[s,None,:]
-            TIDE = pyTMD.predict.time_series(ts.tide, HC, c,
-                deltat=deltat, corrections=nodal_corrections)
-            # calculate values for minor constituents by inferrence
-            if INFER_MINOR:
-                MINOR = pyTMD.predict.infer_minor(ts.tide, HC, c,
-                    deltat=deltat, corrections=nodal_corrections,
-                    minor=minor_constituents)
-            else:
-                MINOR = np.ma.zeros_like(TIDE)
-            # add major and minor components
-            tide.data[s,:] = TIDE.data[:] + MINOR.data[:]
-            tide.mask[s,:] = (TIDE.mask | MINOR.mask)
+    tide = local.tmd.predict(ts.tide, deltat=deltat,
+        corrections=nodal_corrections)
+    # calculate values for minor constituents by inferrence
+    if INFER_MINOR:
+        tide += local.tmd.infer(ts.tide, deltat=deltat,
+            corrections=nodal_corrections, minor=minor_constituents)
     # replace invalid values with fill value
-    tide.data[tide.mask] = tide.fill_value
+    tide = tide.fillna(FILL_VALUE)
 
     # output netCDF4 and HDF5 file attributes
     # will be added to YAML header in csv files
     attrib = {}
-    # latitude
-    attrib['lat'] = {}
-    attrib['lat']['long_name'] = 'Latitude'
-    attrib['lat']['units'] = 'Degrees_North'
-    # longitude
-    attrib['lon'] = {}
-    attrib['lon']['long_name'] = 'Longitude'
-    attrib['lon']['units'] = 'Degrees_East'
+    # copy coordinate attributes from input file
+    attrib['x'] = attributes.get('x', {})
+    attrib['y'] = attributes.get('y', {})
+    attrib['time'] = attributes.get('time', {})
     # tides
-    output_variable = model.variable
+    output_variable = model.z.variable
     attrib[output_variable] = {}
     attrib[output_variable]['description'] = model.description
     attrib[output_variable]['reference'] = model.reference
@@ -409,25 +364,17 @@ def compute_tidal_elevations(tide_dir, input_file, output_file,
     attrib[output_variable]['units'] = 'meters'
     attrib[output_variable]['long_name'] = model.long_name
     attrib[output_variable]['_FillValue'] = FILL_VALUE
-    # time
-    attrib['time'] = {}
-    attrib['time']['long_name'] = 'Time'
-    attrib['time']['calendar'] = 'standard'
 
     # output data dictionary
-    output = {'lon':lon, 'lat':lat, output_variable:tide}
-    if (FORMAT == 'csv') and (TIME_STANDARD.lower() == 'datetime'):
-        output['time'] = ts.to_string()
-    else:
-        attrib['time']['units'] = 'days since 1992-01-01T00:00:00'
-        output['time'] = ts.tide
+    output = {'x':dinput['x'], 'y':dinput['y'], 'time':dinput['time']}
+    output[output_variable] = tide
 
     # output to file
     if (FORMAT == 'csv'):
         # write columnar data to ascii
         gz.spatial.to_ascii(output, attrib, output_file,
             delimiter=DELIMITER, header=False,
-            columns=['time','lat','lon',output_variable])
+            columns=['time','x','y',output_variable])
     elif (FORMAT == 'netCDF4'):
         # write to netCDF4 for data type
         gz.spatial.to_netCDF4(output, attrib, output_file, data_type=TYPE)
@@ -447,7 +394,7 @@ def compute_tidal_elevations(tide_dir, input_file, output_file,
         geometry_encoding = attributes.get('geometry_encoding', None)
         gz.spatial.to_parquet(output, attrib, output_file,
             geoparquet=geoparquet, geometry_encoding=geometry_encoding,
-            crs=4326)
+            crs=crs)
     # change the permissions level to MODE
     output_file.chmod(mode=MODE)
 
@@ -478,9 +425,6 @@ def arguments():
     group.add_argument('--tide','-T',
         type=str, choices=choices,
         help='Tide model to use in correction')
-    parser.add_argument('--gzip','-G',
-        default=False, action='store_true',
-        help='Tide model files are gzip compressed')
     # tide model definition file to set an undefined model
     group.add_argument('--definition-file',
         type=pathlib.Path,
@@ -536,8 +480,8 @@ def arguments():
         help='Spatial projection as EPSG code or PROJ4 string')
     # interpolation method
     parser.add_argument('--interpolate','-I',
-        metavar='METHOD', type=str, default='spline',
-        choices=('spline','linear','nearest','bilinear'),
+        metavar='METHOD', type=str, default='linear',
+        choices=('linear','nearest'),
         help='Spatial interpolation method')
     # extrapolate with nearest-neighbors
     parser.add_argument('--extrapolate','-E',
@@ -549,7 +493,7 @@ def arguments():
         type=np.float64, default=10.0,
         help='Extrapolation cutoff in kilometers')
     # specify nodal corrections type
-    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3')
+    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3', 'group')
     parser.add_argument('--nodal-corrections',
         metavar='CORRECTIONS', type=str, choices=nodal_choices,
         help='Nodal corrections to apply')
@@ -599,7 +543,7 @@ def main():
     if args.definition_file is not None:
         model = pyTMD.io.model(verify=False).from_file(args.definition_file)
     else:
-        model = pyTMD.io.model(verify=False).elevation(args.tide)
+        model = pyTMD.io.model(verify=False).from_database(args.tide)
 
     # set output file from input filename if not entered
     if not args.outfile:
@@ -612,7 +556,6 @@ def main():
         info(args)
         compute_tidal_elevations(args.directory, args.infile, args.outfile,
             TIDE_MODEL=args.tide,
-            GZIP=args.gzip,
             DEFINITION_FILE=args.definition_file,
             CROP=args.crop,
             BUFFER=args.buffer,

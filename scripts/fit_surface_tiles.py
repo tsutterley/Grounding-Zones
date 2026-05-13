@@ -22,8 +22,8 @@ COMMAND LINE OPTIONS:
     --iteration: Number of iterations for surface fit
     --order-time: Temporal fit polynomial order
     --order-space: Spatial fit polynomial order
-    -R X, --relative X: Relative period for time-variable fit
-    -K X, --knots X: Temporal knots for spline fit
+    --relative X: Relative period for time-variable fit
+    --knots X: Temporal knots for spline fit
     -V, --verbose: Verbose output of run
     -M X, --mode X: Permissions mode of the directories and files
 
@@ -63,7 +63,7 @@ REFERENCES:
 
 UPDATE HISTORY:
     Updated 07/2024: ignore overflow errors in ATL06/11 error calculations
-    Updated 06/2024: renamed GLAH12 quality summary variable to d_qa_sum
+    Updated 06/2024: renamed GLAH12 quality summary variable to qa_sum_flg
     Updated 05/2024: switched from individual mask files to a
         common raster mask option for non-ice points
         moved multiprocess h5py reader to io utilities module
@@ -370,7 +370,7 @@ def fit_surface_tiles(tile_files,
                         # invalid value for heights
                         invalid = attrs[gtx][g]['h_li']['_FillValue']
                         # convert time to timescale
-                        ts = timescale.time.Timescale().from_deltatime(
+                        ts = timescale.from_deltatime(
                             mds[gtx][g]['delta_time'][indices],
                             epoch=timescale.time._atlas_sdp_epoch,
                             standard='GPS')
@@ -433,7 +433,7 @@ def fit_surface_tiles(tile_files,
                         # for each cycle
                         for k, cycle in enumerate(cycle_number):
                             # convert time to timescale
-                            ts = timescale.time.Timescale().from_deltatime(
+                            ts = timescale.from_deltatime(
                                 mds[ptx]['delta_time'][indices,k],
                                 epoch=timescale.time._atlas_sdp_epoch,
                                 standard='GPS')
@@ -483,7 +483,7 @@ def fit_surface_tiles(tile_files,
                     # get 40HZ variables
                     group = 'Data_40HZ'
                     J2000 = f2[group]['DS_UTCTime_40'][indices].copy()
-                    ts = timescale.time.Timescale().from_deltatime(
+                    ts = timescale.from_deltatime(
                         J2000, epoch=timescale.time._j2000_epoch,
                         standard='UTC')
                     # campaign bias correction
@@ -512,7 +512,7 @@ def fit_surface_tiles(tile_files,
                     # mask for reducing to valid values
                     d['mask'][c:c+file_length] = \
                         (f2[group][subgroup]['d_elev'][indices] != invalid) & \
-                        (f3[group]['Quality']['d_qa_sum'][indices] == 0)
+                        (f3[group]['Quality']['qa_sum_flg'][indices] == 0)
                     # add to mission variable
                     d['mission'][c:c+file_length] = mission[short_name]
                     # add to counter
@@ -527,7 +527,7 @@ def fit_surface_tiles(tile_files,
                     mds, file_length, HEM = gz.io.icebridge.from_file(
                         FILE2, indices, format=short_name)
                     # convert the ITRF to a common reference frame
-                    dt = timescale.time.Timescale().from_deltatime(
+                    dt = timescale.from_deltatime(
                         mds['time'][0], epoch=timescale.time._j2000_epoch,
                         standard='UTC').to_calendar()
                     ITRF = gz.io.icebridge.get_ITRF(short_name,
@@ -568,7 +568,7 @@ def fit_surface_tiles(tile_files,
         logging.info(f'Total Valid ({mission_names[k]}): {nvalid:d}')
 
     # convert time into year-decimal for fitting
-    ts = timescale.time.Timescale().from_deltatime(
+    ts = timescale.from_deltatime(
         d['time'], epoch=timescale.time._j2000_epoch,
         standard='UTC')
 
@@ -584,7 +584,7 @@ def fit_surface_tiles(tile_files,
     fill_value = {}
     # root group attributes
     attributes['ROOT']['x_center'] = xc
-    attributes['ROOT']['y_center'] = xc
+    attributes['ROOT']['y_center'] = yc
     attributes['ROOT']['tile_width'] = W
     attributes['ROOT']['spacing'] = SPACING
     attributes['ROOT']['fit_type'] = FIT_TYPE
@@ -920,10 +920,10 @@ def arguments():
     parser.add_argument('--order-space',
         type=int, default=3,
         help='Spatial fit polynomial order')
-    parser.add_argument('--relative','-R',
+    parser.add_argument('--relative',
         type=float, nargs='+',
         help='Relative period for time-variable fit')
-    parser.add_argument('--knots','-K',
+    parser.add_argument('--knots',
         type=float, nargs='+',
         help='Temporal knots for spline fit and output time series')
     # verbose output of processing run

@@ -1,9 +1,10 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools_scm>=8"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "Grounding-Zones"
+version = "1.0.0"
 description = "Python Tools for Estimating Ice Sheet Grounding Zone Locations with ICESat-2"
 keywords = [
     "ICESat-2 laser altimetry",
@@ -22,7 +23,8 @@ authors = [
     {email = "tsutterl@uw.edu"}
 ]
 maintainers = [{ name = "Grounding-Zones contributors" }]
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.rst"
 
 requires-python = "~=3.6"
@@ -31,17 +33,14 @@ dependencies = [
     "numpy",
     "pyproj",
     "python-dateutil",
-    "pyTMD>=2.2.2",
+    "pyTMD>=3",
     "scipy>=1.10.1",
-    "timescale>=0.0.3",
+    "timescale>=0.0.8",
 ]
-
-dynamic = ["version"]
 
 classifiers=[
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.6",

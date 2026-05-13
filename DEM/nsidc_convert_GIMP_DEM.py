@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 nsidc_convert_GIMP_DEM.py
-Written by Tyler Sutterley (05/2024)
+Written by Tyler Sutterley (08/2025)
 
 Reads GIMP 30m DEM tiles from the OSU Greenland Ice Mapping Project
     https://nsidc.org/data/nsidc-0645/versions/1
@@ -43,6 +43,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2025: set GDAL to use exceptions
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 07/2023: using pathlib to define and operate on paths
     Updated 12/2022: single implicit import of grounding zone tools
@@ -299,6 +300,8 @@ def main():
     # create logger
     loglevels = [logging.CRITICAL, logging.INFO, logging.DEBUG]
     logging.basicConfig(level=loglevels[args.verbose])
+    # set GDAL to use exceptions
+    osgeo.gdal.UseExceptions()
 
     # NASA Earthdata hostname
     HOST = 'urs.earthdata.nasa.gov'

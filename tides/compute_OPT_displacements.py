@@ -148,7 +148,7 @@ import pathlib
 import argparse
 import traceback
 import numpy as np
-import scipy.interpolate
+import xarray as xr
 import pyTMD.utilities
 import timescale.time
 import grounding_zones as gz
@@ -169,14 +169,14 @@ def info(args):
 def get_projection(attributes, PROJECTION):
     # coordinate reference system string from file
     try:
-        crs = pyTMD.crs().from_input(attributes['projection'])
+        crs = pyproj.CRS.from_user_input(attributes['projection'])
     except (ValueError,KeyError,pyproj.exceptions.CRSError):
         pass
     else:
         return crs
     # coordinate reference system from input argument
     try:
-        crs = pyTMD.crs().from_input(PROJECTION)
+        crs = pyproj.CRS.from_user_input(PROJECTION)
     except (ValueError,pyproj.exceptions.CRSError):
         pass
     else:
@@ -198,7 +198,7 @@ def compute_OPT_displacements(input_file, output_file,
     PROJECTION='4326',
     ELLIPSOID='WGS84',
     CONVENTION='2018',
-    METHOD='spline',
+    METHOD='linear',
     FILL_VALUE=-9999.0,
     MODE=0o775):
 
@@ -209,12 +209,12 @@ def compute_OPT_displacements(input_file, output_file,
             delimiter=DELIMITER, header=HEADER, parse_dates=parse_dates)
         attributes = dinput['attributes']
     elif (FORMAT == 'netCDF4'):
-        field_mapping = pyTMD.spatial.default_field_mapping(VARIABLES)
+        field_mapping = gz.spatial.default_field_mapping(VARIABLES)
         dinput = gz.spatial.from_netCDF4(input_file,
             field_mapping=field_mapping)
         attributes = dinput['attributes']
     elif (FORMAT == 'HDF5'):
-        field_mapping = pyTMD.spatial.default_field_mapping(VARIABLES)
+        field_mapping = gz.spatial.default_field_mapping(VARIABLES)
         dinput = gz.spatial.from_HDF5(input_file,
             field_mapping=field_mapping)
         attributes = dinput['attributes']
@@ -229,18 +229,15 @@ def compute_OPT_displacements(input_file, output_file,
         dinput['time'] = np.copy(TIME)
 
     # converting x,y from projection to latitude/longitude
-    crs1 = get_projection(attributes, PROJECTION)
-    crs2 = pyproj.CRS.from_epsg(4326)
-    transformer = pyproj.Transformer.from_crs(crs1, crs2, always_xy=True)
-    if (TYPE == 'grid'):
-        ny, nx = (len(dinput['y']), len(dinput['x']))
-        gridx, gridy = np.meshgrid(dinput['x'], dinput['y'])
-        lon, lat = transformer.transform(gridx, gridy)
-    elif (TYPE == 'drift'):
-        lon, lat = transformer.transform(dinput['x'], dinput['y'])
-    elif (TYPE == 'time series'):
-        nstation = len(np.ravel(dinput['y']))
-        lon, lat = transformer.transform(dinput['x'], dinput['y'])
+    crs = get_projection(attributes, PROJECTION)
+    assert TYPE.lower() in ('grid', 'drift', 'time series')
+    # convert coordinates to xarray DataArrays
+    # in WGS84 Latitude and Longitude
+    longitude, latitude = pyTMD.io.dataset._coords(
+        dinput['x'], dinput['y'], type=TYPE,
+        source_crs=crs, target_crs=4326)
+    # create dataset
+    ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
 
     # extract time units from netCDF4 and HDF5 attributes or from TIME_UNITS
     try:
@@ -256,14 +253,9 @@ def compute_OPT_displacements(input_file, output_file,
     else:
         # convert time to seconds
         delta_time = to_secs*np.ravel(dinput['time'])
-        ts = timescale.time.Timescale().from_deltatime(delta_time,
+        ts = timescale.from_deltatime(delta_time,
             epoch=epoch1, standard=TIME_STANDARD)
 
-    # number of time points
-    nt = len(ts)
-
-    # degrees to radians
-    dtr = np.pi/180.0
     # earth and physical parameters for ellipsoid
     units = pyTMD.spatial.datum(ellipsoid=ELLIPSOID, units='MKS')
     # mean equatorial gravitational acceleration [m/s^2]
@@ -275,113 +267,67 @@ def compute_OPT_displacements(input_file, output_file,
 
     # convert from geodetic latitude to geocentric latitude
     # calculate X, Y and Z from geodetic latitude and longitude
-    X,Y,Z = pyTMD.spatial.to_cartesian(np.ravel(lon), np.ravel(lat),
+    X,Y,Z = pyTMD.spatial.to_cartesian(ds.x, ds.y,
         a_axis=units.a_axis, flat=units.flat)
-    # calculate geocentric latitude and convert to degrees
-    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))/dtr
-    npts = len(latitude_geocentric)
-    # geocentric colatitude and longitude in radians
-    theta = dtr*(90.0 - latitude_geocentric)
-    phi = dtr*lon.flatten()
+    XYZ = xr.Dataset(
+        data_vars={
+            'X': (ds.dims, X),
+            'Y': (ds.dims, Y),
+            'Z': (ds.dims, Z)
+        },
+        coords=ds.coords
+    )
+    # geocentric colatitude (radians)
+    theta = np.pi/2.0 - np.arctan(XYZ.Z / np.sqrt(XYZ.X**2.0 + XYZ.Y**2.0))
+    # calculate longitude (radians)
+    phi = np.arctan2(XYZ.Y, XYZ.X)
+    # geocentric latitude (degrees)
+    latitude_geocentric = 90.0 - np.degrees(theta)
 
-    # read ocean pole tide map from Desai (2002)
-    ur, un, ue = pyTMD.io.IERS.extract_coefficients(lon.flatten(),
-        latitude_geocentric, method=METHOD)
+    # read and interpolate ocean pole tide map from Desai (2002)
+    IERS = pyTMD.io.IERS.open_dataset()
+    Umap = IERS.interp(x=ds.x, y=latitude_geocentric, method=METHOD)
+    
     # rotation matrix for converting to/from cartesian coordinates
-    R = np.zeros((npts, 3, 3))
-    R[:,0,0] = np.cos(phi)*np.cos(theta)
-    R[:,0,1] = -np.sin(phi)
-    R[:,0,2] = np.cos(phi)*np.sin(theta)
-    R[:,1,0] = np.sin(phi)*np.cos(theta)
-    R[:,1,1] = np.cos(phi)
-    R[:,1,2] = np.sin(phi)*np.sin(theta)
-    R[:,2,0] = -np.sin(theta)
-    R[:,2,2] = np.cos(theta)
-    Rinv = np.linalg.inv(R)
+    R = xr.Dataset()
+    R[0,0] = np.cos(phi)*np.cos(theta)
+    R[0,1] = -np.sin(phi)
+    R[0,2] = np.cos(phi)*np.sin(theta)
+    R[1,0] = np.sin(phi)*np.cos(theta)
+    R[1,1] = np.cos(phi)
+    R[1,2] = np.sin(phi)*np.sin(theta)
+    R[2,0] = -np.sin(theta)
+    R[2,1] = xr.zeros_like(theta)
+    R[2,2] = np.cos(theta)
 
     # calculate pole tide displacements in Cartesian coordinates
-    # coefficients reordered to N, E, R to match IERS rotation matrix
-    UXYZ = np.einsum('ti...,tji...->tj...', np.c_[un, ue, ur], R)
+    UXYZ = xr.Dataset()
+    UXYZ['X'] = R[0,0]*Umap['N'] + R[0,1]*Umap['E'] + R[0,2]*Umap['R']
+    UXYZ['Y'] = R[1,0]*Umap['N'] + R[1,1]*Umap['E'] + R[1,2]*Umap['R']
+    UXYZ['Z'] = R[2,0]*Umap['N'] + R[2,1]*Umap['E'] + R[2,2]*Umap['R']
 
-    # calculate radial displacement at time
-    if (TYPE == 'grid'):
-        Urad = np.ma.zeros((ny,nx,nt), fill_value=FILL_VALUE)
-        Urad.mask = np.zeros((ny,nx,nt),dtype=bool)
-        XYZ = np.c_[X, Y, Z]
-        for i in range(nt):
-            # calculate ocean pole tides in cartesian coordinates
-            dxi = pyTMD.predict.ocean_pole_tide(ts.tide[i], XYZ, UXYZ,
-                deltat=ts.tt_ut1[i],
-                a_axis=units.a_axis,
-                gamma_0=ge,
-                GM=units.GM,
-                omega=units.omega,
-                rho_w=rho_w,
-                g2=gamma,
-                convention=CONVENTION
-            )
-            # calculate components of ocean pole tides
-            U = np.einsum('ti...,tji...->tj...', dxi, Rinv)
-            # reshape to output dimensions
-            Urad.data[:,:,i] = np.reshape(U[:,2], (ny,nx))
-            Urad.mask[:,:,i] = np.isnan(Urad.data[:,:,i])
-    elif (TYPE == 'drift'):
-        # calculate ocean pole tides in cartesian coordinates
-        XYZ = np.c_[X, Y, Z]
-        dxi = pyTMD.predict.ocean_pole_tide(ts.tide, XYZ, UXYZ,
-            deltat=ts.tt_ut1,
-            a_axis=units.a_axis,
-            gamma_0=ge,
-            GM=units.GM,
-            omega=units.omega,
-            rho_w=rho_w,
-            g2=gamma,
-            convention=CONVENTION
-        )
-        # calculate components of ocean pole tides
-        U = np.einsum('ti...,tji...->tj...', dxi, Rinv)
-        # convert to masked array
-        Urad = np.ma.zeros((nt), fill_value=FILL_VALUE)
-        Urad.data[:] = U[:,2].copy()
-        Urad.mask = np.isnan(Urad.data)
-    elif (TYPE == 'time series'):
-        Urad = np.ma.zeros((nstation,nt), fill_value=FILL_VALUE)
-        Urad.mask = np.zeros((nstation,nt),dtype=bool)
-        for s in range(nstation):
-            # convert coordinates to column arrays
-            XYZ = np.repeat(np.c_[X[s], Y[s], Z[s]], nt, axis=0)
-            uxyz = np.repeat(np.atleast_2d(UXYZ[s,:]), nt, axis=0)
-            # calculate ocean pole tides in cartesian coordinates
-            dxi = pyTMD.predict.ocean_pole_tide(ts.tide, XYZ, uxyz,
-                deltat=ts.tt_ut1,
-                a_axis=units.a_axis,
-                gamma_0=ge,
-                GM=units.GM,
-                omega=units.omega,
-                rho_w=rho_w,
-                g2=gamma,
-                convention=CONVENTION
-            )
-            # calculate components of ocean pole tides
-            U = np.einsum('ti...,ji...->tj...', dxi, Rinv[s,:,:])
-            # reshape to output dimensions
-            Urad.data[s,:] = U[:,2].copy()
-            Urad.mask[s,:] = np.isnan(Urad.data[s,:])
+    # calculate ocean pole tides in cartesian coordinates
+    dxi = pyTMD.predict.ocean_pole_tide(ts.tide, UXYZ,
+        deltat=ts.tt_ut1,
+        a_axis=units.a_axis,
+        gamma_0=ge,
+        GM=units.GM,
+        omega=units.omega,
+        rho_w=rho_w,
+        g2=gamma,
+        convention=CONVENTION
+    )
 
-    # replace invalid data with fill values
-    Urad.data[Urad.mask] = Urad.fill_value
+    # rotate displacements from cartesian coordinates
+    Urad = R[0,2]*dxi['X'] + R[1,2]*dxi['Y'] + R[2,2]*dxi['Z']
 
     # output netCDF4 and HDF5 file attributes
     # will be added to YAML header in csv files
     attrib = {}
-    # latitude
-    attrib['lat'] = {}
-    attrib['lat']['long_name'] = 'Latitude'
-    attrib['lat']['units'] = 'Degrees_North'
-    # longitude
-    attrib['lon'] = {}
-    attrib['lon']['long_name'] = 'Longitude'
-    attrib['lon']['units'] = 'Degrees_East'
+    # copy coordinate attributes from input file
+    attrib['x'] = attributes.get('x', {})
+    attrib['y'] = attributes.get('y', {})
+    attrib['time'] = attributes.get('time', {})
     # ocean pole tides
     attrib['tide_oc_pole'] = {}
     attrib['tide_oc_pole']['long_name'] = 'Ocean_Pole_Tide'
@@ -391,25 +337,17 @@ def compute_OPT_displacements(input_file, output_file,
         'chapter7/opoleloadcoefcmcor.txt.gz')
     attrib['tide_oc_pole']['units'] = 'meters'
     attrib['tide_oc_pole']['_FillValue'] = FILL_VALUE
-    # time
-    attrib['time'] = {}
-    attrib['time']['long_name'] = 'Time'
-    attrib['time']['calendar'] = 'standard'
 
     # output data dictionary
-    output = {'lon':lon, 'lat':lat, 'tide_oc_pole':Urad}
-    if (FORMAT == 'csv') and (TIME_STANDARD.lower() == 'datetime'):
-        output['time'] = ts.to_string()
-    else:
-        attrib['time']['units'] = 'days since 1992-01-01T00:00:00'
-        output['time'] = ts.tide
+    output = {'x':dinput['x'], 'y':dinput['y'], 'time':dinput['time']}
+    output['tide_oc_pole'] = Urad
 
     # output to file
     if (FORMAT == 'csv'):
         # write columnar data to ascii
         gz.spatial.to_ascii(output, attrib, output_file,
             delimiter=DELIMITER, header=False,
-            columns=['time','lat','lon','tide_oc_pole'])
+            columns=['time','x','y','tide_oc_pole'])
     elif (FORMAT == 'netCDF4'):
         # write to netCDF4 for data type
         gz.spatial.to_netCDF4(output, attrib, output_file, data_type=TYPE)
@@ -429,7 +367,7 @@ def compute_OPT_displacements(input_file, output_file,
         geometry_encoding = attributes.get('geometry_encoding', None)
         gz.spatial.to_parquet(output, attrib, output_file,
             geoparquet=geoparquet, geometry_encoding=geometry_encoding,
-            crs=4326)
+            crs=crs)
     # change the permissions level to MODE
     output_file.chmod(mode=MODE)
 
@@ -502,8 +440,8 @@ def arguments():
         help='IERS mean or secular pole convention')
     # interpolation method
     parser.add_argument('--interpolate','-I',
-        metavar='METHOD', type=str, default='spline',
-        choices=('spline','linear','nearest'),
+        metavar='METHOD', type=str, default='linear',
+        choices=('linear','nearest'),
         help='Spatial interpolation method')
     # fill value for output spatial fields
     parser.add_argument('--fill-value','-f',

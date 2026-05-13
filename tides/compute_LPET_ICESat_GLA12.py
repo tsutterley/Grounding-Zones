@@ -59,6 +59,7 @@ import logging
 import pathlib
 import argparse
 import numpy as np
+import xarray as xr
 import grounding_zones as gz
 
 # attempt imports
@@ -127,7 +128,6 @@ def compute_LPET_ICESat(INPUT_FILE,
 
     # read GLAH12 HDF5 file
     fileID = h5py.File(INPUT_FILE, mode='r')
-    n_40HZ, = fileID['Data_40HZ']['Time']['i_rec_ndx'].shape
     # get variables and attributes
     rec_ndx_40HZ = fileID['Data_40HZ']['Time']['i_rec_ndx'][:].copy()
     # seconds since 2000-01-01 12:00:00 UTC (J2000)
@@ -149,16 +149,19 @@ def compute_LPET_ICESat(INPUT_FILE,
         topex.a_axis, topex.flat,
         wgs84.a_axis, wgs84.flat,
         eps=1e-12, itmax=10)
+    # convert coordinates to xarray DataArrays
+    longitude = xr.DataArray(lon_40HZ, dims=('time'))
+    latitude = xr.DataArray(lat_40HZ, dims=('time'))
+    ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    ts = timescale.time.Timescale().from_deltatime(DS_UTCTime_40HZ[:],
+    ts = timescale.from_deltatime(DS_UTCTime_40HZ[:],
         epoch=timescale.time._j2000_epoch, standard='UTC')
-    # convert tide times to dynamical time
-    tide_time = ts.tide + ts.tt_ut1
 
     # predict long-period equilibrium tides at latitudes and time
-    tide_lpe = pyTMD.predict.equilibrium_tide(tide_time, lat_40HZ)
-
+    tide_lpe = pyTMD.predict.equilibrium_tide(ts.tide, ds,
+        deltat=ts.tt_ut1)
+    
     # copy variables for outputting to HDF5 file
     IS_gla12_tide = dict(Data_40HZ={})
     IS_gla12_fill = dict(Data_40HZ={})
@@ -244,8 +247,8 @@ def compute_LPET_ICESat(INPUT_FILE,
 
     # geophysical variables
     # computed long-period equilibrium tide
-    IS_gla12_tide['Data_40HZ']['Geophysical']['d_eqElv'] = tide_lpe
-    IS_gla12_fill['Data_40HZ']['Geophysical']['d_eqElv'] = None
+    IS_gla12_tide['Data_40HZ']['Geophysical']['d_eqElv'] = tide_lpe.fillna(fv)
+    IS_gla12_fill['Data_40HZ']['Geophysical']['d_eqElv'] = fv
     IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_eqElv'] = {}
     IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_eqElv']['units'] = "meters"
     IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_eqElv']['long_name'] = \

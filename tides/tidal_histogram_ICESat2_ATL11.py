@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tidal_histogram_ICESat2_ATL11.py
-Written by Tyler Sutterley (09/2024)
+Written by Tyler Sutterley (03/2025)
 Calculates histograms of variances between ICESat-2 ATL11
 annual land ice height data and tide predictions
 
@@ -30,6 +30,7 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 03/2025: added check to see if any mask points are valid
     Updated 09/2024: use JSON database for known model parameters
         drop support for the ascii definition file format
         get model name from file definition or from JSON database
@@ -154,7 +155,7 @@ def tidal_histogram(tile_file,
         model = pyTMD.io.model(None, verify=False).from_file(
             DEFINITION_FILE)
     elif TIDE_MODEL is not None:
-        model = pyTMD.io.model(None, verify=False).elevation(TIDE_MODEL)
+        model = pyTMD.io.model(None, verify=False).from_database(TIDE_MODEL)
     else:
         # default for uncorrected heights
         model = type('model', (), dict(name=None, corrections='GOT'))
@@ -163,6 +164,9 @@ def tidal_histogram(tile_file,
     if MASK_FILE is not None:
         bounds = [xmin-dx, xmax+dx, ymin-dy, ymax+dy]
         m = read_raster_file(MASK_FILE, bounds=bounds)
+        # check if there is any data
+        if not np.any(m['data']):
+            raise ValueError('No data found in trimmed mask file')
         # calculate polar stereographic distortion
         # interpolate raster to output grid
         DX, DY = m['attributes']['spacing']
@@ -360,7 +364,7 @@ def tidal_histogram(tile_file,
     fill_value = {}
     # root group attributes
     attributes['ROOT']['x_center'] = xc
-    attributes['ROOT']['y_center'] = xc
+    attributes['ROOT']['y_center'] = yc
     attributes['ROOT']['tile_width'] = W
     attributes['ROOT']['spacing'] = SPACING
     # projection attributes

@@ -382,7 +382,7 @@ def interp_IB_response_ICESat2(base_dir, INPUT_FILE, MODEL,
 
         # create timescale from ATLAS Standard Epoch time
         # GPS seconds since 2018-01-01 00:00:00 UTC
-        ts = timescale.time.Timescale().from_deltatime(val['delta_time'],
+        ts = timescale.from_deltatime(val['delta_time'],
             epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
 
         # calculate projected coordinates of input coordinates
@@ -723,7 +723,7 @@ def HDF5_ATL07_corr_write(IS2_atl07_corr, IS2_atl07_attrs, INPUT=None,
     fileID.attrs['date_type'] = 'UTC'
     fileID.attrs['time_type'] = 'CCSDS UTC-A'
     # convert start and end time from ATLAS SDP seconds into timescale
-    ts = timescale.time.Timescale().from_deltatime(np.array([tmn,tmx]),
+    ts = timescale.from_deltatime(np.array([tmn,tmx]),
         epoch=timescale.time._atlas_sdp_epoch, standard='GPS')
     dt = np.datetime_as_string(ts.to_datetime(), unit='s')
     # add attributes with measurement date start, end and duration

@@ -25,4 +25,6 @@ General Methods
 
 .. autofunction:: grounding_zones.utilities.pgc_list
 
+.. autofunction:: grounding_zones.utilities.pgc_image_service
+
 .. autofunction:: grounding_zones.utilities.cmr

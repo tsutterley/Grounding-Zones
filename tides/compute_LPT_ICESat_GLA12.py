@@ -76,7 +76,7 @@ import logging
 import pathlib
 import argparse
 import numpy as np
-import scipy.interpolate
+import xarray as xr
 import grounding_zones as gz
 
 # attempt imports
@@ -160,7 +160,7 @@ def compute_LPT_ICESat(INPUT_FILE,
     fv = fileID['Data_40HZ']['Elevation_Surfaces']['d_elev'].attrs['_FillValue']
 
     # create timescale from J2000: seconds since 2000-01-01 12:00:00 UTC
-    ts = timescale.time.Timescale().from_deltatime(DS_UTCTime_40HZ[:],
+    ts = timescale.from_deltatime(DS_UTCTime_40HZ[:],
         epoch=timescale.time._j2000_epoch, standard='UTC')
 
     # parameters for Topex/Poseidon and WGS84 ellipsoids
@@ -173,40 +173,48 @@ def compute_LPT_ICESat(INPUT_FILE,
         wgs84.a_axis, wgs84.flat,
         eps=1e-12, itmax=10)
 
-    # degrees to radians
-    dtr = np.pi/180.0
+    # convert coordinates to xarray DataArrays
+    longitude = xr.DataArray(lon_40HZ, dims=('time'))
+    latitude = xr.DataArray(lat_40HZ, dims=('time'))
+    ds = xr.Dataset(coords={'x': longitude, 'y': latitude})
+
     # tidal love/shida numbers appropriate for the load tide
     hb2 = 0.6207
     lb2 = 0.0847
 
-    # convert from geodetic latitude to geocentric latitude
-    # calculate X, Y and Z from geodetic latitude and longitude
-    X,Y,Z = pyTMD.spatial.to_cartesian(lon_40HZ, lat_40HZ,
+    # convert input coordinates to cartesian
+    X,Y,Z = pyTMD.spatial.to_cartesian(ds.x, ds.y,
         a_axis=wgs84.a_axis, flat=wgs84.flat)
-    # geocentric latitude (radians)
-    latitude_geocentric = np.arctan(Z / np.sqrt(X**2.0 + Y**2.0))
+    XYZ = xr.Dataset(
+        data_vars={
+            'X': (ds.dims, X),
+            'Y': (ds.dims, Y),
+            'Z': (ds.dims, Z)
+        },
+        coords=ds.coords
+    )
     # geocentric colatitude (radians)
-    theta = (np.pi/2.0 - latitude_geocentric)
+    theta = np.pi/2.0 - np.arctan(XYZ.Z / np.sqrt(XYZ.X**2.0 + XYZ.Y**2.0))
     # calculate longitude (radians)
-    phi = np.arctan2(Y, X)
+    phi = np.arctan2(XYZ.Y, XYZ.X)
 
     # compute normal gravity at spatial location
     # p. 80, Eqn.(2-199)
     gamma_0 = wgs84.gamma_0(theta)
 
-    # rotation matrix for converting from cartesian coordinates
-    R = np.zeros((n_40HZ, 3, 3))
-    R[:,0,0] = np.cos(phi)*np.cos(theta)
-    R[:,1,0] = -np.sin(phi)
-    R[:,2,0] = np.cos(phi)*np.sin(theta)
-    R[:,0,1] = np.sin(phi)*np.cos(theta)
-    R[:,1,1] = np.cos(phi)
-    R[:,2,1] = np.sin(phi)*np.sin(theta)
-    R[:,0,2] = -np.sin(theta)
-    R[:,2,2] = np.cos(theta)
+    # rotation matrix for converting to/from cartesian coordinates
+    R = xr.Dataset()
+    R[0,0] = np.cos(phi)*np.cos(theta)
+    R[0,1] = -np.sin(phi)
+    R[0,2] = np.cos(phi)*np.sin(theta)
+    R[1,0] = np.sin(phi)*np.cos(theta)
+    R[1,1] = np.cos(phi)
+    R[1,2] = np.sin(phi)*np.sin(theta)
+    R[2,0] = -np.sin(theta)
+    R[2,1] = xr.zeros_like(theta)
+    R[2,2] = np.cos(theta)
 
     # calculate load pole tides in cartesian coordinates
-    XYZ = np.c_[X, Y, Z]
     dxi = pyTMD.predict.load_pole_tide(ts.tide, XYZ,
         deltat=ts.tt_ut1,
         gamma_0=gamma_0,
@@ -215,15 +223,9 @@ def compute_LPT_ICESat(INPUT_FILE,
         l2=lb2,
         convention=CONVENTION
     )
-    # calculate components of load pole tides
-    S = np.einsum('ti...,tji...->tj...', dxi, R)
 
-    # convert to masked array
-    Srad = np.ma.zeros((n_40HZ),fill_value=fv)
-    Srad.data[:] = S[:,2].copy()
-    # replace fill values
-    Srad.mask = np.isnan(Srad.data)
-    Srad.data[Srad.mask] = Srad.fill_value
+    # rotate displacements from cartesian coordinates
+    Srad = R[0,2]*dxi['X'] + R[1,2]*dxi['Y'] + R[2,2]*dxi['Z']
 
     # copy variables for outputting to HDF5 file
     IS_gla12_tide = dict(Data_40HZ={})
@@ -310,8 +312,8 @@ def compute_LPT_ICESat(INPUT_FILE,
 
     # geophysical variables
     # computed Solid Earth load pole tide
-    IS_gla12_tide['Data_40HZ']['Geophysical']['d_poElv'] = Srad
-    IS_gla12_fill['Data_40HZ']['Geophysical']['d_poElv'] = Srad.fill_value
+    IS_gla12_tide['Data_40HZ']['Geophysical']['d_poElv'] = Srad.fillna(fv)
+    IS_gla12_fill['Data_40HZ']['Geophysical']['d_poElv'] = fv
     IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_poElv'] = {}
     IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_poElv']['units'] = "meters"
     IS_gla12_tide_attrs['Data_40HZ']['Geophysical']['d_poElv']['long_name'] = \

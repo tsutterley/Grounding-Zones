@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 reduce_ICESat_GLA12_raster.py
-Written by Tyler Sutterley (08/2024)
+Written by Tyler Sutterley (08/2025)
 
 Create masks for reducing ICESat/GLAS L2 GLA12 Antarctic and Greenland
     Ice Sheet elevation data data using raster imagery
@@ -40,11 +40,11 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/timescale/
 
 PROGRAM DEPENDENCIES:
-    io/ATL06.py: reads ICESat-2 land ice along-track height data files
     spatial.py: utilities for reading and writing spatial data
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 08/2025: added option to set the output mask variable name
     Updated 08/2024: changed from 'geotiff' to 'GTiff' and 'cog' formats
     Updated 05/2024: use wrapper to importlib for optional dependencies
     Updated 04/2024: use timescale for temporal operations
@@ -167,6 +167,7 @@ def reduce_ICESat_GLA12_raster(INPUT_FILE,
     PROJECTION=None,
     SIGMA=0.0,
     TOLERANCE=0.5,
+    MASK_NAME='mask_flg',
     VERBOSE=False,
     MODE=0o775):
 
@@ -401,18 +402,18 @@ def reduce_ICESat_GLA12_raster(INPUT_FILE,
         "to specific regions of interest.")
 
     # output mask
-    IS_gla12_mask['Data_40HZ']['Subsetting']['d_mask'] = interp_mask
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_mask'] = {}
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_mask']['contentType'] = \
+    IS_gla12_mask['Data_40HZ']['Subsetting'][MASK_NAME] = interp_mask
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting'][MASK_NAME] = {}
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting'][MASK_NAME]['contentType'] = \
         "referenceInformation"
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_mask']['long_name'] = \
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting'][MASK_NAME]['long_name'] = \
         'Mask'
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_mask']['description'] = \
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting'][MASK_NAME]['description'] = \
         'Mask calculated using raster image'
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_mask']['source'] = MASK.name
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_mask']['sigma'] = SIGMA
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_mask']['tolerance'] = TOLERANCE
-    IS_gla12_mask_attrs['Data_40HZ']['Subsetting']['d_mask']['coordinates'] = \
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting'][MASK_NAME]['source'] = MASK.name
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting'][MASK_NAME]['sigma'] = SIGMA
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting'][MASK_NAME]['tolerance'] = TOLERANCE
+    IS_gla12_mask_attrs['Data_40HZ']['Subsetting'][MASK_NAME]['coordinates'] = \
         "../DS_UTCTime_40"
 
     # print file information
@@ -541,6 +542,10 @@ def arguments():
     parser.add_argument('--tolerance','-T',
         type=float, default=0.5,
         help='Tolerance to set as valid mask')
+    # output variable name for mask
+    parser.add_argument('--mask','-m',
+        type=str, default='mask_flg',
+        help='Output HDF5 variable name for mask')
     # verbosity settings
     # verbose will output information about each output file
     parser.add_argument('--verbose','-V',
@@ -568,6 +573,7 @@ def main():
         SIGMA=args.sigma,
         TOLERANCE=args.tolerance,
         OUTPUT=args.output,
+        MASK_NAME=args.mask,
         VERBOSE=args.verbose,
         MODE=args.mode)
 

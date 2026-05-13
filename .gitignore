@@ -86,6 +86,7 @@ Thumbs.db
 *.mtc
 *.mtc0
 *.sw*
+*.xml
 *.hidden
 None*.png
 # JPL ephemerides #

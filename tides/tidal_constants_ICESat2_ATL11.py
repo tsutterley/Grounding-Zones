@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 tidal_constants_ICESat2_ATL11.py
-Written by Tyler Sutterley (10/2024)
+Written by Tyler Sutterley (02/2026)
 Calculates amplitudes and phases of tidal constituents using
 data from the ICESat-2 ATL11 annual land ice height product
 
@@ -36,6 +36,9 @@ PROGRAM DEPENDENCIES:
     io/ATL11.py: reads ICESat-2 annual land ice height data files
 
 UPDATE HISTORY:
+    Updated 02/2026: estimate model uncertainty in amplitude and phase
+    Updated 10/2025: include minor constituents inferrence in post-fit
+    Updated 03/2025: added check to see if any mask points are valid
     Updated 10/2024: add option to select nodal corrections type
     Written 09/2024
 """
@@ -183,15 +186,13 @@ def tidal_constants(tile_file,
     crs_to_cf = crs2.to_cf()
     flat = 1.0/crs_to_cf['inverse_flattening']
     reference_latitude = crs_to_cf['standard_parallel']
-    # degrees to radians
-    dtr = np.pi/180.0
 
     # get tide model parameters from definition file or model name
     if DEFINITION_FILE is not None:
         model = pyTMD.io.model(None, verify=False).from_file(
             DEFINITION_FILE)
     elif TIDE_MODEL is not None:
-        model = pyTMD.io.model(None, verify=False).elevation(TIDE_MODEL)
+        model = pyTMD.io.model(None, verify=False).from_database(TIDE_MODEL)
     else:
         # default for uncorrected heights
         model = type('model', (), dict(name=None, corrections='GOT'))
@@ -202,6 +203,9 @@ def tidal_constants(tile_file,
     if MASK_FILE is not None:
         bounds = [xmin-dx, xmax+dx, ymin-dy, ymax+dy]
         m = read_raster_file(MASK_FILE, bounds=bounds)
+        # check if there is any data
+        if not np.any(m['data']):
+            raise ValueError('No data found in trimmed mask file')
         # calculate polar stereographic distortion
         # interpolate raster to output grid
         DX, DY = m['attributes']['spacing']
@@ -395,7 +399,7 @@ def tidal_constants(tile_file,
     fill_value = {}
     # root group attributes
     attributes['ROOT']['x_center'] = xc
-    attributes['ROOT']['y_center'] = xc
+    attributes['ROOT']['y_center'] = yc
     attributes['ROOT']['tile_width'] = W
     attributes['ROOT']['spacing'] = SPACING
     # projection attributes
@@ -426,13 +430,14 @@ def tidal_constants(tile_file,
     attributes['cell_area']['coordinates'] = 'y x'
     attributes['cell_area']['grid_mapping'] = 'crs'
     fill_value['cell_area'] = 0
-    # amplitude and phase of harmonic constants
+    # amplitude of harmonic constants
     attributes['amplitude'] = {}
     attributes['amplitude']['long_name'] = 'Amplitude of harmonic constants'
     attributes['amplitude']['units'] = 'meters'
     attributes['amplitude']['coordinates'] = 'y x'
     attributes['amplitude']['grid_mapping'] = 'crs'
     fill_value['amplitude'] = invalid
+    # phase of harmonic constants
     attributes['phase'] = {}
     attributes['phase']['long_name'] = 'Phase lag of harmonic constants'
     attributes['phase']['units'] = 'degrees'
@@ -441,10 +446,25 @@ def tidal_constants(tile_file,
     attributes['phase']['valid_min'] = 0
     attributes['phase']['valid_max'] = 360
     fill_value['phase'] = invalid
+    # estimates error in harmonic constants amplitude
+    attributes['amp_sigma'] = {}
+    attributes['amp_sigma']['long_name'] = 'Amplitude uncertainty'
+    attributes['amp_sigma']['units'] = 'meters'
+    attributes['amp_sigma']['coordinates'] = 'y x'
+    attributes['amp_sigma']['grid_mapping'] = 'crs'
+    fill_value['amp_sigma'] = invalid
+    # estimates error in harmonic constants phase
+    attributes['ph_sigma'] = {}
+    attributes['ph_sigma']['long_name'] = 'Phase lag uncertainty'
+    attributes['ph_sigma']['units'] = 'degrees'
+    attributes['ph_sigma']['coordinates'] = 'y x'
+    attributes['ph_sigma']['grid_mapping'] = 'crs'
+    fill_value['ph_sigma'] = invalid
     # harmonic constituents
     attributes['constituents'] = {}
-    attributes['long_name'] = 'Tidal constituents'
-    attributes['description'] = 'Tidal constituents listed in order of solution'
+    attributes['constituents']['long_name'] = 'Tidal constituents'
+    attributes['constituents']['description'] = \
+        'Tidal constituents listed in order of solution'
     fill_value['constituents'] = None
 
     # allocate for output variables
@@ -460,6 +480,8 @@ def tidal_constants(tile_file,
     nc = len(CONSTANTS)
     output['amplitude'] = np.ma.zeros((ny, nx, nc), fill_value=invalid)
     output['phase'] = np.ma.zeros((ny, nx, nc), fill_value=invalid)
+    output['amp_sigma'] = np.ma.zeros((ny, nx, nc), fill_value=invalid)
+    output['ph_sigma'] = np.ma.zeros((ny, nx, nc), fill_value=invalid)
     output['constituents'] = np.array(CONSTANTS, dtype='|S8')
     count = np.zeros((ny, nx), dtype=np.int64)
 
@@ -491,23 +513,34 @@ def tidal_constants(tile_file,
                 # solve for harmonic constants
                 h_rand = u['h_corr'] + np.random.normal(0, u['h_sigma'])
                 bounds = build_constraints(h_rand, CONSTANTS)
-                amp, ph = pyTMD.solve.constants(u['delta_time'], h_rand,
+                ds = pyTMD.solve.constants(u['delta_time'], h_rand,
                     constituents=CONSTANTS, corrections=nodal_corrections,
-                    bounds=bounds, solver='lstsq')
-                # calculate complex harmonic constants for iteration
-                cph = -1j*dtr*ph
-                hci[i, :] = amp*np.exp(cph)
-            # calculate mean value of complex harmonic constants
+                    infer_minor=True, bounds=bounds, solver='lstsq')
+                hci[i, :] = ds.tmd.to_dataarray()
+            # calculate mean and stdev values of complex harmonic constants
             hc = np.mean(hci, axis=0)
+            hc_std = np.std(hci, axis=0)
+            # calculate amplitude
+            amp = np.abs(hc)
             # calculate phase in degrees
-            ph = np.arctan2(-np.imag(hc), np.real(hc))/dtr
+            ph = np.degrees(np.arctan2(-np.imag(hc), np.real(hc)))
             ph[ph < 0] += 360.0
             # add to output variables
-            output['amplitude'][indy, indx, :] = np.abs(hc)
+            output['amplitude'][indy, indx, :] = amp.copy()
             output['phase'][indy, indx, :] = ph.copy()
+            # amplitude uncertainty
+            comp1 = hc_std.real*hc.real/amp
+            comp2 = hc_std.imag*hc.imag/amp
+            amp_sigma = np.sqrt(comp1**2 + comp2**2)
+            output['amp_sigma'][indy, indx, :] = amp_sigma.copy()
+            # phase uncertainty (degrees)
+            comp1 = hc_std.real*hc.imag/(amp**2)
+            comp2 = hc_std.imag*hc.real/(amp**2)
+            ph_sigma = np.sqrt(comp1**2 + comp2**2)
+            output['ph_sigma'][indy, indx, :] = np.degrees(ph_sigma)
 
     # exit if there are no valid points
-    if np.sum(output['count']) == 0:
+    if np.sum(count) == 0:
         raise ValueError('No valid points found for tile')
 
     # find and replace invalid values
@@ -515,6 +548,8 @@ def tidal_constants(tile_file,
     # update values for invalid points
     output['amplitude'][indy, indx, :] = invalid
     output['phase'][indy, indx, :] = invalid
+    output['amp_sigma'][indy, indx, :] = invalid
+    output['ph_sigma'][indy, indx, :] = invalid
 
     # open output HDF5 file in append mode
     output_file = OUTPUT_DIRECTORY.joinpath(tile_file_formatted)
@@ -612,7 +647,7 @@ def arguments():
         type=pathlib.Path,
         help='Tide model definition file')
     # specify nodal corrections type
-    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3')
+    nodal_choices = ('OTIS', 'FES', 'GOT', 'perth3', 'group')
     parser.add_argument('--nodal-corrections',
         metavar='CORRECTIONS', type=str, choices=nodal_choices,
         help='Nodal corrections to use')

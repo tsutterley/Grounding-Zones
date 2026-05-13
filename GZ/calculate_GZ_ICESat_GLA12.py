@@ -48,7 +48,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: download and management utilities for syncing files
 
 UPDATE HISTORY:
-    Updated 06/2024: renamed GLAH12 quality summary variable to d_qa_sum
+    Updated 06/2024: renamed GLAH12 quality summary variable to qa_sum_flg
         save output HDF5 files as trajectory type for visualization
     Written 05/2024
 """
@@ -118,7 +118,7 @@ def read_grounded_ice(base_dir, HEM, VARIABLES=[0]):
 # PURPOSE: attempt to read the mask variables
 def read_grounding_zone_mask(mask_file):
     # check that mask file and variable exists
-    for mask in ['d_ice_gz', 'd_mask']:
+    for mask in ['d_ice_gz', 'd_mask', 'ice_gz_flg', 'mask_flg']:
         try:
             # extract mask values to create grounding zone mask
             fileID = gz.io.multiprocess_h5py(mask_file, mode='r')
@@ -144,7 +144,7 @@ def campaign_bias_correction(campaign: str):
     campaign: str
         ICESat campaign
     """
-    # 
+    # corrections for each laser number
     correction = dict(laser1=0.0, laser2=-0.017, laser3=0.011)
     # find the laser number from the campaign
     laser, = re.findall(r'\d', campaign)
@@ -261,7 +261,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
     i_track_40HZ = np.zeros((n_40HZ), dtype=i_track_1HZ.dtype)
     # time of ICESat data
     J2000 = fid['Data_40HZ']['DS_UTCTime_40'][:].copy()
-    ts = timescale.time.Timescale().from_deltatime(
+    ts = timescale.from_deltatime(
         J2000, epoch=timescale.time._j2000_epoch,
         standard='UTC')
     # campaign bias correction
@@ -279,7 +279,7 @@ def calculate_GZ_ICESat(base_dir, INPUT_FILE,
     d_ocElv = fid['Data_40HZ']['Geophysical']['d_ocElv'][:]
     d_ocElv[d_ocElv == fv] = 0.0
     # mask for reducing to valid values
-    quality_summary = fid1['Data_40HZ']['Quality']['d_qa_sum'][:]
+    quality_summary = fid1['Data_40HZ']['Quality']['qa_sum_flg'][:]
     # get the transform for converting to the latest ITRF
     transform = gz.crs.tp_itrf2008_to_wgs84_itrf2020()
     # transform the data to WGS84 ellipsoid in ITRF2020
